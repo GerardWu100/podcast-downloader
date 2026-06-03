@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.DS_Store
+downloads/
+download.log
+downloaded_urls.txt
+.login_state.json
+tests/
+test_sponsorblock.py

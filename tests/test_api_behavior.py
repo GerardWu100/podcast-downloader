@@ -1,0 +1,965 @@
+"""Behavioral tests for API session and client IP handling."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+import time
+
+import pytest
+
+import src.api as api_module
+import src.config as config_module
+from src.passwords import DEFAULT_UI_PASSWORD, hash_password
+from src.trigger import pop_batch_download_request, queue_batch_download
+
+
+class _FakeClient:
+    """Minimal request client object used by the tests."""
+
+    def __init__(self, host: str) -> None:
+        self.host = host
+
+
+class _FakeRequest:
+    """Minimal request object for internal helper tests."""
+
+    def __init__(
+        self,
+        *,
+        headers: dict[str, str] | None = None,
+        client_host: str = "127.0.0.1",
+        cookies: dict[str, str] | None = None,
+        query_params: dict[str, str] | None = None,
+    ) -> None:
+        self.headers = headers or {}
+        self.client = _FakeClient(client_host)
+        self.cookies = cookies or {}
+        self.query_params = query_params or {}
+
+
+def test_client_ip_ignores_forwarded_header_by_default(monkeypatch) -> None:
+    """Direct deployments should not trust spoofable forwarded headers."""
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, trust_x_forwarded_for=False),
+    )
+
+    request = _FakeRequest(
+        headers={"X-Forwarded-For": "198.51.100.10"},
+        client_host="203.0.113.7",
+    )
+
+    assert api_module._client_ip(request) == "203.0.113.7"
+
+
+def test_client_ip_uses_forwarded_header_when_enabled(monkeypatch) -> None:
+    """Proxy deployments can opt in to forwarded-header trust explicitly."""
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, trust_x_forwarded_for=True),
+    )
+
+    request = _FakeRequest(
+        headers={"X-Forwarded-For": "198.51.100.10, 203.0.113.7"},
+        client_host="203.0.113.7",
+    )
+
+    assert api_module._client_ip(request) == "198.51.100.10"
+
+
+def test_require_login_accepts_session_from_different_ip() -> None:
+    """Remembered sessions should not depend on the login IP."""
+    session_id = "test-unbound-session"
+    api_module.SESSIONS[session_id] = {
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.2",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    result = api_module._require_login(request)
+
+    assert result is None
+    assert session_id in api_module.SESSIONS
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_root_redirects_remembered_session_to_ui() -> None:
+    """Reopening the app root with a valid session should skip the login form."""
+    session_id = "test-root-remembered-session"
+    api_module.SESSIONS[session_id] = {
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.root(request)
+
+    assert response.headers["location"] == "/ui"
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_login_page_redirects_remembered_session_to_ui() -> None:
+    """Reopening /login with a valid session should not ask for the password again."""
+    session_id = "test-login-remembered-session"
+    api_module.SESSIONS[session_id] = {
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.login_form(request)
+
+    assert response.headers["location"] == "/ui"
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_load_session_state_round_trip_and_filtering(monkeypatch, tmp_path) -> None:
+    """Persisted sessions should round-trip cleanly and skip invalid or expired entries."""
+    from src import api
+
+    monkeypatch.setattr(api, "SESSION_STATE_FILE", tmp_path / ".ui_sessions.json")
+    now = 10_000.0
+    monkeypatch.setattr(api.time, "time", lambda: now)
+
+    api._save_session_state(
+        {
+            "valid-session": {"created_at": now - 60},
+            "expired-session": {"created_at": now - api.SESSION_MAX_AGE_SECONDS - 1},
+            "bad-session": {"created_at": "not-a-number"},
+        }
+    )
+
+    session_state = api._load_session_state()
+
+    assert session_state == {"valid-session": {"created_at": now - 60}}
+
+
+def test_secure_cookie_respects_cf_visitor(monkeypatch) -> None:
+    """Cloudflare's CF-Visitor hint should also mark the session cookie Secure."""
+    from types import SimpleNamespace
+
+    from src import api
+
+    monkeypatch.setattr(api, "CONFIG", SimpleNamespace(trust_x_forwarded_for=True))
+
+    class FakeURL:
+        scheme = "http"
+
+    class FakeRequest:
+        url = FakeURL()
+        headers = {"CF-Visitor": '{"scheme":"https"}'}
+
+    assert api._request_is_secure(FakeRequest())
+
+    response = api.RedirectResponse(url="/ui")
+    api._set_session_cookie(response, FakeRequest(), "session-id")
+    assert "Secure" in response.headers.get("set-cookie", "")
+
+
+def test_password_configuration_accepts_hashed_default_and_rejects_legacy_placeholder() -> (
+    None
+):
+    """The hashed default is usable, but the legacy placeholder remains invalid."""
+    assert api_module._password_is_configured("CHANGE_ME") is False
+    assert api_module._password_is_configured("") is False
+    assert (
+        api_module._password_is_configured(
+            hash_password(DEFAULT_UI_PASSWORD, salt=b"0123456789abcdef")
+        )
+        is True
+    )
+    assert api_module._password_is_configured("real-password") is True
+
+
+def test_login_page_shows_invalid_password_message(monkeypatch, tmp_path) -> None:
+    """Failed login attempts should return the HTML login page with an inline error."""
+    password_file = tmp_path / ".ui_password"
+    password_file.write_text(
+        hash_password("correct-password", salt=b"0123456789abcdef"), encoding="utf-8"
+    )
+    monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
+    api_module.CSRF_TOKENS.clear()
+    api_module.CSRF_TOKENS["csrf-session"] = {
+        "token": "csrf-token",
+        "kind": "login",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(client_host="127.0.0.1")
+    redirect = api_module.login_action(
+        request,
+        password="wrong-password",
+        csrf_token="csrf-token",
+        csrf_session="csrf-session",
+    )
+
+    assert redirect.headers["location"] == "/login?msg=bad_password"
+
+    login_response = api_module.login_form(
+        _FakeRequest(client_host="127.0.0.1", query_params={"msg": "bad_password"})
+    )
+    assert login_response.status_code == 200
+    assert "Invalid password." in login_response.body.decode("utf-8")
+
+
+def test_logs_endpoint_reads_concise_activity_log(monkeypatch, tmp_path) -> None:
+    """The browser log endpoint should show activity.log, not the full download log."""
+    from src import api
+
+    session_id = "test-activity-log-session"
+    log_file = tmp_path / "download.log"
+    activity_file = tmp_path / "activity.log"
+    log_file.write_text("full diagnostic detail\n", encoding="utf-8")
+    activity_file.write_text("concise activity\n", encoding="utf-8")
+    api.SESSIONS[session_id] = {
+        "created_at": time.time(),
+    }
+    monkeypatch.setattr(
+        api,
+        "CONFIG",
+        replace(api.CONFIG, log_file=log_file),
+    )
+
+    request = _FakeRequest(cookies={api.SESSION_COOKIE: session_id})
+
+    response = api.view_logs(request)
+
+    assert response.body.decode("utf-8") == "concise activity"
+    api.SESSIONS.pop(session_id, None)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("channel_count", "not-an-int"),
+        ("min_channel_video_age_hours", "still-not-an-int"),
+        ("delay_seconds", "not-a-float"),
+    ],
+)
+def test_load_config_rejects_invalid_numeric_values(
+    tmp_path,
+    key: str,
+    value: str,
+) -> None:
+    """Bad numeric config values should raise instead of silently falling back."""
+    config_file = tmp_path / "config.ini"
+    config_file.write_text(f"[podcast]\n{key} = {value}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=key):
+        config_module.load_config(config_file, tmp_path)
+
+
+def test_cleanup_expired_login_csrf_tokens_removes_only_stale_login_tokens(
+    monkeypatch,
+) -> None:
+    """Anonymous login CSRF tokens should expire without affecting active session CSRF state."""
+    now = 1_000.0
+    monkeypatch.setattr(api_module.time, "time", lambda: now)
+    api_module.CSRF_TOKENS.clear()
+    api_module.CSRF_TOKENS["stale-login"] = {
+        "token": "a",
+        "kind": "login",
+        "created_at": now - api_module.LOGIN_CSRF_TTL_SECONDS - 1,
+    }
+    api_module.CSRF_TOKENS["fresh-login"] = {
+        "token": "b",
+        "kind": "login",
+        "created_at": now,
+    }
+    api_module.CSRF_TOKENS["session-token"] = {
+        "token": "c",
+        "kind": "session",
+        "created_at": now - api_module.LOGIN_CSRF_TTL_SECONDS - 1,
+    }
+
+    api_module._cleanup_expired_login_csrf_tokens()
+
+    assert "stale-login" not in api_module.CSRF_TOKENS
+    assert "fresh-login" in api_module.CSRF_TOKENS
+    assert "session-token" in api_module.CSRF_TOKENS
+
+
+def test_security_headers_allow_nonced_ui_script() -> None:
+    """The UI CSP must allow its own nonced inline script and same-origin log fetches."""
+    headers = api_module._security_headers(script_nonce="nonce-123")
+    csp = headers["Content-Security-Policy"]
+
+    assert "script-src 'nonce-nonce-123'" in csp
+    assert "connect-src 'self'" in csp
+    assert "default-src 'none'" in csp
+
+
+def test_ui_uses_nonce_based_script_instead_of_inline_handlers() -> None:
+    """The UI page should match its CSP by using a nonced script and no onclick handlers."""
+    session_id = "test-ui-session"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert 'script nonce="' in body
+    assert "onclick=" not in body
+    assert "script-src 'nonce-" in response.headers["Content-Security-Policy"]
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_ui_bypass_label_uses_configured_age_threshold(monkeypatch) -> None:
+    """The checkbox label should explain the immediate download behavior."""
+    session_id = "test-ui-bypass-label"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, min_channel_video_age_hours=12),
+    )
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert "Download this video now" in body
+    assert "skip the 12h age check" in body
+    assert "skip the 24h age check" not in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_ui_hides_bypass_checkbox_when_age_gate_disabled(monkeypatch) -> None:
+    """The bypass control should disappear when there is no age gate to bypass."""
+    session_id = "test-ui-no-bypass"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, min_channel_video_age_hours=0),
+    )
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert "skip_age_check" not in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_add_url_with_bypass_enqueues_single_immediate_video(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Checked direct-video adds should trigger only that one URL immediately."""
+    session_id = "test-add-url-single-immediate"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url="https://youtu.be/abc123",
+        csrf_token="csrf-token",
+        skip_age_check="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert (
+        queue_file.read_text(encoding="utf-8")
+        == "https://www.youtube.com/watch?v=abc123\n"
+    )
+    assert (
+        bypass_file.read_text(encoding="utf-8")
+        == "https://www.youtube.com/watch?v=abc123\n"
+    )
+    assert api_module.pop_single_url_download_requests() == [
+        "https://www.youtube.com/watch?v=abc123"
+    ]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_direct_url_without_bypass_enqueues_single_immediate_video(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Unchecked direct-video adds should still trigger only that new URL."""
+    session_id = "test-add-url-single-immediate-without-bypass"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url="https://youtu.be/abc123",
+        csrf_token="csrf-token",
+        skip_age_check="",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert (
+        queue_file.read_text(encoding="utf-8")
+        == "https://www.youtube.com/watch?v=abc123\n"
+    )
+    assert not bypass_file.exists()
+    assert api_module.pop_single_url_download_requests() == [
+        "https://www.youtube.com/watch?v=abc123"
+    ]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_non_youtube_direct_url_enqueues_single_immediate_video(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Direct non-YouTube URLs should be attempted immediately without an age gate."""
+    session_id = "test-add-non-youtube-single-immediate"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    non_youtube_url = "https://videos.example.com/watch/episode-1"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url=non_youtube_url,
+        csrf_token="csrf-token",
+        skip_age_check="",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert queue_file.read_text(encoding="utf-8") == f"{non_youtube_url}\n"
+    assert not bypass_file.exists()
+    assert api_module.pop_single_url_download_requests() == [non_youtube_url]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_non_youtube_direct_url_with_checkbox_does_not_write_bypass_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """The age-bypass checkbox should only write bypass state for YouTube URLs."""
+    session_id = "test-add-non-youtube-no-bypass-file"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    non_youtube_url = "https://videos.example.com/watch/episode-1"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url=non_youtube_url,
+        csrf_token="csrf-token",
+        skip_age_check="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert queue_file.read_text(encoding="utf-8") == f"{non_youtube_url}\n"
+    assert not bypass_file.exists()
+    assert api_module.pop_single_url_download_requests() == [non_youtube_url]
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_channel_url_does_not_trigger_immediate_batch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Channel/list additions should wait for the normal scheduled full-queue run."""
+    session_id = "test-add-channel-no-immediate-batch"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    channel_url = "https://www.youtube.com/@example"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url=channel_url,
+        csrf_token="csrf-token",
+        skip_age_check="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert queue_file.read_text(encoding="utf-8") == f"{channel_url}\n"
+    assert not bypass_file.exists()
+    assert api_module.pop_single_url_download_requests() == []
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_url_with_bypass_clears_pending_batch_trigger(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """The checked box should mean this URL only, even after a prior batch trigger."""
+    session_id = "test-add-url-single-clears-batch"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+    queue_batch_download()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url="https://youtu.be/def456",
+        csrf_token="csrf-token",
+        skip_age_check="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert api_module.pop_single_url_download_requests() == [
+        "https://www.youtube.com/watch?v=def456"
+    ]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_url_without_bypass_enqueues_single_payload_only(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Unchecked direct-video adds should not wake the full-queue scheduler."""
+    session_id = "test-add-url-single-trigger"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url="https://youtu.be/abc123",
+        csrf_token="csrf-token",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert api_module.pop_single_url_download_requests() == [
+        "https://www.youtube.com/watch?v=abc123"
+    ]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_url_accepts_non_youtube_video_url(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """The web UI should queue direct non-YouTube video URLs for yt-dlp."""
+    session_id = "test-add-non-youtube-url"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url="https://videos.example.com/watch/episode-1",
+        csrf_token="csrf-token",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert (
+        queue_file.read_text(encoding="utf-8")
+        == "https://videos.example.com/watch/episode-1\n"
+    )
+    assert api_module.pop_single_url_download_requests() == [
+        "https://videos.example.com/watch/episode-1"
+    ]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_ui_shows_monitored_urls_with_remove_controls(tmp_path, monkeypatch) -> None:
+    """The UI should show urls.txt entries and expose a remove form for each one."""
+    session_id = "test-ui-monitored-urls"
+    queue_file = tmp_path / "urls.txt"
+    queue_file.write_text(
+        "https://youtu.be/abc123\nhttps://www.youtube.com/@channelname\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, urls_file=queue_file),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert "Monitored URLs" in body
+    assert "https://www.youtube.com/watch?v=abc123" in body
+    assert "https://www.youtube.com/@channelname" in body
+    assert 'action="/remove-url"' in body
+    assert "Remove</button>" in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_logout_invalidates_session() -> None:
+    """POST /logout should remove the session and redirect to login."""
+    session_id = "test-logout-session"
+    api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "logout-csrf",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+    response = api_module.logout(request, csrf_token="logout-csrf")
+
+    assert response.headers["location"] == "/login"
+    assert session_id not in api_module.SESSIONS
+
+
+def test_logout_rejects_invalid_csrf_token() -> None:
+    """POST /logout with a wrong CSRF token must return 403."""
+    session_id = "test-logout-csrf-session"
+    api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "real-csrf",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    import pytest
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        api_module.logout(request, csrf_token="wrong-csrf")
+    assert exc_info.value.status_code == 403
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_ui_logout_is_a_post_form_not_a_link() -> None:
+    """Logout must be a POST form to prevent CSRF logout via GET link."""
+    session_id = "test-ui-logout-form"
+    api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert 'action="/logout"' in body
+    assert 'method="post"' in body.lower() or 'method="POST"' in body
+    assert 'href="/logout"' not in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> None:
+    """Removing a monitored URL should update urls.txt and return a success banner."""
+    session_id = "test-remove-url-session"
+    queue_file = tmp_path / "urls.txt"
+    queue_file.write_text(
+        "https://www.youtube.com/watch?v=abc123\nhttps://www.youtube.com/@channelname\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, urls_file=queue_file),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.remove_url_form(
+        request,
+        url="https://youtu.be/abc123",
+        csrf_token="csrf-token",
+    )
+
+    assert response.headers["location"] == "/ui?msg=removed"
+    assert (
+        queue_file.read_text(encoding="utf-8")
+        == "https://www.youtube.com/@channelname\n"
+    )
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)

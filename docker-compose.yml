@@ -1,0 +1,23 @@
+services:
+  podcast-downloader:
+    build: .
+    container_name: podcast-downloader
+    ports:
+      - "127.0.0.1:50022:8000"
+    restart: unless-stopped
+    environment:
+      - PODCAST_DATA_DIR=/data
+      - PODCAST_DOWNLOAD_DIR=/downloads
+      - PODCAST_INTERMEDIATE_DIR=/temporary
+      - DOWNLOAD_INTERVAL_HOURS=48
+      - YT_DLP_AUTO_UPDATE=true
+    volumes:
+      - $HOME/.containers/podcast-downloader:/data
+      - $HOME/downloads/podcasts/:/downloads
+      - $HOME/downloads/temporary:/temporary
+    networks:
+      - single
+
+networks:
+  single:
+    external: true

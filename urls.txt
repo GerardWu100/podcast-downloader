@@ -1,0 +1,9 @@
+# YouTube Podcast URLs
+# Add one URL per line. Lines starting with # are comments.
+# 
+# Test URL with known SpytonsorBlock segments:
+
+https://www.youtube.com/@TheDiaryOfACEO/
+https://www.youtube.com/playlist?list=PLZgCX3KJ3XGAq-6Ewy4ClI88EIYDxJsaS
+https://m.youtube.com/@t3dotgg/videos
+

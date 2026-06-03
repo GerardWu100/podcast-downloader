@@ -1,0 +1,60 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.coverage
+*.cover
+coverage.xml
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv
+
+# Secrets and auth state
+.ui_password
+.ui_sessions.json
+.login_state.json
+cookies.txt
+*.cookies
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+credentials.json
+client_secret*.json
+secrets.json
+secrets.toml
+*.token
+*.secret
+.netrc
+
+# Runtime artifacts
+download.log
+activity.log
+downloaded_urls.txt
+/downloads/
+
+# OS files
+.DS_Store
+
+# OpenClaw scratch files
+.codex
+.vscode/
+.idea/
