@@ -1,7 +1,7 @@
 [project]
 name = "podcast-downloader"
 version = "0.1.0"
-description = "Download web video audio as MP3 with YouTube SponsorBlock trimming"
+description = "Self-hostable podcast downloader for Audiobookshelf with yt-dlp and SponsorBlock ad trimming"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

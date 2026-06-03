@@ -1,6 +1,6 @@
 # Podcast Downloader
 
-Podcast Downloader turns web videos into MP3 files for local playback and is intended to be used alongside [Audiobookshelf](https://www.audiobookshelf.org/) as the library frontend. It is designed for downloading podcasts without ads, including sponsor ads inserted by podcasters, by using `yt-dlp` and SponsorBlock. It handles YouTube channels, playlists, livestreams, and direct video URLs, removes SponsorBlock segments where available, and keeps the queue manageable from either the CLI or a small web UI.
+Podcast Downloader is a self-hostable podcast downloader for [Audiobookshelf](https://www.audiobookshelf.org/) that turns web videos into MP3 files for local playback. It is designed for downloading podcasts without ads, including sponsor ads inserted by podcasters, by using `yt-dlp` and SponsorBlock. It handles YouTube channels, playlists, livestreams, and direct video URLs, removes SponsorBlock segments where available, and keeps the queue manageable from either the CLI or a small web UI.
 
 ## What It Does
 
