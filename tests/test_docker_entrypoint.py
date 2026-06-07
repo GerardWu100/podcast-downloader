@@ -44,7 +44,7 @@ def test_dockerfile_installs_ytdlp_default_dependency_group() -> None:
 
     dockerfile_text = dockerfile.read_text(encoding="utf-8")
 
-    assert 'yt-dlp[default]' in dockerfile_text
+    assert "yt-dlp[default]" in dockerfile_text
 
 
 def _run_entrypoint(
