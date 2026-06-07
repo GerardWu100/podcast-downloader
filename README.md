@@ -80,6 +80,24 @@ Open [http://127.0.0.1:8000/login](http://127.0.0.1:8000/login) after starting t
 
 The UI lets you add URLs, remove monitored entries from `urls.txt`, upload a replacement YouTube `cookies.txt`, and view recent activity or the full `download.log` tail. Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
 
+## Getting YouTube Cookies
+
+When YouTube asks yt-dlp to sign in or confirm you are not a bot, export fresh browser cookies and upload that file through the web UI. Follow the official yt-dlp FAQ: [How do I pass cookies to yt-dlp?](https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp).
+
+Recommended export command on the machine where your browser profile is available:
+
+```bash
+yt-dlp --cookies-from-browser chrome --cookies cookies.txt
+```
+
+Replace `chrome` with your browser name if needed. The resulting file can have any local filename before upload, but its contents must be Mozilla/Netscape cookie text. For this app's browser upload, the first line should be:
+
+```text
+# Netscape HTTP Cookie File
+```
+
+Keep the exported file private. yt-dlp warns that this export can contain cookies for all sites in that browser profile, not only YouTube.
+
 ## Key Configuration
 
 All runtime settings live in `config.ini`.
