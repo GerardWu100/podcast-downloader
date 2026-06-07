@@ -462,6 +462,7 @@ def test_ui_includes_authenticated_cookie_upload_form() -> None:
     assert 'enctype="multipart/form-data"' in body
     assert 'name="cookie_file"' in body
     assert 'name="csrf_token"' in body
+    assert body.index("Logs") < body.index("YouTube cookies")
 
     api_module.SESSIONS.pop(session_id, None)
 

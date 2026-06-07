@@ -864,18 +864,6 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     </div>
 
     <div class="card">
-      <span class="card-label">YouTube cookies</span>
-      <form method="post" action="/upload-cookies" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{safe_token}" />
-        <div class="file-row">
-          <input id="cookie-file" name="cookie_file" type="file"
-            accept=".txt,text/plain" required />
-          <button type="submit" class="btn">Upload</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="card">
       <div class="card-row">
         <span class="card-label" style="margin:0">Monitored URLs (<code>urls.txt</code>)</span>
         <span class="badge">{count}</span>
@@ -899,6 +887,18 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         </div>
       </div>
       <div id="log-box">Loading...</div>
+    </div>
+
+    <div class="card">
+      <span class="card-label">YouTube cookies</span>
+      <form method="post" action="/upload-cookies" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <div class="file-row">
+          <input id="cookie-file" name="cookie_file" type="file"
+            accept=".txt,text/plain" required />
+          <button type="submit" class="btn">Upload</button>
+        </div>
+      </form>
     </div>
   </div>
 
