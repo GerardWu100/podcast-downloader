@@ -10,7 +10,11 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from src.activity_log import activity_log_file_for, read_activity_log_tail
+from src.activity_log import (
+    activity_log_file_for,
+    read_activity_log_tail,
+    read_download_log_tail,
+)
 import src.state.activity_store as activity_store_module
 from src.state.activity_store import ActivityLogStore
 
@@ -44,6 +48,28 @@ def test_read_activity_log_tail_handles_missing_file(tmp_path: Path) -> None:
     tail = read_activity_log_tail(activity_log_file, line_count=100)
 
     assert tail == "No activity yet."
+
+
+def test_read_download_log_tail_returns_last_lines(tmp_path: Path) -> None:
+    """The full diagnostic log tail should return the newest lines."""
+    download_log_file = tmp_path / "download.log"
+    download_log_file.write_text(
+        "line one\nline two\nline three\n",
+        encoding="utf-8",
+    )
+
+    tail = read_download_log_tail(download_log_file, line_count=2)
+
+    assert tail == "line two\nline three"
+
+
+def test_read_download_log_tail_handles_missing_file(tmp_path: Path) -> None:
+    """A missing download log should show a download-specific empty state."""
+    download_log_file = tmp_path / "download.log"
+
+    tail = read_download_log_tail(download_log_file, line_count=100)
+
+    assert tail == "No log entries yet."
 
 
 def test_activity_log_store_writes_and_reads_tail(tmp_path: Path) -> None:

@@ -107,7 +107,7 @@ Trusting forwarded headers only makes sense behind a reverse proxy you control. 
 
 ### Why the UI now uses a concise activity feed
 
-The full `download.log` keeps diagnostic detail for debugging. The browser UI reads `activity.log` instead, which contains concise user-facing events such as skipped Shorts, age-gate waits, completed downloads, failures, and run summaries. The activity log lives beside `download.log` and is derived from that path rather than being a separate config setting.
+The full `download.log` keeps diagnostic detail for debugging. The browser UI defaults to `activity.log`, which contains concise user-facing events such as skipped Shorts, age-gate waits, completed downloads, failures, and run summaries. Operators can switch the log viewer to `download.log` when they need the full runtime tail. The activity log lives beside `download.log` and is derived from that path rather than being a separate config setting.
 
 ### Why the UI now uses a CSP nonce
 
@@ -200,7 +200,7 @@ src/
 ### `activity_log.py`
 
 - Responsibility: derive `activity.log` beside `download.log` and keep compatibility wrappers for concise activity writes and reads.
-- Key objects: `activity_log_file_for()`, `write_activity_event()`, `read_activity_log_tail()`.
+- Key objects: `activity_log_file_for()`, `write_activity_event()`, `read_activity_log_tail()`, `read_download_log_tail()`.
 - Project relation: shared by the downloader and API; persistence is owned by `state/activity_store.py`.
 
 ### `downloader.py`

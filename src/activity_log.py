@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .state.activity_store import (
     DEFAULT_ACTIVITY_LINE_COUNT,
+    NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
 )
 
@@ -63,3 +64,28 @@ def read_activity_log_tail(
         there is no activity file yet.
     """
     return ActivityLogStore(activity_log_file).read_tail(line_count)
+
+
+def read_download_log_tail(
+    download_log_file: Path,
+    line_count: int = DEFAULT_ACTIVITY_LINE_COUNT,
+) -> str:
+    """Return the most recent full diagnostic log entries for the browser.
+
+    Parameters
+    ----------
+    download_log_file:
+        Full runtime log file, usually ``download.log``.
+    line_count:
+        Maximum number of lines to return.
+
+    Returns
+    -------
+    str
+        Tail text for display in the UI, or a short empty-state message when
+        there is no log file yet.
+    """
+    return ActivityLogStore(download_log_file).read_tail(
+        line_count,
+        empty_message=NO_DOWNLOAD_LOG_MESSAGE,
+    )

@@ -75,7 +75,7 @@ uv run python test_sponsorblock.py
 
 Open [http://127.0.0.1:8000/login](http://127.0.0.1:8000/login) after starting the API with `uv run uvicorn src.api:app --host 127.0.0.1 --port 8000`.
 
-The UI lets you add URLs, remove monitored entries from `urls.txt`, and view recent download activity. Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
+The UI lets you add URLs, remove monitored entries from `urls.txt`, and view recent activity or the full `download.log` tail. Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
 
 ## Key Configuration
 

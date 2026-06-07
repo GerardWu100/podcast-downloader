@@ -12,6 +12,7 @@ from .file_locks import locked_text_file
 
 DEFAULT_ACTIVITY_LINE_COUNT = 100
 NO_ACTIVITY_MESSAGE = "No activity yet."
+NO_DOWNLOAD_LOG_MESSAGE = "No log entries yet."
 ACTIVITY_LOG_TIME_ZONE = ZoneInfo("America/Toronto")
 
 
@@ -32,10 +33,15 @@ class ActivityLogStore:
         ) as file_handle:
             file_handle.write(f"[{timestamp}] {message.strip()}\n")
 
-    def read_tail(self, line_count: int = DEFAULT_ACTIVITY_LINE_COUNT) -> str:
-        """Return the most recent concise activity entries."""
+    def read_tail(
+        self,
+        line_count: int = DEFAULT_ACTIVITY_LINE_COUNT,
+        *,
+        empty_message: str = NO_ACTIVITY_MESSAGE,
+    ) -> str:
+        """Return the most recent log lines for browser display."""
         if not self.activity_log_file.exists():
-            return NO_ACTIVITY_MESSAGE
+            return empty_message
 
         with locked_text_file(
             self.activity_log_file,
@@ -44,6 +50,6 @@ class ActivityLogStore:
         ) as file_handle:
             lines = file_handle.read().splitlines()
         if not lines:
-            return NO_ACTIVITY_MESSAGE
+            return empty_message
 
         return "\n".join(lines[-line_count:])

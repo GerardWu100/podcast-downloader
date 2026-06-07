@@ -15,7 +15,11 @@ from pathlib import Path
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from .activity_log import activity_log_file_for, read_activity_log_tail
+from .activity_log import (
+    activity_log_file_for,
+    read_activity_log_tail,
+    read_download_log_tail,
+)
 from .config import ConfigError, load_config
 from .passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
 from .trigger import pop_single_url_download_requests, queue_single_url_download
@@ -741,6 +745,10 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     .log-bar {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }}
     .log-controls {{ display:flex; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); }}
     .log-controls label {{ display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; }}
+    .log-source {{
+      font-size:.75rem; color:var(--text); background:var(--surface);
+      border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer;
+    }}
     .btn-ghost {{
       padding:4px 11px; font-size:.75rem; font-weight:600; background:transparent;
       color:var(--accent); border:1px solid var(--accent-border); border-radius:6px;
@@ -802,7 +810,13 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 
     <div class="card">
       <div class="log-bar">
-        <span class="card-label" style="margin:0">Activity</span>
+        <div class="log-controls">
+          <span class="card-label" style="margin:0">Logs</span>
+          <select id="log-source" class="log-source" aria-label="Log source">
+            <option value="activity" selected>Activity</option>
+            <option value="download">Download log</option>
+          </select>
+        </div>
         <div class="log-controls">
           <span id="log-ts"></span>
           <label><input type="checkbox" id="auto-cb" checked> Auto</label>
@@ -842,14 +856,17 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         if (line.indexOf('Failed') !== -1 || line.indexOf('Error') !== -1 || line.indexOf('Timed out') !== -1) return '<span class="log-err">' + e + '</span>';
         if (line.indexOf('Waiting') !== -1 || line.indexOf('Skipped') !== -1) return '<span class="log-warn">' + e + '</span>';
         if (line.indexOf('Downloaded') !== -1 || line.indexOf('finished') !== -1) return '<span class="log-ok">' + e + '</span>';
-        if (line.indexOf('No activity') !== -1) return '<span class="log-dim">' + e + '</span>';
+        if (line.indexOf('No activity') !== -1 || line.indexOf('No log entries') !== -1) return '<span class="log-dim">' + e + '</span>';
         return e;
       }}).join('\\n');
     }}
 
+    const logSourceSelect = document.getElementById('log-source');
+
     async function loadLogs() {{
       try {{
-        const r = await fetch('/logs');
+        const source = logSourceSelect.value;
+        const r = await fetch('/logs?source=' + encodeURIComponent(source));
         if (!r.ok) return;
         const text = await r.text();
         const box = document.getElementById('log-box');
@@ -867,6 +884,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 
     document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));
     document.getElementById('refresh-logs').addEventListener('click', loadLogs);
+    logSourceSelect.addEventListener('change', loadLogs);
     loadLogs();
     setAuto(true);
   </script>
@@ -877,22 +895,35 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     )
 
 
+_LOG_SOURCES = frozenset({"activity", "download"})
+
+
 @app.get("/logs")
-def view_logs(request: Request) -> Response:
-    """Return the concise browser activity feed as plain text."""
+def view_logs(request: Request, source: str = "activity") -> Response:
+    """Return a tail of ``activity.log`` or ``download.log`` as plain text."""
     redirect = _require_login(request)
     if redirect:
         return redirect
 
+    log_source = source if source in _LOG_SOURCES else "activity"
+    error_message = (
+        "Could not read download log."
+        if log_source == "download"
+        else "Could not read activity log."
+    )
+
     try:
-        activity_log_file = activity_log_file_for(CONFIG.log_file)
-        tail = read_activity_log_tail(activity_log_file)
+        if log_source == "download":
+            tail = read_download_log_tail(CONFIG.log_file)
+        else:
+            activity_log_file = activity_log_file_for(CONFIG.log_file)
+            tail = read_activity_log_tail(activity_log_file)
         return Response(
             content=tail, media_type="text/plain", headers=_security_headers()
         )
     except Exception:
         return Response(
-            content="Could not read activity log.",
+            content=error_message,
             media_type="text/plain",
             headers=_security_headers(),
         )

@@ -237,6 +237,60 @@ def test_logs_endpoint_reads_concise_activity_log(monkeypatch, tmp_path) -> None
     api.SESSIONS.pop(session_id, None)
 
 
+def test_logs_endpoint_can_read_full_download_log(monkeypatch, tmp_path) -> None:
+    """The browser log endpoint should optionally tail the full download log."""
+    from src import api
+
+    session_id = "test-download-log-session"
+    log_file = tmp_path / "download.log"
+    activity_file = tmp_path / "activity.log"
+    log_file.write_text("full diagnostic detail\n", encoding="utf-8")
+    activity_file.write_text("concise activity\n", encoding="utf-8")
+    api.SESSIONS[session_id] = {
+        "created_at": time.time(),
+    }
+    monkeypatch.setattr(
+        api,
+        "CONFIG",
+        replace(api.CONFIG, log_file=log_file),
+    )
+
+    request = _FakeRequest(cookies={api.SESSION_COOKIE: session_id})
+
+    response = api.view_logs(request, source="download")
+
+    assert response.body.decode("utf-8") == "full diagnostic detail"
+    api.SESSIONS.pop(session_id, None)
+
+
+def test_logs_endpoint_falls_back_to_activity_for_unknown_source(
+    monkeypatch, tmp_path
+) -> None:
+    """Unknown log source values should keep serving the activity feed."""
+    from src import api
+
+    session_id = "test-unknown-log-source-session"
+    log_file = tmp_path / "download.log"
+    activity_file = tmp_path / "activity.log"
+    log_file.write_text("full diagnostic detail\n", encoding="utf-8")
+    activity_file.write_text("concise activity\n", encoding="utf-8")
+    api.SESSIONS[session_id] = {
+        "created_at": time.time(),
+    }
+    monkeypatch.setattr(
+        api,
+        "CONFIG",
+        replace(api.CONFIG, log_file=log_file),
+    )
+
+    request = _FakeRequest(cookies={api.SESSION_COOKIE: session_id})
+
+    response = api.view_logs(request, source="unexpected")
+
+    assert response.body.decode("utf-8") == "concise activity"
+    api.SESSIONS.pop(session_id, None)
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
