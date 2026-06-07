@@ -20,7 +20,7 @@ The configured download directory contains only finished MP3 library files. `yt-
 
 Success detection is based on recursive MP3 state in the intermediate tree. The service snapshots every `*.mp3` file under `intermediate_dir` before and after `yt-dlp` runs. A download succeeds only when at least one MP3 is created or changed, then the metadata writer stores the local download completion time in the embedded MP3 `date` tag and the source URL in the embedded MP3 `comment` tag. YouTube source URLs are already normalized at this point, so live URLs and watch URLs for the same video share the same canonical watch URL in metadata.
 
-Configured YouTube cookies are treated as a retry fallback, not the default path. A direct YouTube download first runs without cookies. If that plain attempt fails or produces no changed or recoverable MP3, the service retries once with the configured Netscape-format cookie file. Non-YouTube downloads do not use this fallback.
+Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When false (default), every YouTube `yt-dlp` call tries without cookies first and retries once with the configured Netscape-format cookie file on failure. When true, YouTube downloads, expansion, and metadata calls pass cookies on the first attempt. Non-YouTube downloads never use cookies.
 
 Retention cleanup uses that same embedded download date, but only for current YouTube channel output folders. Playlist and single-video files are not eligible. A channel file older than `retention_days` is deleted only when the source URL comment tag is present too, because cleanup must remove the same concrete URL from `downloaded_urls.txt`. Files with missing or unreadable date or source URL metadata are logged and kept.
 
@@ -42,6 +42,7 @@ Start in `service.py` when changing downloader behavior. Start in `audio_metadat
 - 2026-05-16: Channel source URLs now support upload-only `/videos` and livestream-only `/streams` modes, with bare channel URLs defaulting to `/videos`.
 - 2026-05-15: MP3 output routing moved from one flat folder to direct source folders, and retention cleanup began deleting only old YouTube channel files while removing their URLs from the archive.
 - 2026-05-15: YouTube cookie files are now a direct-download fallback retry instead of being used on the first `yt-dlp` attempt.
+- 2026-06-07: Added `always_use_cookies` so YouTube cookie usage can stay fallback-only or switch to always-on across downloads, expansion, and metadata.
 - 2026-05-31: `AudioMetadataWriter` now decodes ffmpeg stderr with `errors="replace"` so metadata stamping survives MP3s whose existing ID3 tags contain non-UTF-8 bytes.
 - 2026-05-31: Opaque YouTube channel IDs in source URLs now resolve to readable folder names, yt-dlp filenames prefer `%(channel,uploader)s`, and the metadata pass writes resolved channel names into MP3 artist/album tags.
 - 2026-06-02: Playlist sources now fetch only `channel_count` entries and prefer readable playlist titles for output folder names.

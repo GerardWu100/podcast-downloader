@@ -68,7 +68,7 @@ After each download cycle, retention cleanup scans MP3 files recursively under t
 
 If `yt-dlp` reports that an expanded item is already downloaded or if it completes without changing an MP3, the download service now checks the output folder for the expected file and stamps it if the file already exists. That makes partial success recoverable instead of forcing a future run to get stuck on a stale metadata state.
 
-Configured YouTube cookies are a fallback, not the first attempt. Direct YouTube downloads run once without cookies; if that attempt fails or produces no changed or recoverable MP3, the service retries once with `yt-dlp --cookies` and the configured Netscape-format cookie file. In Docker, the simplest path is putting `cookies.txt` in the mounted data directory. The file is ignored by git because it contains browser authentication state.
+Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When false (default), YouTube `yt-dlp` calls try without cookies first and retry once with the configured Netscape-format cookie file on failure. When true, YouTube downloads, expansion, and metadata pass cookies on the first attempt. In Docker, the simplest path is putting `cookies.txt` in the mounted data directory. The file is ignored by git because it contains browser authentication state.
 
 ### Security posture of the web UI
 
@@ -178,6 +178,7 @@ podcast-downloader/
 
 - 2026-05-16: YouTube channel expansion now uses `/videos` for bare channels and preserves explicit `/streams` URLs for livestream-only monitoring.
 - 2026-05-15: Direct YouTube downloads now try without cookies first and retry once with a configured cookie file only after the plain attempt fails.
+- 2026-06-07: Added `always_use_cookies` so YouTube cookie usage can stay fallback-only or switch to always-on across downloads, expansion, and metadata.
 - 2026-04-30: Corrected direct-video completion behavior so one-off URLs are removed from the queue without being written to the expanded-item archive.
 - 2026-04-30: Downloaded MP3 files now expose local completion time through embedded date metadata so Audiobookshelf shows the download date.
 - 2026-04-30: Direct-video UI additions now trigger only a single-URL immediate run; channel and playlist additions remain queued for the scheduled full-queue cycle.

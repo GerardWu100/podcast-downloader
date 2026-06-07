@@ -120,57 +120,122 @@ def looks_like_youtube_channel_id(name: str) -> bool:
     return bool(YOUTUBE_CHANNEL_ID_PATTERN.match(name.strip()))
 
 
+def _youtube_cookies_for_first_attempt(
+    url: str,
+    cookies_file: Path | None,
+    always_use_cookies: bool,
+) -> Path | None:
+    """Return the cookie file to pass on the first ``yt-dlp`` attempt for one URL.
+
+    Cookies are YouTube-only. When ``always_use_cookies`` is false, the first
+    attempt runs without cookies so browser credentials are spent only on retry.
+    """
+    if cookies_file is None:
+        return None
+    if not is_youtube_url(url):
+        return None
+    if always_use_cookies:
+        return cookies_file
+    return None
+
+
+def _should_retry_youtube_with_cookies(
+    url: str,
+    cookies_file: Path | None,
+    always_use_cookies: bool,
+    *,
+    succeeded: bool,
+) -> bool:
+    """Return whether a failed plain YouTube attempt should retry with cookies."""
+    if always_use_cookies:
+        return False
+    if succeeded:
+        return False
+    if not is_youtube_url(url):
+        return False
+    if cookies_file is None:
+        return False
+    return True
+
+
 def _fetch_ytdlp_print_line(
     url: str,
     print_template: str,
     logger: logging.Logger,
     cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
 ) -> str | None:
     """Return the first ``yt-dlp --print`` line for one URL without downloading."""
-    command = [
-        "yt-dlp",
-        "--flat-playlist",
-        "--playlist-end",
-        "1",
-        "--print",
-        print_template,
-        "--sleep-requests",
-        "0.5",
-    ]
-    if cookies_file:
-        command.extend(["--cookies", str(cookies_file)])
-    command.extend(["--", url])
 
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=YTDLP_METADATA_TIMEOUT_SECONDS,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip().splitlines()[0]
+    def run_once(cookies_for_attempt: Path | None) -> str | None:
+        command = [
+            "yt-dlp",
+            "--flat-playlist",
+            "--playlist-end",
+            "1",
+            "--print",
+            print_template,
+            "--sleep-requests",
+            "0.5",
+        ]
+        if cookies_for_attempt:
+            command.extend(["--cookies", str(cookies_for_attempt)])
+        command.extend(["--", url])
 
-        logger.warning(
-            "yt-dlp metadata print failed for %s: %s",
-            url,
-            result.stderr.strip(),
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=YTDLP_METADATA_TIMEOUT_SECONDS,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip().splitlines()[0]
+
+            logger.warning(
+                "yt-dlp metadata print failed for %s: %s",
+                url,
+                result.stderr.strip(),
+            )
+            return None
+        except subprocess.TimeoutExpired:
+            logger.warning("yt-dlp metadata print timed out for %s", url)
+            return None
+        except Exception as exc:
+            logger.warning("yt-dlp metadata print error for %s: %s", url, exc)
+            return None
+
+    first_attempt_cookies = _youtube_cookies_for_first_attempt(
+        url,
+        cookies_file,
+        always_use_cookies,
+    )
+    metadata_line = run_once(first_attempt_cookies)
+    if metadata_line is not None:
+        return metadata_line
+
+    if _should_retry_youtube_with_cookies(
+        url,
+        cookies_file,
+        always_use_cookies,
+        succeeded=False,
+    ):
+        logger.info(
+            "Plain YouTube metadata request failed; retrying with cookies file: %s",
+            cookies_file,
         )
-        return None
-    except subprocess.TimeoutExpired:
-        logger.warning("yt-dlp metadata print timed out for %s", url)
-        return None
-    except Exception as exc:
-        logger.warning("yt-dlp metadata print error for %s: %s", url, exc)
-        return None
+        return run_once(cookies_file)
+
+    return None
 
 
 def get_youtube_channel_display_name(
     url: str,
     logger: logging.Logger,
     cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
 ) -> str | None:
     """Return a human-readable YouTube channel name for one video or channel URL."""
     metadata_line = _fetch_ytdlp_print_line(
@@ -178,6 +243,7 @@ def get_youtube_channel_display_name(
         "%(channel)s\t%(uploader)s",
         logger,
         cookies_file,
+        always_use_cookies,
     )
     if metadata_line is None:
         return None
@@ -201,6 +267,7 @@ def get_youtube_channel_folder_name(
     url: str,
     logger: logging.Logger,
     cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
 ) -> str | None:
     """Return a stable channel folder name, preferring ``@`` handles when present."""
     metadata_line = _fetch_ytdlp_print_line(
@@ -208,6 +275,7 @@ def get_youtube_channel_folder_name(
         "%(channel)s\t%(uploader_id)s",
         logger,
         cookies_file,
+        always_use_cookies,
     )
     if metadata_line is None:
         return None
@@ -231,6 +299,7 @@ def get_youtube_playlist_folder_name(
     url: str,
     logger: logging.Logger,
     cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
 ) -> str | None:
     """Return a readable YouTube playlist title for folder naming.
 
@@ -243,6 +312,7 @@ def get_youtube_playlist_folder_name(
         "%(playlist_title)s",
         logger,
         cookies_file,
+        always_use_cookies,
     )
     if metadata_line is None:
         return None
@@ -527,50 +597,95 @@ def _filter_channel_entries(
     return video_urls
 
 
+def _expand_channel_or_playlist_once(
+    url_clean: str,
+    channel_count: int,
+    min_channel_video_age_hours: int,
+    logger: logging.Logger,
+    cookies_for_attempt: Path | None,
+) -> list[str] | None:
+    """Run one channel/playlist expansion attempt and return video URLs on success."""
+    command = _build_expansion_command(url_clean, channel_count, cookies_for_attempt)
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    if result.returncode != 0:
+        logger.error(f"Failed to expand URL: {result.stderr}")
+        return None
+
+    all_entries = [line.strip() for line in result.stdout.split("\n") if line.strip()]
+    logger.info("Fetched %s entries from channel/playlist", len(all_entries))
+
+    if _is_channel_url(url_clean):
+        return _filter_channel_entries(
+            all_entries,
+            channel_count,
+            min_channel_video_age_hours,
+            logger,
+        )
+
+    # Playlists preserve the flat playlist order and skip only metadata columns
+    # that were printed to support channel age filtering. Slice defensively in
+    # case an extractor ignores ``--playlist-end``.
+    capped_entries = all_entries[:channel_count]
+    video_urls = [_split_expanded_entry(entry)[0] for entry in capped_entries]
+    logger.info("Found %s videos", len(video_urls))
+    return video_urls
+
+
 def expand_channel_or_playlist(
     url: str,
     channel_count: int,
     min_channel_video_age_hours: int,
     logger: logging.Logger,
     cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
 ) -> list[str]:
     """Expand a channel or playlist into individual video URLs."""
     url_clean = url.rstrip("/")
     logger.info(f"Expanding: {url_clean}")
 
     try:
-        command = _build_expansion_command(url_clean, channel_count, cookies_file)
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
+        first_attempt_cookies = _youtube_cookies_for_first_attempt(
+            url_clean,
+            cookies_file,
+            always_use_cookies,
         )
-
-        if result.returncode == 0:
-            all_entries = [
-                line.strip() for line in result.stdout.split("\n") if line.strip()
-            ]
-            logger.info("Fetched %s entries from channel/playlist", len(all_entries))
-
-            if _is_channel_url(url_clean):
-                return _filter_channel_entries(
-                    all_entries,
-                    channel_count,
-                    min_channel_video_age_hours,
-                    logger,
-                )
-
-            # Playlists preserve the flat playlist order and skip only metadata
-            # columns that were printed to support channel age filtering. Slice
-            # defensively in case an extractor ignores ``--playlist-end``.
-            capped_entries = all_entries[:channel_count]
-            video_urls = [_split_expanded_entry(entry)[0] for entry in capped_entries]
-            logger.info("Found %s videos", len(video_urls))
+        video_urls = _expand_channel_or_playlist_once(
+            url_clean,
+            channel_count,
+            min_channel_video_age_hours,
+            logger,
+            first_attempt_cookies,
+        )
+        if video_urls is not None:
             return video_urls
 
-        logger.error(f"Failed to expand URL: {result.stderr}")
+        if _should_retry_youtube_with_cookies(
+            url_clean,
+            cookies_file,
+            always_use_cookies,
+            succeeded=False,
+        ):
+            logger.info(
+                "Plain YouTube expansion failed; retrying with cookies file: %s",
+                cookies_file,
+            )
+            retry_video_urls = _expand_channel_or_playlist_once(
+                url_clean,
+                channel_count,
+                min_channel_video_age_hours,
+                logger,
+                cookies_file,
+            )
+            if retry_video_urls is not None:
+                return retry_video_urls
+
         return []
 
     except subprocess.TimeoutExpired:
@@ -581,16 +696,12 @@ def expand_channel_or_playlist(
         return []
 
 
-def get_video_metadata(
+def _get_video_metadata_once(
     url: str,
     logger: logging.Logger,
-    cookies_file: Path | None = None,
+    cookies_for_attempt: Path | None,
 ) -> tuple[str, str] | None:
-    """Fetch ``(timestamp_raw, upload_date)`` for one video via ``yt-dlp``.
-
-    Uses --flat-playlist to avoid a full download; same approach as expand_channel_or_playlist.
-    Returns None if the call fails or times out, so callers can treat unknown age as "allow".
-    """
+    """Run one metadata fetch attempt for a single video URL."""
     cmd = [
         "yt-dlp",
         "--flat-playlist",
@@ -599,24 +710,60 @@ def get_video_metadata(
         "--sleep-requests",
         "0.5",
     ]
-    if cookies_file:
-        cmd.extend(["--cookies", str(cookies_file)])
+    if cookies_for_attempt:
+        cmd.extend(["--cookies", str(cookies_for_attempt)])
     cmd.extend(["--", url])
 
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=YTDLP_METADATA_TIMEOUT_SECONDS,
+        check=False,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        first_line = result.stdout.strip().splitlines()[0]
+        parts = first_line.split("\t")
+        return (parts[0] if parts else "", parts[1] if len(parts) > 1 else "")
+
+    logger.warning("get_video_metadata failed for %s: %s", url, result.stderr)
+    return None
+
+
+def get_video_metadata(
+    url: str,
+    logger: logging.Logger,
+    cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
+) -> tuple[str, str] | None:
+    """Fetch ``(timestamp_raw, upload_date)`` for one video via ``yt-dlp``.
+
+    Uses --flat-playlist to avoid a full download; same approach as expand_channel_or_playlist.
+    Returns None if the call fails or times out, so callers can treat unknown age as "allow".
+    """
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=YTDLP_METADATA_TIMEOUT_SECONDS,
-            check=False,
+        first_attempt_cookies = _youtube_cookies_for_first_attempt(
+            url,
+            cookies_file,
+            always_use_cookies,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            first_line = result.stdout.strip().splitlines()[0]
-            parts = first_line.split("\t")
-            return (parts[0] if parts else "", parts[1] if len(parts) > 1 else "")
-        logger.warning("get_video_metadata failed for %s: %s", url, result.stderr)
+        metadata = _get_video_metadata_once(url, logger, first_attempt_cookies)
+        if metadata is not None:
+            return metadata
+
+        if _should_retry_youtube_with_cookies(
+            url,
+            cookies_file,
+            always_use_cookies,
+            succeeded=False,
+        ):
+            logger.info(
+                "Plain YouTube metadata request failed; retrying with cookies file: %s",
+                cookies_file,
+            )
+            return _get_video_metadata_once(url, logger, cookies_file)
+
         return None
     except subprocess.TimeoutExpired:
         logger.warning("get_video_metadata timed out for %s", url)

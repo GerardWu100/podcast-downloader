@@ -48,11 +48,13 @@ The container bootstrap path does the following on first boot:
 
 If you already have a plain-text password in `.ui_password`, the Docker entrypoint will rewrite it as a hash automatically on the next container start.
 
-## YouTube cookie fallback
+## YouTube cookies
 
 For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt` in the active data directory. In Docker, that means the mounted `PODCAST_DATA_DIR` path, which is `/data` in the default Compose file.
 
-You can also set `cookies_file` in `config.ini` to another mounted path. Direct YouTube downloads try without cookies first, then retry once with `--cookies <file>` only when the plain attempt fails or produces no usable MP3. Keep the cookie file private because it contains browser authentication state.
+You can also set `cookies_file` in `config.ini` to another mounted path.
+
+Set `always_use_cookies = true` in `config.ini` when you want every YouTube `yt-dlp` call to pass `--cookies <file>` on the first attempt. Leave it `false` (the default) to try without cookies first and retry once only when the plain attempt fails or produces no usable result. Keep the cookie file private because it contains browser authentication state.
 
 ## Scheduler behavior
 

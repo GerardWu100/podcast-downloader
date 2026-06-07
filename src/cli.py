@@ -177,6 +177,7 @@ def main() -> int:
         delay_seconds=config.delay_seconds,
         retention_days=config.retention_days,
         cookies_file=config.cookies_file,
+        always_use_cookies=config.always_use_cookies,
         bypass_age_check_file=config.bypass_age_check_file,
     )
 

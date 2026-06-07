@@ -129,3 +129,23 @@ def test_load_config_defaults_retention_to_thirty_days(tmp_path: Path) -> None:
     config = load_config(config_file, tmp_path)
 
     assert config.retention_days == 30
+
+
+def test_load_config_defaults_always_use_cookies_to_false(tmp_path: Path) -> None:
+    """YouTube cookies should stay in fallback mode unless explicitly enabled."""
+    config_file = tmp_path / "config.ini"
+    write_config(config_file, "channel_count = 1")
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.always_use_cookies is False
+
+
+def test_load_config_reads_always_use_cookies(tmp_path: Path) -> None:
+    """The cookie strategy toggle should accept standard yes/no config values."""
+    config_file = tmp_path / "config.ini"
+    write_config(config_file, "channel_count = 1\nalways_use_cookies = yes")
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.always_use_cookies is True

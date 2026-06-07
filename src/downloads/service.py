@@ -86,6 +86,7 @@ class PodcastDownloadService:
         delay_seconds: float = 2.0,
         retention_days: int = 30,
         cookies_file: Path | None = None,
+        always_use_cookies: bool = False,
         bypass_age_check_file: Path | None = None,
     ) -> None:
         """Create a downloader service for one queue/archive location.
@@ -117,6 +118,9 @@ class PodcastDownloadService:
             download-date metadata written after a successful download.
         cookies_file:
             Optional cookies file passed to ``yt-dlp``.
+        always_use_cookies:
+            When true, pass ``cookies_file`` on the first YouTube ``yt-dlp`` call.
+            When false, try without cookies first and retry once with the file.
         bypass_age_check_file:
             One-shot file of direct YouTube videos allowed to skip the age gate.
         """
@@ -133,6 +137,7 @@ class PodcastDownloadService:
         self.delay_seconds = max(0.0, delay_seconds)
         self.retention_days = max(1, retention_days)
         self.cookies_file = cookies_file
+        self.always_use_cookies = always_use_cookies
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
         )
@@ -144,7 +149,12 @@ class PodcastDownloadService:
         self._downloaded_urls = self._load_downloaded_urls()
 
         if self.cookies_file:
-            self.logger.info("Using cookies file: %s", self.cookies_file)
+            cookie_mode = "always" if self.always_use_cookies else "fallback"
+            self.logger.info(
+                "Using cookies file (%s mode): %s",
+                cookie_mode,
+                self.cookies_file,
+            )
 
     def _snapshot_downloaded_audio(self) -> AudioSnapshot:
         """Capture MP3 state in the work directory so changes can be detected."""
@@ -183,6 +193,7 @@ class PodcastDownloadService:
                 source_url,
                 self.logger,
                 self.cookies_file,
+                self.always_use_cookies,
             )
             if playlist_name:
                 return self._sanitize_download_folder_name(playlist_name)
@@ -204,6 +215,7 @@ class PodcastDownloadService:
                 source_url,
                 self.logger,
                 self.cookies_file,
+                self.always_use_cookies,
             )
             if resolved_name:
                 folder_name = self._sanitize_download_folder_name(resolved_name)
@@ -430,6 +442,7 @@ class PodcastDownloadService:
                 source_url_metadata,
                 self.logger,
                 self.cookies_file,
+                self.always_use_cookies,
             )
         for audio_file in audio_files:
             self._write_audio_download_date_metadata(
@@ -750,11 +763,14 @@ class PodcastDownloadService:
     ) -> bool:
         """Return whether a failed plain YouTube attempt should try cookies.
 
-        ``yt-dlp`` cookies are sensitive browser credentials. The normal path
-        therefore avoids them. A retry is useful only when the URL is YouTube,
-        a cookie file is configured, and the first attempt either returned a
-        non-zero exit code or produced no changed/recoverable MP3 file.
+        ``yt-dlp`` cookies are sensitive browser credentials. When
+        ``always_use_cookies`` is enabled, the first attempt already spent them.
+        Otherwise a retry is useful only when the URL is YouTube, a cookie file
+        is configured, and the first attempt either returned a non-zero exit code
+        or produced no changed/recoverable MP3 file.
         """
+        if self.always_use_cookies:
+            return False
         if not is_youtube_url(video_url):
             return False
         if self.cookies_file is None:
@@ -853,10 +869,18 @@ class PodcastDownloadService:
             return video_url, True
 
         before_snapshot = self._snapshot_downloaded_audio()
+        first_attempt_cookies = None
+        if (
+            is_youtube_url(video_url)
+            and self.cookies_file is not None
+            and self.always_use_cookies
+        ):
+            first_attempt_cookies = self.cookies_file
+
         try:
             result, changed_audio_files = self._run_ytdlp(
                 video_url,
-                None,
+                first_attempt_cookies,
                 work_dir,
             )
             after_snapshot = self._snapshot_downloaded_audio()
@@ -967,7 +991,12 @@ class PodcastDownloadService:
         if normalized_url in bypass_urls:
             return False
 
-        metadata = get_video_metadata(url, self.logger, self.cookies_file)
+        metadata = get_video_metadata(
+            url,
+            self.logger,
+            self.cookies_file,
+            self.always_use_cookies,
+        )
         if metadata is None:
             self.logger.info("Allowed video with unknown age: %s", url)
             return False
@@ -1003,6 +1032,7 @@ class PodcastDownloadService:
                 self.min_channel_video_age_hours,
                 self.logger,
                 self.cookies_file,
+                self.always_use_cookies,
             )
             return [
                 DownloadTarget(

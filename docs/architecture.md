@@ -16,7 +16,7 @@ sidebar_position: 2
    - YouTube Shorts are skipped.
    - Videos newer than `min_channel_video_age_hours` are skipped when upload age is known, including when `yt-dlp` reports a timestamp placeholder but still provides an upload date.
 7. Each selected video is downloaded as audio. SponsorBlock removal is enabled only for YouTube URLs.
-8. If a direct YouTube download fails or produces no usable MP3 and a cookie file is configured, the downloader retries that same URL once with `yt-dlp --cookies`.
+8. YouTube cookie usage follows `always_use_cookies`: either pass cookies on the first `yt-dlp` call, or try without cookies first and retry once with `--cookies` when the plain attempt fails or produces no usable MP3.
 9. MP3 output goes directly under the configured download directory: channel and playlist sources each get their own folder, while direct individual videos go into `singles/`.
 10. A download only counts as successful if an MP3 file was created or changed anywhere under the configured download directory.
 11. Successful MP3 files get an embedded MP3 date tag set to the local download completion time and a comment tag containing the source URL.
@@ -55,9 +55,14 @@ The same embedded date is the retention clock. A retention clock is the timestam
 
 When a channel MP3 is deleted, the downloader removes the same concrete video URL from `downloaded_urls.txt`. That keeps the audio file and expanded-item archive consistent: an old file removed from disk is no longer treated as already downloaded forever.
 
-## YouTube cookie fallback
+## YouTube cookie strategy
 
-Browser cookies are authentication state, so the downloader does not spend them on the normal direct YouTube path. When a cookie file is configured, a direct YouTube download still starts with a plain `yt-dlp` attempt. The service retries once with `--cookies <file>` only if that attempt exits non-zero or returns without a changed or recoverable MP3. Non-YouTube downloads do not use this fallback.
+Browser cookies are authentication state. When a cookie file is configured, `always_use_cookies` in `config.ini` chooses the YouTube strategy:
+
+- `false` (default): try without cookies first; retry once with `--cookies <file>` when the plain attempt fails or returns no usable result.
+- `true`: pass cookies on the first YouTube `yt-dlp` call for downloads, channel/playlist expansion, and metadata lookups.
+
+Non-YouTube downloads never use cookies.
 
 The configured cookie file is a Netscape/Mozilla-format text file, usually `cookies.txt` in the active data directory. In Docker, the default active data directory is the mounted `/data` volume.
 

@@ -43,6 +43,7 @@ def test_cli_skip_age_check_marks_added_url_for_bypass(
         retention_days=90,
         trust_x_forwarded_for=False,
         cookies_file=None,
+        always_use_cookies=False,
         bypass_age_check_file=bypass_file,
     )
 
@@ -93,6 +94,7 @@ def test_cli_skip_age_check_does_not_mark_non_youtube_url_for_bypass(
         retention_days=90,
         trust_x_forwarded_for=False,
         cookies_file=None,
+        always_use_cookies=False,
         bypass_age_check_file=bypass_file,
     )
 

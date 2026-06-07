@@ -32,6 +32,7 @@ class PodcastConfig:
     retention_days: int
     trust_x_forwarded_for: bool
     cookies_file: Path | None
+    always_use_cookies: bool
     bypass_age_check_file: Path
 
 
@@ -191,8 +192,10 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         False,
     )
 
-    # Cookie files are optional. YouTube downloads try without cookies first, then
-    # retry once with a configured file when the plain attempt fails.
+    # Cookie files are optional. When ``always_use_cookies`` is false, YouTube
+    # yt-dlp calls try without cookies first and retry once with the configured
+    # file when the plain attempt fails. When true, YouTube calls pass cookies
+    # on the first attempt.
     cookies_file: Path | None = None
     if "cookies_file" in section:
         explicit_cookies = _require_non_blank(
@@ -205,6 +208,13 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         auto_candidate = project_root / "cookies.txt"
         if auto_candidate.is_file():
             cookies_file = auto_candidate
+
+    always_use_cookies = _get_bool(
+        parser,
+        "podcast",
+        "always_use_cookies",
+        False,
+    )
 
     bypass_age_check_file = _get_path(
         section,
@@ -225,5 +235,6 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         retention_days=retention_days,
         trust_x_forwarded_for=trust_x_forwarded_for,
         cookies_file=cookies_file,
+        always_use_cookies=always_use_cookies,
         bypass_age_check_file=bypass_age_check_file,
     )
