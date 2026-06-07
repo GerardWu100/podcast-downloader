@@ -92,7 +92,7 @@ All runtime settings live in `config.ini`.
 - `downloaded_urls_file`: archive for expanded URLs.
 - `bypass_age_check_file`: one-shot age-gate overrides.
 - `cookies_file`: optional Netscape-format cookie file for YouTube.
-- `always_use_cookies`: when `true`, pass cookies on the first YouTube call; when `false` (default), try without cookies first and retry once on failure.
+- `always_use_cookies`: when `true` (default), pass cookies on the first YouTube call and retry once without cookies on failure; when `false`, try without cookies first and retry once with cookies on failure.
 - `trust_x_forwarded_for`: whether the UI trusts proxy-forwarded client IPs.
 
 ## Project Layout

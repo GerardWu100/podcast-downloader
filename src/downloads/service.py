@@ -754,32 +754,57 @@ class PodcastDownloadService:
         )
         return result, changed_audio_files
 
-    def _should_retry_youtube_download_with_cookies(
+    def _youtube_download_attempt_failed(
         self,
-        video_url: str,
         result: subprocess.CompletedProcess[str],
         changed_audio_files: list[Path],
         recoverable_audio_files: list[Path],
     ) -> bool:
-        """Return whether a failed plain YouTube attempt should try cookies.
-
-        ``yt-dlp`` cookies are sensitive browser credentials. When
-        ``always_use_cookies`` is enabled, the first attempt already spent them.
-        Otherwise a retry is useful only when the URL is YouTube, a cookie file
-        is configured, and the first attempt either returned a non-zero exit code
-        or produced no changed/recoverable MP3 file.
-        """
-        if self.always_use_cookies:
-            return False
-        if not is_youtube_url(video_url):
-            return False
-        if self.cookies_file is None:
-            return False
+        """Return whether one ``yt-dlp`` download attempt produced no usable MP3."""
         if result.returncode != 0:
             return True
         if changed_audio_files:
             return False
         return not recoverable_audio_files
+
+    def _should_retry_youtube_download_with_alternate_cookies(
+        self,
+        video_url: str,
+        result: subprocess.CompletedProcess[str],
+        changed_audio_files: list[Path],
+        recoverable_audio_files: list[Path],
+        first_attempt_cookies: Path | None,
+    ) -> bool:
+        """Return whether a failed YouTube download should try the alternate mode.
+
+        When ``always_use_cookies`` is true, the first attempt used cookies and a
+        retry can run plain. When false, the first attempt was plain and a retry
+        can use the configured cookie file.
+        """
+        if not is_youtube_url(video_url):
+            return False
+        if self.cookies_file is None:
+            return False
+        if not self._youtube_download_attempt_failed(
+            result,
+            changed_audio_files,
+            recoverable_audio_files,
+        ):
+            return False
+        if self.always_use_cookies:
+            return first_attempt_cookies is not None
+        return first_attempt_cookies is None
+
+    def _cookies_for_retry_youtube_download(
+        self,
+        first_attempt_cookies: Path | None,
+    ) -> Path | None:
+        """Return cookies for the alternate download retry after a failed attempt."""
+        if self.cookies_file is None:
+            return None
+        if self.always_use_cookies:
+            return None
+        return self.cookies_file
 
     def _find_recoverable_existing_audio(
         self,
@@ -892,20 +917,29 @@ class PodcastDownloadService:
                     after_snapshot,
                 )
 
-            if self._should_retry_youtube_download_with_cookies(
+            if self._should_retry_youtube_download_with_alternate_cookies(
                 video_url,
                 result,
                 changed_audio_files,
                 recoverable_audio_files,
+                first_attempt_cookies,
             ):
-                self.logger.info(
-                    "Plain YouTube download failed; retrying with cookies file: %s",
-                    self.cookies_file,
+                retry_cookies = self._cookies_for_retry_youtube_download(
+                    first_attempt_cookies,
                 )
+                if self.always_use_cookies:
+                    self.logger.info(
+                        "Cookie YouTube download failed; retrying without cookies",
+                    )
+                else:
+                    self.logger.info(
+                        "Plain YouTube download failed; retrying with cookies file: %s",
+                        self.cookies_file,
+                    )
                 before_snapshot = self._snapshot_downloaded_audio()
                 result, changed_audio_files = self._run_ytdlp(
                     video_url,
-                    self.cookies_file,
+                    retry_cookies,
                     work_dir,
                 )
                 after_snapshot = self._snapshot_downloaded_audio()

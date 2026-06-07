@@ -54,7 +54,7 @@ For YouTube requests that are blocked after normal unauthenticated access, provi
 
 You can also set `cookies_file` in `config.ini` to another mounted path.
 
-Set `always_use_cookies = true` in `config.ini` when you want every YouTube `yt-dlp` call to pass `--cookies <file>` on the first attempt. Leave it `false` (the default) to try without cookies first and retry once only when the plain attempt fails or produces no usable result. Keep the cookie file private because it contains browser authentication state.
+`always_use_cookies` defaults to `true`, so YouTube `yt-dlp` calls pass `--cookies <file>` on the first attempt and retry once without cookies when that attempt fails or produces no usable result. Set it to `false` to invert the order: plain first, cookies on retry. Keep the cookie file private because it contains browser authentication state.
 
 ## Scheduler behavior
 

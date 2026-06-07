@@ -192,10 +192,9 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         False,
     )
 
-    # Cookie files are optional. When ``always_use_cookies`` is false, YouTube
-    # yt-dlp calls try without cookies first and retry once with the configured
-    # file when the plain attempt fails. When true, YouTube calls pass cookies
-    # on the first attempt.
+    # Cookie files are optional. When ``always_use_cookies`` is true, YouTube
+    # yt-dlp calls pass cookies on the first attempt and retry once without them
+    # when that attempt fails. When false, the order is inverted.
     cookies_file: Path | None = None
     if "cookies_file" in section:
         explicit_cookies = _require_non_blank(
@@ -213,7 +212,7 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         parser,
         "podcast",
         "always_use_cookies",
-        False,
+        True,
     )
 
     bypass_age_check_file = _get_path(

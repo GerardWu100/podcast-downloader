@@ -20,7 +20,7 @@ The configured download directory contains only finished MP3 library files. `yt-
 
 Success detection is based on recursive MP3 state in the intermediate tree. The service snapshots every `*.mp3` file under `intermediate_dir` before and after `yt-dlp` runs. A download succeeds only when at least one MP3 is created or changed, then the metadata writer stores the local download completion time in the embedded MP3 `date` tag and the source URL in the embedded MP3 `comment` tag. YouTube source URLs are already normalized at this point, so live URLs and watch URLs for the same video share the same canonical watch URL in metadata.
 
-Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When false (default), every YouTube `yt-dlp` call tries without cookies first and retries once with the configured Netscape-format cookie file on failure. When true, YouTube downloads, expansion, and metadata calls pass cookies on the first attempt. Non-YouTube downloads never use cookies.
+Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When true (default), every YouTube `yt-dlp` call passes the configured Netscape-format cookie file on the first attempt and retries once without cookies on failure. When false, the order is inverted: plain first, cookies on retry. Non-YouTube downloads never use cookies.
 
 Retention cleanup uses that same embedded download date, but only for current YouTube channel output folders. Playlist and single-video files are not eligible. A channel file older than `retention_days` is deleted only when the source URL comment tag is present too, because cleanup must remove the same concrete URL from `downloaded_urls.txt`. Files with missing or unreadable date or source URL metadata are logged and kept.
 

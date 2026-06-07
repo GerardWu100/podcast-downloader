@@ -59,8 +59,8 @@ When a channel MP3 is deleted, the downloader removes the same concrete video UR
 
 Browser cookies are authentication state. When a cookie file is configured, `always_use_cookies` in `config.ini` chooses the YouTube strategy:
 
-- `false` (default): try without cookies first; retry once with `--cookies <file>` when the plain attempt fails or returns no usable result.
-- `true`: pass cookies on the first YouTube `yt-dlp` call for downloads, channel/playlist expansion, and metadata lookups.
+- `true` (default): pass cookies on the first YouTube `yt-dlp` call for downloads, channel/playlist expansion, and metadata lookups; retry once without cookies when that attempt fails or returns no usable result.
+- `false`: try without cookies first; retry once with `--cookies <file>` when the plain attempt fails or returns no usable result.
 
 Non-YouTube downloads never use cookies.
 

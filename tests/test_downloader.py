@@ -747,6 +747,68 @@ def test_youtube_download_uses_cookies_on_first_attempt_when_always_use_cookies(
     assert cookie_attempts == [cookies_file]
 
 
+def test_youtube_download_retries_without_cookies_after_cookie_failure_when_always_use_cookies(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Always-on cookie mode should fall back to a plain retry when cookies fail."""
+    video_url = "https://www.youtube.com/watch?v=abc123"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+    cookies_file = tmp_path / "cookies.txt"
+    cookies_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    cookie_attempts: list[Path | None] = []
+
+    downloader = PodcastDownloader(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        cookies_file=cookies_file,
+        always_use_cookies=True,
+    )
+
+    def fake_run_ytdlp(
+        self: PodcastDownloader,
+        url: str,
+        cookies_file: Path | None,
+        output_dir: Path | None = None,
+    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
+        cookie_attempts.append(cookies_file)
+        if cookies_file is not None:
+            return (
+                subprocess.CompletedProcess(["yt-dlp"], 1, stdout="", stderr="blocked"),
+                [],
+            )
+
+        target_dir = output_dir or downloads_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        output_mp3.write_text("audio", encoding="utf-8")
+        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
+            output_mp3
+        ]
+
+    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
+    monkeypatch.setattr(
+        PodcastDownloader,
+        "_stamp_audio_files_with_download_time",
+        lambda *args, **kwargs: None,
+    )
+
+    _, success = downloader._download_video(
+        video_url,
+        index=1,
+        total=1,
+        use_archive=False,
+    )
+
+    assert success is True
+    assert cookie_attempts == [cookies_file, None]
+
+
 def test_non_youtube_download_does_not_retry_with_youtube_cookie_file(
     tmp_path,
     monkeypatch,

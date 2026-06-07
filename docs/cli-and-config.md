@@ -59,7 +59,7 @@ The checked-in configuration file lives at the project root and uses a single `[
 | `downloaded_urls_file` | Archive path for expanded URLs, also used for duplicate detection | `downloaded_urls.txt` |
 | `bypass_age_check_file` | File that records one-shot direct-video age-gate bypasses | `bypass_age_check_urls.txt` |
 | `cookies_file` | Optional Netscape cookie jar path | unset |
-| `always_use_cookies` | When true, pass cookies on the first YouTube `yt-dlp` call; when false, try without cookies first and retry once on failure | `false` |
+| `always_use_cookies` | When true, pass cookies on the first YouTube `yt-dlp` call and retry once without cookies on failure; when false, try without cookies first and retry once with cookies on failure | `true` |
 | `trust_x_forwarded_for` | Whether the UI trusts reverse-proxy IP headers | `true` |
 
 ## Environment variables
@@ -78,8 +78,8 @@ If `cookies_file` is not configured, the loader checks for `cookies.txt` in the 
 
 `always_use_cookies` controls the YouTube cookie strategy when a cookie file is present:
 
-- `false` (default): try without cookies first; if the plain attempt fails or produces no usable result, retry once with the cookie file.
-- `true`: pass cookies on the first YouTube `yt-dlp` call for downloads, channel/playlist expansion, and metadata lookups.
+- `true` (default): pass cookies on the first YouTube `yt-dlp` call for downloads, channel/playlist expansion, and metadata lookups; if that attempt fails or produces no usable result, retry once without cookies.
+- `false`: try without cookies first; if the plain attempt fails or produces no usable result, retry once with the cookie file.
 
 The cookie file must use the Netscape/Mozilla text format expected by `yt-dlp`. In Docker, put `cookies.txt` in the mounted `PODCAST_DATA_DIR` directory, or set `cookies_file` in the mounted `config.ini` to another mounted path.
 

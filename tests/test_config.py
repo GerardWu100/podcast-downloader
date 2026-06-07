@@ -131,14 +131,14 @@ def test_load_config_defaults_retention_to_thirty_days(tmp_path: Path) -> None:
     assert config.retention_days == 30
 
 
-def test_load_config_defaults_always_use_cookies_to_false(tmp_path: Path) -> None:
-    """YouTube cookies should stay in fallback mode unless explicitly enabled."""
+def test_load_config_defaults_always_use_cookies_to_true(tmp_path: Path) -> None:
+    """YouTube cookies should default to always-on mode with alternate fallback."""
     config_file = tmp_path / "config.ini"
     write_config(config_file, "channel_count = 1")
 
     config = load_config(config_file, tmp_path)
 
-    assert config.always_use_cookies is False
+    assert config.always_use_cookies is True
 
 
 def test_load_config_reads_always_use_cookies(tmp_path: Path) -> None:

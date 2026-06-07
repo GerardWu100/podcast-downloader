@@ -68,7 +68,7 @@ After each download cycle, retention cleanup scans MP3 files recursively under t
 
 If `yt-dlp` reports that an expanded item is already downloaded or if it completes without changing an MP3, the download service now checks the output folder for the expected file and stamps it if the file already exists. That makes partial success recoverable instead of forcing a future run to get stuck on a stale metadata state.
 
-Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When false (default), YouTube `yt-dlp` calls try without cookies first and retry once with the configured Netscape-format cookie file on failure. When true, YouTube downloads, expansion, and metadata pass cookies on the first attempt. In Docker, the simplest path is putting `cookies.txt` in the mounted data directory. The file is ignored by git because it contains browser authentication state.
+Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When true (default), YouTube `yt-dlp` calls pass the configured Netscape-format cookie file on the first attempt and retry once without cookies on failure. When false, the order is inverted: plain first, cookies on retry. In Docker, the simplest path is putting `cookies.txt` in the mounted data directory. The file is ignored by git because it contains browser authentication state.
 
 ### Security posture of the web UI
 

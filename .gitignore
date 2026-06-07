@@ -23,6 +23,7 @@ coverage.xml
 .ui_sessions.json
 .login_state.json
 cookies.txt
+www.youtube.com_cookies.txt
 *.cookies
 .env
 .env.*
