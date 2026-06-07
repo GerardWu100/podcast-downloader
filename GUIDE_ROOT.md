@@ -30,7 +30,7 @@ The root does not contain business logic beyond entrypoints and operational scri
 - [`Dockerfile`](/Users/gwh/projects/one-time-projects/podcast-downloader/Dockerfile) builds the runtime image with Python, `ffmpeg`, the locked project dependencies, and the Docker entrypoint.
 - [`docker-compose.yml`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-compose.yml) defines the default container deployment with mounted data and downloads volumes plus the scheduled download interval.
 - [`urls.txt`](/Users/gwh/projects/one-time-projects/podcast-downloader/urls.txt) is the input queue users edit manually or through the web UI. The UI now renders its current contents and can remove individual monitored URLs directly from the browser.
-- `cookies.txt`, when present in the active data directory, is a private Netscape-format cookie file used only as a fallback retry for blocked direct YouTube downloads.
+- `cookies.txt`, when present in the active data directory, is a private Mozilla/Netscape-format cookie file. The first line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File`, with LF line endings on Linux/macOS and CRLF on Windows.
 - [`downloaded_urls.txt`](/Users/gwh/projects/one-time-projects/podcast-downloader/downloaded_urls.txt) is the archive used to avoid re-downloading channel and playlist entries and to reject already-downloaded URLs in the web UI.
 - [`download.log`](/Users/gwh/projects/one-time-projects/podcast-downloader/download.log) is the main diagnostic runtime log produced by the downloader.
 - `activity.log` is the concise browser-facing activity feed written beside `download.log`.

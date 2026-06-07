@@ -64,7 +64,7 @@ Browser cookies are authentication state. When a cookie file is configured, `alw
 
 Non-YouTube downloads never use cookies.
 
-The configured cookie file is a Netscape/Mozilla-format text file, usually `cookies.txt` in the active data directory. In Docker, the default active data directory is the mounted `/data` volume.
+The configured cookie file is a Netscape/Mozilla-format text file, usually `cookies.txt` in the active data directory. The first line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File`, and line endings must match the host OS (LF on Linux/macOS, CRLF on Windows). In Docker, the default active data directory is the mounted `/data` volume.
 
 ## Download folder layout
 

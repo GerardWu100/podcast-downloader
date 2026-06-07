@@ -81,7 +81,13 @@ If `cookies_file` is not configured, the loader checks for `cookies.txt` in the 
 - `true` (default): pass cookies on the first YouTube `yt-dlp` call for downloads, channel/playlist expansion, and metadata lookups; if that attempt fails or produces no usable result, retry once without cookies.
 - `false`: try without cookies first; if the plain attempt fails or produces no usable result, retry once with the cookie file.
 
-The cookie file must use the Netscape/Mozilla text format expected by `yt-dlp`. In Docker, put `cookies.txt` in the mounted `PODCAST_DATA_DIR` directory, or set `cookies_file` in the mounted `config.ini` to another mounted path.
+The cookie file must use the Netscape/Mozilla text format expected by `yt-dlp`:
+
+- The first line must be either `# HTTP Cookie File` or `# Netscape HTTP Cookie File`.
+- Use the newline style that matches your OS: LF (`\n`) on Linux and macOS, CRLF (`\r\n`) on Windows. Convert line endings if you copied the file from another machine.
+- `HTTP Error 400: Bad Request` when using `--cookies` is a common sign of invalid newline format.
+
+In Docker, put `cookies.txt` in the mounted `PODCAST_DATA_DIR` directory, or set `cookies_file` in the mounted `config.ini` to another mounted path.
 
 ## Validation behavior
 

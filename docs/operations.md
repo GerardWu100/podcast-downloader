@@ -56,6 +56,24 @@ You can also set `cookies_file` in `config.ini` to another mounted path.
 
 `always_use_cookies` defaults to `true`, so YouTube `yt-dlp` calls pass `--cookies <file>` on the first attempt and retry once without cookies when that attempt fails or produces no usable result. Set it to `false` to invert the order: plain first, cookies on retry. Keep the cookie file private because it contains browser authentication state.
 
+### Cookie file format
+
+`yt-dlp` expects a Mozilla/Netscape cookie jar, not JSON or browser SQLite exports pasted in directly.
+
+| Requirement | Detail |
+|---|---|
+| Header line | First line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File` |
+| Line endings | LF (`\n`) on Linux/macOS; CRLF (`\r\n`) on Windows |
+| Bad-newline symptom | `HTTP Error 400: Bad Request` when running `yt-dlp --cookies cookies.txt ...` |
+
+On Linux, convert a Windows-exported file with:
+
+```bash
+sed -i 's/\r$//' cookies.txt
+```
+
+Or re-export from the browser on the same machine that runs the downloader.
+
 ## Scheduler behavior
 
 - Scheduled runs happen every `DOWNLOAD_INTERVAL_HOURS`.
