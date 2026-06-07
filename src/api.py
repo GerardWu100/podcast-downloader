@@ -697,7 +697,10 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
     "invalid": ("msg-err", "Invalid URL - enter an http(s) media URL."),
     "error": ("msg-err", "Could not add URL."),
     "cookies_updated": ("msg-ok", "Cookie file updated."),
-    "cookies_invalid": ("msg-err", "Invalid cookies.txt - upload a Netscape-format file."),
+    "cookies_invalid": (
+        "msg-err",
+        "Invalid cookies.txt - upload a Netscape-format file.",
+    ),
     "cookies_error": ("msg-err", "Could not update cookies.txt."),
 }
 

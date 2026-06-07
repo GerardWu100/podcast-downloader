@@ -489,8 +489,7 @@ def test_upload_cookies_overwrites_existing_cookie_file(
         "created_at": time.time(),
     }
     uploaded_text = (
-        "# Netscape HTTP Cookie File\r\n"
-        ".youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\r\n"
+        "# Netscape HTTP Cookie File\r\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\r\n"
     )
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -506,7 +505,9 @@ def test_upload_cookies_overwrites_existing_cookie_file(
     )
 
     assert response.headers["location"] == "/ui?msg=cookies_updated"
-    assert cookie_file.read_text(encoding="utf-8") == uploaded_text.replace("\r\n", "\n")
+    assert cookie_file.read_text(encoding="utf-8") == uploaded_text.replace(
+        "\r\n", "\n"
+    )
     assert oct(cookie_file.stat().st_mode & 0o777) == "0o600"
 
     api_module.SESSIONS.pop(session_id, None)
@@ -549,7 +550,9 @@ def test_upload_cookies_rejects_invalid_cookie_header(
     )
 
     assert response.headers["location"] == "/ui?msg=cookies_invalid"
-    assert cookie_file.read_text(encoding="utf-8") == "# Netscape HTTP Cookie File\nold\n"
+    assert (
+        cookie_file.read_text(encoding="utf-8") == "# Netscape HTTP Cookie File\nold\n"
+    )
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
