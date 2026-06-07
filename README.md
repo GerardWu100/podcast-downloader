@@ -29,7 +29,7 @@ Finished MP3 files are written to the configured download directory. Point Audio
 - `ffmpeg`
 - `uv`
 
-`yt-dlp` is installed as part of the project environment.
+`yt-dlp` is installed outside the lockfile via `uv pip install yt-dlp`. Docker builds and container startups fetch the latest PyPI release so YouTube extractors do not go stale.
 
 ## Quick Start
 
@@ -38,7 +38,10 @@ Finished MP3 files are written to the configured download directory. Point Audio
 
 ```bash
 uv sync --dev
+uv pip install yt-dlp
 ```
+
+`yt-dlp` is intentionally **not** pinned in `uv.lock`. Install the latest release with `uv pip install yt-dlp` after syncing. Docker builds and container startups do the same automatically.
 
 3. Add one source URL per line to `urls.txt`.
 4. Review `config.ini` for output paths, delay settings, channel polling depth, retention, and proxy behavior.

@@ -72,6 +72,8 @@ The checked-in configuration file lives at the project root and uses a single `[
 | `DOWNLOAD_INTERVAL_HOURS` | Scheduler interval in Docker mode |
 | `YT_DLP_AUTO_UPDATE` | Enables or disables Docker-time `yt-dlp` upgrades; only the `yt-dlp` package is targeted |
 
+`yt-dlp` is not listed in `uv.lock`. After `uv sync`, install the latest release with `uv pip install yt-dlp`. Docker handles that step during image build and container startup.
+
 ## Cookie support
 
 If `cookies_file` is not configured, the loader checks for `cookies.txt` in the active data directory.

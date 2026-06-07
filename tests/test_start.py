@@ -180,18 +180,7 @@ def test_update_ytdlp_returns_false_when_package_update_fails(monkeypatch) -> No
     did_update = start.update_ytdlp()
 
     assert did_update is False
-    assert commands[0] == [
-        start.sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--upgrade",
-        "--upgrade-strategy",
-        "only-if-needed",
-        "yt-dlp",
-        "--quiet",
-    ]
+    assert commands[0] == ["uv", "pip", "install", "--upgrade", "yt-dlp", "--quiet"]
 
 
 @pytest.mark.parametrize(
@@ -229,18 +218,7 @@ def test_update_ytdlp_only_upgrades_that_package(monkeypatch) -> None:
     did_update = start.update_ytdlp()
 
     assert did_update is True
-    assert commands[0] == [
-        start.sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "--disable-pip-version-check",
-        "--upgrade",
-        "--upgrade-strategy",
-        "only-if-needed",
-        "yt-dlp",
-        "--quiet",
-    ]
+    assert commands[0] == ["uv", "pip", "install", "--upgrade", "yt-dlp", "--quiet"]
     assert commands[1] == ["yt-dlp", "--version"]
 
 

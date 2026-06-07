@@ -12,7 +12,8 @@ WORKDIR /app
 
 # Install Python deps (cached layer unless pyproject.toml/uv.lock change)
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev \
+    && uv pip install yt-dlp
 
 # Put .venv/bin on PATH so subprocess calls to yt-dlp and python work without full paths
 ENV PATH="/app/.venv/bin:$PATH"

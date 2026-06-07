@@ -9,7 +9,6 @@ dependencies = [
     "python-multipart>=0.0.20",
     "ruff>=0.15.12",
     "uvicorn>=0.34.0",
-    "yt-dlp>=2026.2.4",
 ]
 
 [dependency-groups]

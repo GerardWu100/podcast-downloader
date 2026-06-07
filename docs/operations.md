@@ -80,6 +80,7 @@ Or re-export from the browser on the same machine that runs the downloader.
 
 - Scheduled runs happen every `DOWNLOAD_INTERVAL_HOURS`.
 - Scheduler subprocesses run `python -m src.cli` with the project root as their current working directory, so Docker runtime behavior does not depend on where the scheduler thread was started.
+- `yt-dlp` is not pinned in `uv.lock`. The Docker image installs the latest PyPI release during `docker build` and upgrades again on each container start when `YT_DLP_AUTO_UPDATE=true`. Local development should run `uv pip install yt-dlp` after `uv sync`.
 - The scheduled path upgrades only `yt-dlp`, not the rest of the Python environment.
 - After a scheduled `yt-dlp` update, the downloader waits 5 minutes before starting the run unless a UI-triggered download arrives during that delay.
 - If the package update fails, the scheduler logs the warning, reports the current `yt-dlp` version, and skips the post-update wait.
