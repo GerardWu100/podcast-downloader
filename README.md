@@ -19,7 +19,7 @@ The project is designed to run cleanly in Docker for the common Audiobookshelf w
 docker compose up --build -d
 ```
 
-On startup, the container seeds missing runtime files, copies a repo-root `.ui_password` into the mounted data directory when present and missing, and accepts both hashed and legacy plain-text password files. Place a Netscape-format `cookies.txt` in the repo root before `docker compose build`; the image-bundled file is copied to `/data/cookies.txt` on first boot and refreshed on later starts when the rebuilt image contains different cookie contents. You can also copy cookies directly into the mounted data directory.
+On startup, the container seeds missing runtime files, copies a repo-root `.ui_password` into the mounted data directory when present and missing, and accepts both hashed and legacy plain-text password files. Place a Netscape-format `cookies.txt` in the repo root; Compose mounts that exact file read-only as `/data/cookies.txt`, so replacing the project file and restarting the container changes the runtime cookies.
 
 Finished MP3 files are written to the configured download directory. Point Audiobookshelf at that folder so it can scan the completed audio library.
 
@@ -124,4 +124,4 @@ If you want the deeper design and operations details, start with these files:
 
 - The project is optimized for a personal Audiobookshelf-backed workflow rather than a multi-user public service.
 - The web UI is intentionally lightweight and uses local file-based state for queueing and login persistence.
-- Docker deployments seed missing files on first boot so a fresh volume can start without manual setup. Image-bundled `cookies.txt` also refreshes the mounted cookie file when its contents change.
+- Docker deployments seed missing files on first boot so a fresh volume can start without manual setup. Compose mounts repo-root `cookies.txt` directly to `/data/cookies.txt`.

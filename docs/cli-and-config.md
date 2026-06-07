@@ -89,7 +89,7 @@ The cookie file must use the Netscape/Mozilla text format expected by `yt-dlp`:
 - Use the newline style that matches your OS: LF (`\n`) on Linux and macOS, CRLF (`\r\n`) on Windows. Convert line endings if you copied the file from another machine.
 - `HTTP Error 400: Bad Request` when using `--cookies` is a common sign of invalid newline format.
 
-In Docker, put `cookies.txt` in the mounted `PODCAST_DATA_DIR` directory, or set `cookies_file` in the mounted `config.ini` to another mounted path.
+In Docker Compose, put `cookies.txt` in the project root. Compose mounts that exact file to `/data/cookies.txt`, and the default `cookies_file = cookies.txt` resolves to that mounted file.
 
 ## Validation behavior
 

@@ -28,6 +28,15 @@ def test_compose_uses_separate_temporary_download_volume() -> None:
     assert "$HOME/downloads/temporary:/temporary" in compose_text
 
 
+def test_compose_mounts_project_cookies_into_data_cookie_file() -> None:
+    """Compose should make repo cookies.txt the runtime YouTube cookie file."""
+    compose_file = PROJECT_ROOT / "docker-compose.yml"
+
+    compose_text = compose_file.read_text(encoding="utf-8")
+
+    assert "./cookies.txt:/data/cookies.txt:ro" in compose_text
+
+
 def test_dockerfile_installs_deno_for_youtube_javascript_challenges() -> None:
     """The Docker image should include Deno so yt-dlp can solve YouTube JS."""
     dockerfile = PROJECT_ROOT / "Dockerfile"
@@ -147,10 +156,10 @@ def test_entrypoint_seeds_image_bundled_cookies_when_data_cookies_missing(
             repo_cookie_file.write_text(original_contents, encoding="utf-8")
 
 
-def test_entrypoint_refreshes_existing_data_cookies_from_image_bundle(
+def test_entrypoint_uses_existing_data_cookies_without_overwriting(
     tmp_path: Path,
 ) -> None:
-    """A rebuilt image should refresh stale mounted cookies from repo cookies.txt."""
+    """An existing data cookie file should be treated as the runtime source."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
     repo_cookie_file = PROJECT_ROOT / "cookies.txt"
@@ -167,17 +176,15 @@ def test_entrypoint_refreshes_existing_data_cookies_from_image_bundle(
         repo_cookie_file.write_text(bundled_cookie_text, encoding="utf-8")
 
         data_dir.mkdir()
-        stale_cookie_text = "# Netscape HTTP Cookie File\nstale\n"
-        (data_dir / "cookies.txt").write_text(stale_cookie_text, encoding="utf-8")
+        mounted_cookie_text = "# Netscape HTTP Cookie File\nmounted\n"
+        mounted_cookie_file = data_dir / "cookies.txt"
+        mounted_cookie_file.write_text(mounted_cookie_text, encoding="utf-8")
 
         result = _run_entrypoint(data_dir, download_dir)
 
         assert result.returncode == 0, result.stderr
-        refreshed_cookie_file = data_dir / "cookies.txt"
-        assert refreshed_cookie_file.read_text(encoding="utf-8") == bundled_cookie_text
-        assert oct(refreshed_cookie_file.stat().st_mode & 0o777) == "0o600"
-        assert "[startup] Refreshed" in result.stdout
-        assert "cookies.txt" in result.stdout
+        assert mounted_cookie_file.read_text(encoding="utf-8") == mounted_cookie_text
+        assert "[startup] Using mounted cookies file" in result.stdout
     finally:
         if original_contents is None:
             repo_cookie_file.unlink(missing_ok=True)

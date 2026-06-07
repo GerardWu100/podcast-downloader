@@ -40,9 +40,8 @@ if [ ! -f "$PASSWORD_FILE" ] && [ -f "$IMAGE_PASSWORD_FILE" ]; then
     echo "[startup] Seeded $PASSWORD_FILE from image-bundled .ui_password"
 fi
 
-# Seed YouTube cookies from the image when the mounted data dir has none yet.
-# The file is gitignored locally but is copied into /app during docker build when
-# present, then promoted into /data on first boot like .ui_password.
+# Compose mounts repo-root cookies.txt directly to /data/cookies.txt. The
+# image-bundled fallback below only supports manual Docker runs without that mount.
 COOKIE_FILE="$DATA_DIR/cookies.txt"
 if [ -f /app/cookies.txt ]; then
     IMAGE_COOKIE_FILE="/app/cookies.txt"
@@ -52,15 +51,13 @@ else
     IMAGE_COOKIE_FILE=""
 fi
 
-if [ -f "$IMAGE_COOKIE_FILE" ]; then
+if [ -f "$COOKIE_FILE" ]; then
+    echo "[startup] Using mounted cookies file: $COOKIE_FILE"
+elif [ -f "$IMAGE_COOKIE_FILE" ]; then
     if [ ! -f "$COOKIE_FILE" ]; then
         cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
         chmod 600 "$COOKIE_FILE"
         echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
-    elif ! cmp -s "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"; then
-        cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
-        chmod 600 "$COOKIE_FILE"
-        echo "[startup] Refreshed $COOKIE_FILE from image-bundled cookies.txt"
     fi
 fi
 

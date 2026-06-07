@@ -41,7 +41,7 @@ The container bootstrap path does the following:
 
 1. Copies the repo `config.ini` into the mounted data directory if that file is missing.
 2. Copies an image-bundled `.ui_password` into the mounted data directory when that file exists in the repo at build time and no mounted password file exists yet.
-3. Copies an image-bundled `cookies.txt` into the mounted data directory when missing, and refreshes it when the bundled file differs from the mounted file.
+3. Uses repo-root `cookies.txt` as `/data/cookies.txt` when running through Compose, because Compose bind-mounts that file read-only into the data directory.
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, `.login_state.json`, and `.ui_password`.
 5. Stores a PBKDF2 hash for the default password `.ui_password` if no password file exists.
 6. Rewrites legacy `CHANGE_ME` files and other plain-text password files into hashes in place.
@@ -51,9 +51,9 @@ If you already have a plain-text password in `.ui_password`, the Docker entrypoi
 
 ## YouTube cookies
 
-For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt` in the active data directory. In Docker, that means the mounted `PODCAST_DATA_DIR` path, which is `/data` in the default Compose file.
+For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt` in the project root. The default Compose file mounts that exact project file as `/data/cookies.txt` inside the container.
 
-On startup, the Docker entrypoint copies image-bundled `/app/cookies.txt` into `/data/cookies.txt` when the mounted file is missing. If `/data/cookies.txt` already exists but differs from the image-bundled file, the entrypoint refreshes `/data/cookies.txt` from the image. Put `cookies.txt` in the repo root before `docker compose build` so it is baked into the image, or copy it directly into `~/.containers/podcast-downloader/cookies.txt` yourself.
+Because the cookie file is a bind mount, there is no separate Docker copy to synchronize in the normal Compose path. Replace `cookies.txt` in the project root, then restart the container. For manual Docker runs without Compose, the entrypoint still seeds `/data/cookies.txt` from image-bundled `/app/cookies.txt` when the mounted file is missing.
 
 You can also set `cookies_file` in `config.ini` to another mounted path.
 
