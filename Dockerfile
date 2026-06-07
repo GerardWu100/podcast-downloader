@@ -1,5 +1,7 @@
 FROM python:3.13-slim
 
+COPY --from=denoland/deno:bin-2.7.14 /deno /usr/local/bin/deno
+
 # ffmpeg is required by yt-dlp for audio extraction
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
@@ -10,13 +12,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+# Put .venv/bin on PATH so subprocess calls to yt-dlp and python work without full paths
+ENV PATH="/app/.venv/bin:$PATH"
+
 # Install Python deps (cached layer unless pyproject.toml/uv.lock change)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev \
-    && uv pip install yt-dlp
-
-# Put .venv/bin on PATH so subprocess calls to yt-dlp and python work without full paths
-ENV PATH="/app/.venv/bin:$PATH"
+    && uv pip install "yt-dlp[default]"
 
 # Unbuffered output so all logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1

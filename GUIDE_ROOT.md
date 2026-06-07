@@ -27,7 +27,7 @@ The root does not contain business logic beyond entrypoints and operational scri
 - [`src/config.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/config.py) loads that file and now raises `ConfigError` when numeric values cannot be parsed, are outside accepted ranges, or path settings are blank.
 - [`start.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/start.py) is the Docker-oriented process supervisor. It keeps the web UI in the main process, runs the download scheduler in a background thread, runs scheduled full-queue downloads and direct-video single-URL immediate downloads, and now fails fast during startup if `DOWNLOAD_INTERVAL_HOURS` is missing, malformed, or non-positive.
 - [`docker-entrypoint.sh`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-entrypoint.sh) seeds the mounted data directory with a default `config.ini` and missing state files on first boot, copies an image-bundled `.ui_password` into the mounted data path when present and missing, refreshes mounted `cookies.txt` from an image-bundled cookie file when contents differ, migrates `.ui_password` into a hashed format, then performs a best-effort `yt-dlp` update.
-- [`Dockerfile`](/Users/gwh/projects/one-time-projects/podcast-downloader/Dockerfile) builds the runtime image with Python, `ffmpeg`, the locked project dependencies, and the Docker entrypoint.
+- [`Dockerfile`](/Users/gwh/projects/one-time-projects/podcast-downloader/Dockerfile) builds the runtime image with Python, `ffmpeg`, Deno for YouTube JavaScript challenge solving, the locked project dependencies, `yt-dlp[default]`, and the Docker entrypoint.
 - [`docker-compose.yml`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-compose.yml) defines the default container deployment with mounted data and downloads volumes plus the scheduled download interval.
 - [`urls.txt`](/Users/gwh/projects/one-time-projects/podcast-downloader/urls.txt) is the input queue users edit manually or through the web UI. The UI now renders its current contents and can remove individual monitored URLs directly from the browser.
 - `cookies.txt`, when present in the active data directory, is a private Mozilla/Netscape-format cookie file. The first line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File`, with LF line endings on Linux/macOS and CRLF on Windows.
@@ -97,7 +97,8 @@ The container runtime now treats the mounted data directory as the durable sourc
 - If mounted `.ui_password` is missing but the image contains `/app/.ui_password`, the entrypoint copies that file into the mounted data directory first. If no password file exists anywhere, or if the mounted file is blank or still contains the legacy `CHANGE_ME` value, the entrypoint writes a PBKDF2 hash for the default password `.ui_password`. Existing plain-text passwords are also rewritten as hashes in place.
 - If the image contains `/app/cookies.txt`, the entrypoint copies it into the mounted data directory when missing and refreshes the mounted file when the byte contents differ. That lets a rebuilt image promote newly exported browser cookies into `/data/cookies.txt` automatically.
 - `yt-dlp` auto-update is enabled by default through `YT_DLP_AUTO_UPDATE=true`, but update failures are logged and do not stop the container from starting.
-- The scheduled 48-hour path upgrades only the `yt-dlp` package, then waits 5 minutes before starting downloads so the updated binary has settled. If a UI-triggered download arrives during that delay, the scheduler handles the UI trigger and skips that full scheduled queue pass.
+- The scheduled 48-hour path upgrades only the `yt-dlp[default]` dependency group, then waits 5 minutes before starting downloads so the updated binary and YouTube challenge-solver package have settled. If a UI-triggered download arrives during that delay, the scheduler handles the UI trigger and skips that full scheduled queue pass.
+- The image includes Deno on `PATH` because current `yt-dlp` YouTube extraction needs a JavaScript runtime for external JavaScript challenges.
 - Direct-video UI submissions trigger an immediate single-URL run for the submitted video only. Channel and playlist submissions wait for the scheduled full-queue run.
 - The scheduler interval comes from `DOWNLOAD_INTERVAL_HOURS`, and the Python startup path now refuses `0`, negative numbers, and non-integer values so a bad Compose override does not create a crash loop or tight polling loop.
 - Scheduler subprocesses run `python -m src.cli` from the resolved project root, so scheduled and immediate Docker downloads do not depend on the scheduler process's current working directory.
@@ -161,7 +162,7 @@ podcast-downloader/
 - [`config.ini`](/Users/gwh/projects/one-time-projects/podcast-downloader/config.ini): editable operational defaults.
 - [`start.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/start.py): container entrypoint that keeps the web server tied to PID 1 and dispatches scheduled full-queue runs plus direct-video single-URL immediate runs.
 - [`docker-entrypoint.sh`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-entrypoint.sh): Docker bootstrap script for config seeding, state-file creation, hashed UI password setup, and best-effort `yt-dlp` updates.
-- [`Dockerfile`](/Users/gwh/projects/one-time-projects/podcast-downloader/Dockerfile): image definition for the deployable container.
+- [`Dockerfile`](/Users/gwh/projects/one-time-projects/podcast-downloader/Dockerfile): image definition for the deployable container, including Deno and `yt-dlp[default]` for current YouTube extraction.
 - [`docker-compose.yml`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-compose.yml): default Compose deployment for local or VPS use.
 - [`test_sponsorblock.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/test_sponsorblock.py): manual live-network debugging script.
 
@@ -181,6 +182,7 @@ podcast-downloader/
 - 2026-05-15: Direct YouTube downloads now try without cookies first and retry once with a configured cookie file only after the plain attempt fails.
 - 2026-06-07: Added `always_use_cookies` so YouTube cookie usage can stay fallback-only or switch to always-on across downloads, expansion, and metadata.
 - 2026-06-07: Docker startup now refreshes mounted `cookies.txt` from an image-bundled repo cookie file when the contents differ, so rebuilding with fresh browser cookies updates `/data/cookies.txt`.
+- 2026-06-07: Docker now includes Deno and installs/upgrades `yt-dlp[default]` so YouTube JavaScript challenge solving has both the runtime and matching EJS package.
 - 2026-04-30: Corrected direct-video completion behavior so one-off URLs are removed from the queue without being written to the expanded-item archive.
 - 2026-04-30: Downloaded MP3 files now expose local completion time through embedded date metadata so Audiobookshelf shows the download date.
 - 2026-04-30: Direct-video UI additions now trigger only a single-URL immediate run; channel and playlist additions remain queued for the scheduled full-queue cycle.

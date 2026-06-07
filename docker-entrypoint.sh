@@ -104,7 +104,7 @@ chmod 600 "$PASSWORD_FILE"
 # Keep yt-dlp current, but do not fail container startup on transient network issues.
 if [ "$AUTO_UPDATE" = "true" ]; then
     echo "[startup] Updating yt-dlp..."
-    if uv pip install --upgrade yt-dlp --quiet; then
+    if uv pip install --upgrade "yt-dlp[default]" --quiet; then
         echo "[startup] yt-dlp $(yt-dlp --version)"
     else
         echo "[startup] Warning: yt-dlp update failed, continuing with bundled version $(yt-dlp --version)"

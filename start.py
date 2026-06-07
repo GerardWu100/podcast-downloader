@@ -66,7 +66,7 @@ def update_ytdlp() -> bool:
         return False
 
     result = subprocess.run(
-        ["uv", "pip", "install", "--upgrade", "yt-dlp", "--quiet"],
+        ["uv", "pip", "install", "--upgrade", "yt-dlp[default]", "--quiet"],
         capture_output=True,
         text=True,
         check=False,

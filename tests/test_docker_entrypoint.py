@@ -28,6 +28,25 @@ def test_compose_uses_separate_temporary_download_volume() -> None:
     assert "$HOME/downloads/temporary:/temporary" in compose_text
 
 
+def test_dockerfile_installs_deno_for_youtube_javascript_challenges() -> None:
+    """The Docker image should include Deno so yt-dlp can solve YouTube JS."""
+    dockerfile = PROJECT_ROOT / "Dockerfile"
+
+    dockerfile_text = dockerfile.read_text(encoding="utf-8")
+
+    assert "denoland/deno:bin" in dockerfile_text
+    assert "/usr/local/bin/deno" in dockerfile_text
+
+
+def test_dockerfile_installs_ytdlp_default_dependency_group() -> None:
+    """The Docker image should install yt-dlp's EJS support dependencies."""
+    dockerfile = PROJECT_ROOT / "Dockerfile"
+
+    dockerfile_text = dockerfile.read_text(encoding="utf-8")
+
+    assert 'yt-dlp[default]' in dockerfile_text
+
+
 def _run_entrypoint(
     data_dir: Path, download_dir: Path
 ) -> subprocess.CompletedProcess[str]:
