@@ -10,11 +10,15 @@ import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import logging
+
 from src.activity_log import (
     activity_log_file_for,
     read_activity_log_tail,
     read_download_log_tail,
 )
+from src.downloads.service import PodcastDownloadService
+from src.log_timezone import LOG_TIME_ZONE
 import src.state.activity_store as activity_store_module
 from src.state.activity_store import ActivityLogStore
 
@@ -83,11 +87,46 @@ def test_activity_log_store_writes_and_reads_tail(tmp_path: Path) -> None:
     assert store.read_tail(line_count=1).endswith("second event")
 
 
+def test_download_log_formatter_uses_toronto_time(tmp_path: Path) -> None:
+    """Full diagnostic log timestamps should use the shared Toronto timezone."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("", encoding="utf-8")
+    log_file = tmp_path / "download.log"
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=log_file,
+    )
+    file_handler = next(
+        handler
+        for handler in downloader.logger.handlers
+        if isinstance(handler, logging.FileHandler)
+    )
+    formatter = file_handler.formatter
+    assert formatter is not None
+
+    record = logging.LogRecord(
+        name="test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="queued",
+        args=(),
+        exc_info=None,
+    )
+    record.created = datetime(2026, 5, 5, 21, 49, 4, tzinfo=LOG_TIME_ZONE).timestamp()
+
+    assert formatter.formatTime(record, datefmt="%Y-%m-%d %H:%M:%S") == (
+        "2026-05-05 21:49:04"
+    )
+
+
 def test_activity_log_store_writes_toronto_time(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Activity log timestamps should match the Toronto-local browser clock."""
+    """Activity log timestamps should use the shared Toronto operator timezone."""
     activity_log_file = tmp_path / "activity.log"
     seen_timezones: list[ZoneInfo | None] = []
 

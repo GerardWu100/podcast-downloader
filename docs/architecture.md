@@ -106,7 +106,7 @@ The lock and file-mutation rules are owned by `src/state/` stores:
 
 `src/url_utils.py` and `src/activity_log.py` still expose the older function names, but those functions now delegate to the stores. That keeps existing callers stable while making the state boundary explicit.
 
-Activity-log timestamps are written in `America/Toronto` time so the browser feed matches the operator's local clock even when the container's default timezone is UTC.
+`activity.log` and `download.log` timestamps both use `America/Toronto` through a shared `LOG_TIME_ZONE` setting. Docker Compose also sets `TZ=America/Toronto` so other process timestamps stay aligned.
 
 Expanded channel and playlist downloads also hold the archive lock across the duplicate check, the download attempt, and the success append. That long lock is intentional. It means a second scheduler process will wait instead of downloading the same expanded video while the first process is still working. The URL is appended only after a successful download, so a failed attempt remains retryable.
 

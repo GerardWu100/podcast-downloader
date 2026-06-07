@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ..activity_log import activity_log_file_for, write_activity_event
+from ..log_timezone import LOG_TIME_ZONE
 from ..config import DEFAULT_CHANNEL_VIDEO_COUNT
 from ..url_utils import (
     expand_channel_or_playlist,
@@ -454,7 +455,21 @@ class PodcastDownloadService:
 
     def _setup_logging(self) -> None:
         """Send logs to both the detailed file log and the terminal."""
-        file_formatter = logging.Formatter(
+
+        class TorontoLogFormatter(logging.Formatter):
+            """Format ``download.log`` timestamps in the shared operator timezone."""
+
+            def formatTime(
+                self,
+                record: logging.LogRecord,
+                datefmt: str | None = None,
+            ) -> str:
+                log_time = datetime.fromtimestamp(record.created, tz=LOG_TIME_ZONE)
+                if datefmt:
+                    return log_time.strftime(datefmt)
+                return log_time.isoformat()
+
+        file_formatter = TorontoLogFormatter(
             "[%(asctime)s] %(levelname)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )

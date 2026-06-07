@@ -5,15 +5,14 @@ from __future__ import annotations
 import fcntl
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
+from ..log_timezone import LOG_TIME_ZONE
 from .file_locks import locked_text_file
 
 
 DEFAULT_ACTIVITY_LINE_COUNT = 100
 NO_ACTIVITY_MESSAGE = "No activity yet."
 NO_DOWNLOAD_LOG_MESSAGE = "No log entries yet."
-ACTIVITY_LOG_TIME_ZONE = ZoneInfo("America/Toronto")
 
 
 class ActivityLogStore:
@@ -25,7 +24,7 @@ class ActivityLogStore:
 
     def write_event(self, message: str) -> None:
         """Append one timestamped user-facing activity event."""
-        timestamp = datetime.now(ACTIVITY_LOG_TIME_ZONE).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(LOG_TIME_ZONE).strftime("%Y-%m-%d %H:%M:%S")
         with locked_text_file(
             self.activity_log_file,
             "a",
