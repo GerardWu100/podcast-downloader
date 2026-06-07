@@ -37,14 +37,15 @@ For Docker deployments, create that `.ui_password` file in the repo before you c
 
 ## Docker behavior
 
-The container bootstrap path does the following on first boot:
+The container bootstrap path does the following:
 
 1. Copies the repo `config.ini` into the mounted data directory if that file is missing.
 2. Copies an image-bundled `.ui_password` into the mounted data directory when that file exists in the repo at build time and no mounted password file exists yet.
-3. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, `.login_state.json`, and `.ui_password`.
-4. Stores a PBKDF2 hash for the default password `.ui_password` if no password file exists.
-5. Rewrites legacy `CHANGE_ME` files and other plain-text password files into hashes in place.
-6. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
+3. Copies an image-bundled `cookies.txt` into the mounted data directory when missing, and refreshes it when the bundled file differs from the mounted file.
+4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, `.login_state.json`, and `.ui_password`.
+5. Stores a PBKDF2 hash for the default password `.ui_password` if no password file exists.
+6. Rewrites legacy `CHANGE_ME` files and other plain-text password files into hashes in place.
+7. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
 
 If you already have a plain-text password in `.ui_password`, the Docker entrypoint will rewrite it as a hash automatically on the next container start.
 
@@ -52,7 +53,7 @@ If you already have a plain-text password in `.ui_password`, the Docker entrypoi
 
 For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt` in the active data directory. In Docker, that means the mounted `PODCAST_DATA_DIR` path, which is `/data` in the default Compose file.
 
-On first boot, the Docker entrypoint copies image-bundled `/app/cookies.txt` into `/data/cookies.txt` when the mounted file is missing. Put `cookies.txt` in the repo root before `docker compose build` so it is baked into the image, or copy it directly into `~/.containers/podcast-downloader/cookies.txt` yourself.
+On startup, the Docker entrypoint copies image-bundled `/app/cookies.txt` into `/data/cookies.txt` when the mounted file is missing. If `/data/cookies.txt` already exists but differs from the image-bundled file, the entrypoint refreshes `/data/cookies.txt` from the image. Put `cookies.txt` in the repo root before `docker compose build` so it is baked into the image, or copy it directly into `~/.containers/podcast-downloader/cookies.txt` yourself.
 
 You can also set `cookies_file` in `config.ini` to another mounted path.
 

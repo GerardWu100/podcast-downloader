@@ -52,10 +52,16 @@ else
     IMAGE_COOKIE_FILE=""
 fi
 
-if [ ! -f "$COOKIE_FILE" ] && [ -f "$IMAGE_COOKIE_FILE" ]; then
-    cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
-    chmod 600 "$COOKIE_FILE"
-    echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
+if [ -f "$IMAGE_COOKIE_FILE" ]; then
+    if [ ! -f "$COOKIE_FILE" ]; then
+        cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
+        chmod 600 "$COOKIE_FILE"
+        echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
+    elif ! cmp -s "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"; then
+        cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
+        chmod 600 "$COOKIE_FILE"
+        echo "[startup] Refreshed $COOKIE_FILE from image-bundled cookies.txt"
+    fi
 fi
 
 python - "$PASSWORD_FILE" <<'PY'
