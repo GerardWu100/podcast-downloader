@@ -19,7 +19,7 @@ The project is designed to run cleanly in Docker for the common Audiobookshelf w
 docker compose up --build -d
 ```
 
-On first boot, the container seeds missing runtime files, copies a repo-root `.ui_password` into the mounted data directory when present, and accepts both hashed and legacy plain-text password files. If you need browser cookies for blocked YouTube downloads, add a Netscape-format `cookies.txt` to the mounted data directory or set `cookies_file` in `config.ini`.
+On first boot, the container seeds missing runtime files, copies a repo-root `.ui_password` and `cookies.txt` into the mounted data directory when present, and accepts both hashed and legacy plain-text password files. Place a Netscape-format `cookies.txt` in the repo root before `docker compose build` so the image can seed `/data/cookies.txt` on first boot, or copy it directly into the mounted data directory later.
 
 Finished MP3 files are written to the configured download directory. Point Audiobookshelf at that folder so it can scan the completed audio library.
 

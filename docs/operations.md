@@ -52,6 +52,8 @@ If you already have a plain-text password in `.ui_password`, the Docker entrypoi
 
 For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt` in the active data directory. In Docker, that means the mounted `PODCAST_DATA_DIR` path, which is `/data` in the default Compose file.
 
+On first boot, the Docker entrypoint copies image-bundled `/app/cookies.txt` into `/data/cookies.txt` when the mounted file is missing. Put `cookies.txt` in the repo root before `docker compose build` so it is baked into the image, or copy it directly into `~/.containers/podcast-downloader/cookies.txt` yourself.
+
 You can also set `cookies_file` in `config.ini` to another mounted path.
 
 `always_use_cookies` defaults to `true`, so YouTube `yt-dlp` calls pass `--cookies <file>` on the first attempt and retry once without cookies when that attempt fails or produces no usable result. Set it to `false` to invert the order: plain first, cookies on retry. Keep the cookie file private because it contains browser authentication state.

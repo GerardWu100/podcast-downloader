@@ -93,6 +93,63 @@ def test_entrypoint_rewrites_plaintext_password_as_hash(tmp_path: Path) -> None:
     assert verify_password("custom-password", stored_value) is True
 
 
+def test_entrypoint_seeds_image_bundled_cookies_when_data_cookies_missing(
+    tmp_path: Path,
+) -> None:
+    """A repo-root cookies.txt copied into the image should seed the mounted data dir."""
+    data_dir = tmp_path / "data"
+    download_dir = tmp_path / "downloads"
+    repo_cookie_file = PROJECT_ROOT / "cookies.txt"
+    original_contents = (
+        repo_cookie_file.read_text(encoding="utf-8")
+        if repo_cookie_file.exists()
+        else None
+    )
+    bundled_cookie_text = (
+        "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tseeded\n"
+    )
+
+    try:
+        repo_cookie_file.write_text(bundled_cookie_text, encoding="utf-8")
+
+        result = _run_entrypoint(data_dir, download_dir)
+
+        assert result.returncode == 0, result.stderr
+        seeded_cookie_file = data_dir / "cookies.txt"
+        assert seeded_cookie_file.is_file()
+        assert seeded_cookie_file.read_text(encoding="utf-8") == bundled_cookie_text
+        assert oct(seeded_cookie_file.stat().st_mode & 0o777) == "0o600"
+        assert "[startup] Seeded" in result.stdout
+        assert "cookies.txt" in result.stdout
+    finally:
+        if original_contents is None:
+            repo_cookie_file.unlink(missing_ok=True)
+        else:
+            repo_cookie_file.write_text(original_contents, encoding="utf-8")
+
+
+def test_entrypoint_does_not_overwrite_existing_data_cookies(tmp_path: Path) -> None:
+    """An existing mounted cookies.txt should survive entrypoint startup."""
+    data_dir = tmp_path / "data"
+    download_dir = tmp_path / "downloads"
+    data_dir.mkdir()
+    existing_cookie_text = "# Netscape HTTP Cookie File\nexisting\n"
+    (data_dir / "cookies.txt").write_text(existing_cookie_text, encoding="utf-8")
+
+    result = _run_entrypoint(data_dir, download_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert (data_dir / "cookies.txt").read_text(
+        encoding="utf-8"
+    ) == existing_cookie_text
+    cookie_seed_lines = [
+        line
+        for line in result.stdout.splitlines()
+        if "cookies.txt" in line and "Seeded" in line
+    ]
+    assert cookie_seed_lines == []
+
+
 def test_entrypoint_prefers_image_bundled_hash_when_data_password_missing(
     tmp_path: Path,
 ) -> None:

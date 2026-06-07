@@ -40,6 +40,24 @@ if [ ! -f "$PASSWORD_FILE" ] && [ -f "$IMAGE_PASSWORD_FILE" ]; then
     echo "[startup] Seeded $PASSWORD_FILE from image-bundled .ui_password"
 fi
 
+# Seed YouTube cookies from the image when the mounted data dir has none yet.
+# The file is gitignored locally but is copied into /app during docker build when
+# present, then promoted into /data on first boot like .ui_password.
+COOKIE_FILE="$DATA_DIR/cookies.txt"
+if [ -f /app/cookies.txt ]; then
+    IMAGE_COOKIE_FILE="/app/cookies.txt"
+elif [ -f "$SCRIPT_DIR/cookies.txt" ]; then
+    IMAGE_COOKIE_FILE="$SCRIPT_DIR/cookies.txt"
+else
+    IMAGE_COOKIE_FILE=""
+fi
+
+if [ ! -f "$COOKIE_FILE" ] && [ -f "$IMAGE_COOKIE_FILE" ]; then
+    cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
+    chmod 600 "$COOKIE_FILE"
+    echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
+fi
+
 python - "$PASSWORD_FILE" <<'PY'
 from __future__ import annotations
 
