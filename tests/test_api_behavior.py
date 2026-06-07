@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import asyncio
 import time
 
 import pytest
@@ -35,6 +36,18 @@ class _FakeRequest:
         self.client = _FakeClient(client_host)
         self.cookies = cookies or {}
         self.query_params = query_params or {}
+
+
+class _FakeUploadFile:
+    """Small async upload double with the attributes the API reads."""
+
+    def __init__(self, filename: str, content: bytes) -> None:
+        self.filename = filename
+        self._content = content
+
+    async def read(self) -> bytes:
+        """Return the uploaded bytes once, like FastAPI's UploadFile."""
+        return self._content
 
 
 def test_client_ip_ignores_forwarded_header_by_default(monkeypatch) -> None:
@@ -427,6 +440,161 @@ def test_ui_hides_bypass_checkbox_when_age_gate_disabled(monkeypatch) -> None:
     assert "skip_age_check" not in body
 
     api_module.SESSIONS.pop(session_id, None)
+
+
+def test_ui_includes_authenticated_cookie_upload_form() -> None:
+    """The logged-in UI should expose a CSRF-protected cookies.txt upload form."""
+    session_id = "test-ui-cookie-upload-form"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert 'action="/upload-cookies"' in body
+    assert 'enctype="multipart/form-data"' in body
+    assert 'name="cookie_file"' in body
+    assert 'name="csrf_token"' in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_upload_cookies_overwrites_existing_cookie_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Authenticated uploads should replace cookies.txt and set private permissions."""
+    session_id = "test-upload-cookies"
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\nold\n", encoding="utf-8")
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, cookies_file=cookie_file),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    uploaded_text = (
+        "# Netscape HTTP Cookie File\r\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\r\n"
+    )
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = asyncio.run(
+        api_module.upload_cookies_form(
+            request,
+            csrf_token="csrf-token",
+            cookie_file=_FakeUploadFile("cookies.txt", uploaded_text.encode("utf-8")),
+        )
+    )
+
+    assert response.headers["location"] == "/ui?msg=cookies_updated"
+    assert cookie_file.read_text(encoding="utf-8") == uploaded_text.replace("\r\n", "\n")
+    assert oct(cookie_file.stat().st_mode & 0o777) == "0o600"
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_upload_cookies_rejects_invalid_cookie_header(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Cookie uploads should reject files that are not Netscape-format cookies."""
+    session_id = "test-upload-cookies-invalid"
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\nold\n", encoding="utf-8")
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, cookies_file=cookie_file),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = asyncio.run(
+        api_module.upload_cookies_form(
+            request,
+            csrf_token="csrf-token",
+            cookie_file=_FakeUploadFile("cookies.txt", b'{"not": "cookies"}\n'),
+        )
+    )
+
+    assert response.headers["location"] == "/ui?msg=cookies_invalid"
+    assert cookie_file.read_text(encoding="utf-8") == "# Netscape HTTP Cookie File\nold\n"
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_upload_cookies_requires_valid_csrf_token(tmp_path, monkeypatch) -> None:
+    """Cookie upload is an authenticated state change and must enforce CSRF."""
+    session_id = "test-upload-cookies-csrf"
+    cookie_file = tmp_path / "cookies.txt"
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, cookies_file=cookie_file),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    with pytest.raises(api_module.HTTPException) as exc_info:
+        asyncio.run(
+            api_module.upload_cookies_form(
+                request,
+                csrf_token="wrong-token",
+                cookie_file=_FakeUploadFile(
+                    "cookies.txt",
+                    b"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\n",
+                ),
+            )
+        )
+
+    assert exc_info.value.status_code == 403
+    assert not cookie_file.exists()
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
 
 
 def test_add_url_with_bypass_enqueues_single_immediate_video(

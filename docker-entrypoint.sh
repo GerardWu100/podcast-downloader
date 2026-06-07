@@ -40,8 +40,9 @@ if [ ! -f "$PASSWORD_FILE" ] && [ -f "$IMAGE_PASSWORD_FILE" ]; then
     echo "[startup] Seeded $PASSWORD_FILE from image-bundled .ui_password"
 fi
 
-# Compose mounts repo-root cookies.txt directly to /data/cookies.txt. The
-# image-bundled fallback below only supports manual Docker runs without that mount.
+# The mounted data directory owns runtime cookies. A repo-root cookies.txt is
+# copied into the image at build time and only seeds /data/cookies.txt when the
+# data directory does not already have a cookie file.
 COOKIE_FILE="$DATA_DIR/cookies.txt"
 if [ -f /app/cookies.txt ]; then
     IMAGE_COOKIE_FILE="/app/cookies.txt"
@@ -52,13 +53,12 @@ else
 fi
 
 if [ -f "$COOKIE_FILE" ]; then
+    chmod 600 "$COOKIE_FILE"
     echo "[startup] Using mounted cookies file: $COOKIE_FILE"
 elif [ -f "$IMAGE_COOKIE_FILE" ]; then
-    if [ ! -f "$COOKIE_FILE" ]; then
-        cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
-        chmod 600 "$COOKIE_FILE"
-        echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
-    fi
+    cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
+    chmod 600 "$COOKIE_FILE"
+    echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
 fi
 
 python - "$PASSWORD_FILE" <<'PY'

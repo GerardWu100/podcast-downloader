@@ -41,7 +41,7 @@ The container bootstrap path does the following:
 
 1. Copies the repo `config.ini` into the mounted data directory if that file is missing.
 2. Copies an image-bundled `.ui_password` into the mounted data directory when that file exists in the repo at build time and no mounted password file exists yet.
-3. Uses repo-root `cookies.txt` as `/data/cookies.txt` when running through Compose, because Compose bind-mounts that file read-only into the data directory.
+3. Uses an existing `/data/cookies.txt` when present, fixes its permissions to owner-only, and only seeds it from image-bundled repo-root `cookies.txt` when the mounted data directory has no cookie file.
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, `.login_state.json`, and `.ui_password`.
 5. Stores a PBKDF2 hash for the default password `.ui_password` if no password file exists.
 6. Rewrites legacy `CHANGE_ME` files and other plain-text password files into hashes in place.
@@ -51,9 +51,11 @@ If you already have a plain-text password in `.ui_password`, the Docker entrypoi
 
 ## YouTube cookies
 
-For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt` in the project root. The default Compose file mounts that exact project file as `/data/cookies.txt` inside the container.
+For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt`. In Docker Compose, the runtime file is `$HOME/.containers/podcast-downloader/cookies.txt` on the host and `/data/cookies.txt` inside the container.
 
-Because the cookie file is a bind mount, there is no separate Docker copy to synchronize in the normal Compose path. Replace `cookies.txt` in the project root, then restart the container. For manual Docker runs without Compose, the entrypoint still seeds `/data/cookies.txt` from image-bundled `/app/cookies.txt` when the mounted file is missing.
+The mounted data cookie is the source of truth. The entrypoint does not replace it on rebuilds or restarts; it only runs `chmod 600` on the existing file. If `/data/cookies.txt` is missing, the entrypoint seeds it from image-bundled `/app/cookies.txt` when that file exists.
+
+You can update cookies without SSH file copying by signing in to the web UI and using the YouTube cookies upload form. The upload endpoint requires the normal UI session and CSRF token, overwrites the configured cookie path, validates the Netscape header, normalizes line endings to LF, and writes permission mode `600`.
 
 You can also set `cookies_file` in `config.ini` to another mounted path.
 
@@ -65,17 +67,17 @@ You can also set `cookies_file` in `config.ini` to another mounted path.
 
 | Requirement | Detail |
 |---|---|
-| Header line | First line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File` |
+| Header line | First line must be `# Netscape HTTP Cookie File` for browser uploads; `yt-dlp` also accepts `# HTTP Cookie File` on manually managed files |
 | Line endings | LF (`\n`) on Linux/macOS; CRLF (`\r\n`) on Windows |
 | Bad-newline symptom | `HTTP Error 400: Bad Request` when running `yt-dlp --cookies cookies.txt ...` |
 
-On Linux, convert a Windows-exported file with:
+On Linux, convert a Windows-exported file manually with:
 
 ```bash
 sed -i 's/\r$//' cookies.txt
 ```
 
-Or re-export from the browser on the same machine that runs the downloader.
+The web UI upload does this line-ending conversion automatically.
 
 ## Scheduler behavior
 

@@ -9,7 +9,7 @@ The folder solves four distinct problems:
 1. Turn a mixed queue of media URLs into concrete video URLs.
 2. Download those videos as MP3 files, using SponsorBlock removal only for YouTube.
 3. Keep repeat channel polling idempotent.
-4. Provide a minimal authenticated UI for adding new queue items remotely and pruning monitored URLs from the browser.
+4. Provide a minimal authenticated UI for adding new queue items remotely, pruning monitored URLs, and replacing the YouTube cookie file from the browser.
 
 ## The Spine of the Logic
 
@@ -50,13 +50,14 @@ The folder solves four distinct problems:
 6. Authenticated users see the current monitored URLs loaded from `urls.txt` under a shared file lock.
 7. Each listed URL is rendered with a CSRF-protected remove form so the operator can stop monitoring it from the browser without opening the file manually.
 8. Authenticated users can also submit a new URL through a simple HTML form.
-9. The submitted URL is normalized and appended to the queue file through the shared URL utility layer.
-10. If the configured age gate is active, the UI also offers a `Download this video now` checkbox that writes direct YouTube video URLs into the same bypass file used by the CLI.
-11. Direct-video submissions enqueue a single-URL scheduler payload, so Docker considers only that submitted video immediately without processing unrelated queue entries.
-12. Channel and playlist submissions stay queued for the normal scheduled full-queue run.
-13. If a UI submission arrives during the Docker startup post-update delay, the scheduler handles that UI trigger before the startup full-queue run.
-14. Queue, archive, bypass, and activity-log reads and writes go through [`state/`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/state) stores so each file-backed state rule has one owner.
-15. Archive-file reads and writes now use the same locking model because the UI checks `downloaded_urls.txt` before accepting a URL.
+9. Authenticated users can upload a replacement YouTube cookie file. The endpoint requires the same session and CSRF token as queue edits, validates the Netscape header, normalizes line endings to LF, overwrites the configured cookie path, and sets permission mode `600`.
+10. The submitted URL is normalized and appended to the queue file through the shared URL utility layer.
+11. If the configured age gate is active, the UI also offers a `Download this video now` checkbox that writes direct YouTube video URLs into the same bypass file used by the CLI.
+12. Direct-video submissions enqueue a single-URL scheduler payload, so Docker considers only that submitted video immediately without processing unrelated queue entries.
+13. Channel and playlist submissions stay queued for the normal scheduled full-queue run.
+14. If a UI submission arrives during the Docker startup post-update delay, the scheduler handles that UI trigger before the startup full-queue run.
+15. Queue, archive, bypass, and activity-log reads and writes go through [`state/`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/state) stores so each file-backed state rule has one owner.
+16. Archive-file reads and writes now use the same locking model because the UI checks `downloaded_urls.txt` before accepting a URL.
 
 ## Inputs and Outputs
 
@@ -69,6 +70,7 @@ The folder solves four distinct problems:
 | Login sessions | browser UI | remembered session state | `.ui_sessions.json` |
 | UI submissions | browser form | normalized queue entries | `urls.txt` |
 | UI removals | browser form | deleted monitored queue entries | `urls.txt` |
+| Cookie uploads | browser form | Netscape cookie file with LF endings and mode `600` | configured `cookies_file` |
 | CLI/UI age-bypass requests | shell flag or browser checkbox | one-shot bypass entries | `bypass_age_check_urls.txt` |
 | Direct-video UI submissions | browser form | single-URL scheduler payloads | in-memory trigger queue |
 | Download outcomes | downloader | concise browser activity feed | `activity.log` |
@@ -141,6 +143,7 @@ The queue page includes an activity viewer implemented with browser-side JavaScr
 | `bypass_age_check_file` | `bypass_age_check_urls.txt` | Stores one-shot age-gate bypasses requested from the CLI or UI |
 | `delay_seconds` | `2.0` in code, user-overridable in config | Sleep between downloads; must be at least `0` |
 | `retention_days` | `30` | Number of days to keep YouTube channel MP3 files based on embedded download-date metadata; must be at least `1` |
+| `cookies_file` | auto-detected `cookies.txt` when present | Optional YouTube cookie file; UI upload can create or overwrite this path |
 | `trust_x_forwarded_for` | `false` in code fallback, `true` in the checked-in `config.ini` | Proxy-forwarded client IP behavior |
 
 ## Folder Tree
@@ -250,6 +253,7 @@ src/
 - 2026-04-30: Web UI direct-video additions now use a single-URL immediate run whether or not the age-bypass checkbox is checked; channel and playlist additions wait for the scheduled full-queue run.
 - 2026-04-28: Non-YouTube `http` and `https` URLs are supported as single direct media downloads; only YouTube uses channel/playlist expansion, age gating, and SponsorBlock removal.
 - 2026-06-02: Playlist expansion now uses `channel_count` as the latest-entry cap, and playlist output folders prefer readable `yt-dlp` playlist titles over opaque `list=` identifiers.
+- 2026-06-07: The authenticated web UI can now overwrite the configured YouTube cookie file after validating the Netscape header, normalizing line endings to LF, and setting mode `600`.
 - 2026-05-03: Direct Shorts skips now clean up their queue entry, date-only age checks wait until the configured hour threshold has elapsed after the upload date, `yt-dlp` `NA` timestamps fall back to upload dates, and `is_youtube_short_url()` makes the YouTube-only `/shorts/` rule explicit.
 - 2026-05-03: Metadata rewrites no longer create temporary `.mp3` files or replace final MP3 inodes, avoiding Audiobookshelf duplicate indexing during scans.
 - 2026-05-15: Completed livestream URLs in the `/live/VIDEO_ID` shape now normalize to ordinary watch URLs so direct queue cleanup treats them as the same video.

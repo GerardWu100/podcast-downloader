@@ -28,13 +28,14 @@ def test_compose_uses_separate_temporary_download_volume() -> None:
     assert "$HOME/downloads/temporary:/temporary" in compose_text
 
 
-def test_compose_mounts_project_cookies_into_data_cookie_file() -> None:
-    """Compose should make repo cookies.txt the runtime YouTube cookie file."""
+def test_compose_keeps_cookies_in_data_volume_only() -> None:
+    """Compose should let the mounted data directory own runtime cookies."""
     compose_file = PROJECT_ROOT / "docker-compose.yml"
 
     compose_text = compose_file.read_text(encoding="utf-8")
 
-    assert "./cookies.txt:/data/cookies.txt:ro" in compose_text
+    assert "$HOME/.containers/podcast-downloader:/data" in compose_text
+    assert ":/data/cookies.txt" not in compose_text
 
 
 def test_dockerfile_installs_deno_for_youtube_javascript_challenges() -> None:
@@ -184,6 +185,7 @@ def test_entrypoint_uses_existing_data_cookies_without_overwriting(
 
         assert result.returncode == 0, result.stderr
         assert mounted_cookie_file.read_text(encoding="utf-8") == mounted_cookie_text
+        assert oct(mounted_cookie_file.stat().st_mode & 0o777) == "0o600"
         assert "[startup] Using mounted cookies file" in result.stdout
     finally:
         if original_contents is None:

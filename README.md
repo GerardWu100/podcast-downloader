@@ -19,7 +19,7 @@ The project is designed to run cleanly in Docker for the common Audiobookshelf w
 docker compose up --build -d
 ```
 
-On startup, the container seeds missing runtime files, copies a repo-root `.ui_password` into the mounted data directory when present and missing, and accepts both hashed and legacy plain-text password files. Place a Netscape-format `cookies.txt` in the repo root; Compose mounts that exact file read-only as `/data/cookies.txt`, so replacing the project file and restarting the container changes the runtime cookies.
+On startup, the container seeds missing runtime files, copies a repo-root `.ui_password` into the mounted data directory when present and missing, and accepts both hashed and legacy plain-text password files. Runtime cookies live at `$HOME/.containers/podcast-downloader/cookies.txt` on the host, mounted as `/data/cookies.txt` in the container. A repo-root Netscape-format `cookies.txt` is only copied into `/data/cookies.txt` when the mounted data directory does not already have a cookie file.
 
 Finished MP3 files are written to the configured download directory. Point Audiobookshelf at that folder so it can scan the completed audio library.
 
@@ -78,7 +78,7 @@ uv run python test_sponsorblock.py
 
 Open [http://127.0.0.1:8000/login](http://127.0.0.1:8000/login) after starting the API with `uv run uvicorn src.api:app --host 127.0.0.1 --port 8000`.
 
-The UI lets you add URLs, remove monitored entries from `urls.txt`, and view recent activity or the full `download.log` tail. Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
+The UI lets you add URLs, remove monitored entries from `urls.txt`, upload a replacement YouTube `cookies.txt`, and view recent activity or the full `download.log` tail. Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
 
 ## Key Configuration
 
@@ -124,4 +124,4 @@ If you want the deeper design and operations details, start with these files:
 
 - The project is optimized for a personal Audiobookshelf-backed workflow rather than a multi-user public service.
 - The web UI is intentionally lightweight and uses local file-based state for queueing and login persistence.
-- Docker deployments seed missing files on first boot so a fresh volume can start without manual setup. Compose mounts repo-root `cookies.txt` directly to `/data/cookies.txt`.
+- Docker deployments seed missing files on first boot so a fresh volume can start without manual setup. Compose keeps runtime cookies in the mounted data directory and only uses repo-root `cookies.txt` as a missing-file seed.

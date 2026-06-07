@@ -5,7 +5,7 @@
 This repository is a small web-video-to-audio pipeline with two entry surfaces:
 
 1. A CLI batch downloader for pulling audio from URLs, channels, and playlists.
-2. A FastAPI web UI for appending new URLs into the queue file, showing the current monitored entries from `urls.txt`, and removing URLs from that list.
+2. A FastAPI web UI for appending new URLs into the queue file, showing the current monitored entries from `urls.txt`, removing URLs from that list, and replacing the YouTube cookie file after login.
 
 The root folder exists to hold the project-level entrypoints, runtime configuration, state files, and operational artifacts. The actual application logic lives in [`src/`](/Users/gwh/projects/one-time-projects/podcast-downloader/src), while [`tests/`](/Users/gwh/projects/one-time-projects/podcast-downloader/tests) holds automated regressions.
 
@@ -26,11 +26,11 @@ The root does not contain business logic beyond entrypoints and operational scri
 - [`config.ini`](/Users/gwh/projects/one-time-projects/podcast-downloader/config.ini) controls queue paths, output paths, channel polling depth, direct-video age gating, retention days, bypass-file paths, delay between downloads, and whether the UI should trust `X-Forwarded-For`.
 - [`src/config.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/config.py) loads that file and now raises `ConfigError` when numeric values cannot be parsed, are outside accepted ranges, or path settings are blank.
 - [`start.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/start.py) is the Docker-oriented process supervisor. It keeps the web UI in the main process, runs the download scheduler in a background thread, runs scheduled full-queue downloads and direct-video single-URL immediate downloads, and now fails fast during startup if `DOWNLOAD_INTERVAL_HOURS` is missing, malformed, or non-positive.
-- [`docker-entrypoint.sh`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-entrypoint.sh) seeds the mounted data directory with a default `config.ini` and missing state files on first boot, copies an image-bundled `.ui_password` into the mounted data path when present and missing, uses the mounted cookie file when one exists, migrates `.ui_password` into a hashed format, then performs a best-effort `yt-dlp` update.
+- [`docker-entrypoint.sh`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-entrypoint.sh) seeds the mounted data directory with a default `config.ini` and missing state files on first boot, copies an image-bundled `.ui_password` into the mounted data path when present and missing, uses and chmods the mounted cookie file when one exists, seeds cookies from the image only when the mounted data cookie is missing, migrates `.ui_password` into a hashed format, then performs a best-effort `yt-dlp` update.
 - [`Dockerfile`](/Users/gwh/projects/one-time-projects/podcast-downloader/Dockerfile) builds the runtime image with Python, `ffmpeg`, Deno for YouTube JavaScript challenge solving, the locked project dependencies, `yt-dlp[default]`, and the Docker entrypoint.
 - [`docker-compose.yml`](/Users/gwh/projects/one-time-projects/podcast-downloader/docker-compose.yml) defines the default container deployment with mounted data and downloads volumes plus the scheduled download interval.
 - [`urls.txt`](/Users/gwh/projects/one-time-projects/podcast-downloader/urls.txt) is the input queue users edit manually or through the web UI. The UI now renders its current contents and can remove individual monitored URLs directly from the browser.
-- `cookies.txt`, when present in the active data directory, is a private Mozilla/Netscape-format cookie file. The first line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File`, with LF line endings on Linux/macOS and CRLF on Windows.
+- `cookies.txt`, when present in the active data directory, is a private Mozilla/Netscape-format cookie file. The first line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File`; browser uploads validate the Netscape header, normalize line endings to LF, and write permission mode `600`.
 - [`downloaded_urls.txt`](/Users/gwh/projects/one-time-projects/podcast-downloader/downloaded_urls.txt) is the archive used to avoid re-downloading channel and playlist entries and to reject already-downloaded URLs in the web UI.
 - [`download.log`](/Users/gwh/projects/one-time-projects/podcast-downloader/download.log) is the main diagnostic runtime log produced by the downloader.
 - `activity.log` is the concise browser-facing activity feed written beside `download.log`.
@@ -68,7 +68,7 @@ After each download cycle, retention cleanup scans MP3 files recursively under t
 
 If `yt-dlp` reports that an expanded item is already downloaded or if it completes without changing an MP3, the download service now checks the output folder for the expected file and stamps it if the file already exists. That makes partial success recoverable instead of forcing a future run to get stuck on a stale metadata state.
 
-Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When true (default), YouTube `yt-dlp` calls pass the configured Netscape-format cookie file on the first attempt and retry once without cookies on failure. When false, the order is inverted: plain first, cookies on retry. In Docker Compose, the repo-root `cookies.txt` file is bind-mounted directly to `/data/cookies.txt`, so the project file is the runtime cookie source. The file is ignored by git because it contains browser authentication state.
+Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When true (default), YouTube `yt-dlp` calls pass the configured Netscape-format cookie file on the first attempt and retry once without cookies on failure. When false, the order is inverted: plain first, cookies on retry. In Docker Compose, `/data/cookies.txt` in the mounted data directory is the runtime cookie source. Repo-root `cookies.txt` is only an image-bundled first-boot seed when the mounted data cookie is missing, and the authenticated web UI can overwrite the configured cookie file.
 
 ### Security posture of the web UI
 
@@ -85,6 +85,7 @@ The UI uses a deliberately simple login model:
 - Login HTML responses now send no-store and anti-framing headers, and anonymous login CSRF tokens expire instead of accumulating forever.
 - Failed login attempts now return to the HTML login form with an inline error banner instead of a raw JSON body.
 - The queue page now uses a nonce-based Content Security Policy so its activity viewer can run without allowing arbitrary inline JavaScript.
+- Cookie upload is behind the authenticated UI and requires the same per-session CSRF token as other state-changing actions.
 
 That distinction is important. Trusting forwarded headers on a directly exposed app lets clients spoof their source IP and bypass the ban logic.
 
@@ -95,7 +96,7 @@ The container runtime now treats the mounted data directory as the durable sourc
 - If `/data/config.ini` does not exist, the Docker entrypoint copies the repo's checked-in `config.ini` into place.
 - If queue or state files are missing, the entrypoint creates them.
 - If mounted `.ui_password` is missing but the image contains `/app/.ui_password`, the entrypoint copies that file into the mounted data directory first. If no password file exists anywhere, or if the mounted file is blank or still contains the legacy `CHANGE_ME` value, the entrypoint writes a PBKDF2 hash for the default password `.ui_password`. Existing plain-text passwords are also rewritten as hashes in place.
-- Compose bind-mounts repo-root `cookies.txt` to `/data/cookies.txt`, so the project cookie file is the runtime cookie file. The entrypoint only copies image-bundled cookies into the mounted data directory for manual Docker runs where `/data/cookies.txt` is missing.
+- `/data/cookies.txt` in the mounted data directory is the runtime cookie file. The entrypoint never overwrites an existing mounted cookie file; it only sets mode `600`. If `/data/cookies.txt` is missing, it copies image-bundled `/app/cookies.txt` when available.
 - `yt-dlp` auto-update is enabled by default through `YT_DLP_AUTO_UPDATE=true`, but update failures are logged and do not stop the container from starting.
 - The scheduled 48-hour path upgrades only the `yt-dlp[default]` dependency group, then waits 5 minutes before starting downloads so the updated binary and YouTube challenge-solver package have settled. If a UI-triggered download arrives during that delay, the scheduler handles the UI trigger and skips that full scheduled queue pass.
 - The image includes Deno on `PATH` because current `yt-dlp` YouTube extraction needs a JavaScript runtime for external JavaScript challenges.
@@ -181,7 +182,7 @@ podcast-downloader/
 - 2026-05-16: YouTube channel expansion now uses `/videos` for bare channels and preserves explicit `/streams` URLs for livestream-only monitoring.
 - 2026-05-15: Direct YouTube downloads now try without cookies first and retry once with a configured cookie file only after the plain attempt fails.
 - 2026-06-07: Added `always_use_cookies` so YouTube cookie usage can stay fallback-only or switch to always-on across downloads, expansion, and metadata.
-- 2026-06-07: Compose now mounts repo-root `cookies.txt` directly to `/data/cookies.txt`, avoiding separate image and data cookie copies in normal deployments.
+- 2026-06-07: Runtime cookies now live only in the mounted data directory; repo-root `cookies.txt` is a missing-file seed, and the authenticated web UI can overwrite the configured cookie file safely.
 - 2026-06-07: Docker now includes Deno and installs/upgrades `yt-dlp[default]` so YouTube JavaScript challenge solving has both the runtime and matching EJS package.
 - 2026-04-30: Corrected direct-video completion behavior so one-off URLs are removed from the queue without being written to the expanded-item archive.
 - 2026-04-30: Downloaded MP3 files now expose local completion time through embedded date metadata so Audiobookshelf shows the download date.

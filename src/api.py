@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from .activity_log import (
@@ -63,10 +63,62 @@ try:
 except ConfigError as exc:
     raise SystemExit(f"[api] Startup error: {exc}") from exc
 SESSION_STATE_FILE = DATA_DIR / ".ui_sessions.json"
+COOKIE_FILE_PERMISSION_MODE = 0o600
+NETSCAPE_COOKIE_HEADER = "# Netscape HTTP Cookie File"
 
 
 def _get_urls_file() -> Path:
     return CONFIG.urls_file
+
+
+def _configured_cookie_file() -> Path:
+    """Return the writable cookie path used by yt-dlp.
+
+    ``load_config`` only records ``cookies_file`` when the file exists at app
+    startup. The browser upload is allowed to create the first runtime cookie
+    file, so it falls back to the standard data-directory location.
+    """
+    if CONFIG.cookies_file is not None:
+        return CONFIG.cookies_file
+    return DATA_DIR / "cookies.txt"
+
+
+def _normalize_uploaded_cookie_text(raw_cookie_file: bytes) -> str | None:
+    """Decode and validate an uploaded Netscape cookies.txt file.
+
+    Parameters
+    ----------
+    raw_cookie_file:
+        The exact bytes received from the browser upload field.
+
+    Returns
+    -------
+    str | None
+        The UTF-8 text with Linux ``LF`` newlines when the file starts with the
+        Netscape cookie header, otherwise ``None``.
+    """
+    try:
+        uploaded_text = raw_cookie_file.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+    # Browser uploads from Windows often contain CRLF. yt-dlp accepts LF, and
+    # normalizing here makes hashes and diffs stable across operating systems.
+    normalized_text = uploaded_text.replace("\r\n", "\n").replace("\r", "\n")
+    first_line = normalized_text.split("\n", maxsplit=1)[0].strip()
+    if first_line != NETSCAPE_COOKIE_HEADER:
+        return None
+
+    if normalized_text.endswith("\n"):
+        return normalized_text
+    return f"{normalized_text}\n"
+
+
+def _write_cookie_file(cookie_file: Path, normalized_cookie_text: str) -> None:
+    """Overwrite the configured cookie file and make it readable only by owner."""
+    cookie_file.parent.mkdir(parents=True, exist_ok=True)
+    cookie_file.write_text(normalized_cookie_text, encoding="utf-8", newline="\n")
+    cookie_file.chmod(COOKIE_FILE_PERMISSION_MODE)
 
 
 def _password_file() -> Path:
@@ -431,6 +483,10 @@ _BASE_STYLES = """
     border-radius:7px; outline:none; background:var(--input-bg); color:var(--text);
     transition:border-color .15s,box-shadow .15s,background .15s;
   }
+  input[type="file"] {
+    width:100%; padding:7px 10px; font-size:.82rem; border:1px solid var(--border);
+    border-radius:7px; outline:none; background:var(--input-bg); color:var(--text);
+  }
   input[type="text"]:focus,input[type="password"]:focus {
     border-color:var(--accent); background:var(--input-focus);
     box-shadow:0 0 0 3px rgba(37,99,235,.12);
@@ -640,6 +696,9 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
     "notfound": ("msg-warn", "That URL is no longer in the queue."),
     "invalid": ("msg-err", "Invalid URL - enter an http(s) media URL."),
     "error": ("msg-err", "Could not add URL."),
+    "cookies_updated": ("msg-ok", "Cookie file updated."),
+    "cookies_invalid": ("msg-err", "Invalid cookies.txt - upload a Netscape-format file."),
+    "cookies_error": ("msg-err", "Could not update cookies.txt."),
 }
 
 
@@ -729,6 +788,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     }}
     .input-row {{ display:flex; gap:8px; }}
     .input-row input {{ flex:1; }}
+    .file-row {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }}
     .q-list {{ list-style:none; }}
     .q-item {{ display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); }}
     .q-item:last-child {{ border-bottom:none; }}
@@ -797,6 +857,18 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
           <button type="submit" class="btn">Add</button>
         </div>
         {bypass_row_html}
+      </form>
+    </div>
+
+    <div class="card">
+      <span class="card-label">YouTube cookies</span>
+      <form method="post" action="/upload-cookies" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <div class="file-row">
+          <input id="cookie-file" name="cookie_file" type="file"
+            accept=".txt,text/plain" required />
+          <button type="submit" class="btn">Upload</button>
+        </div>
       </form>
     </div>
 
@@ -893,6 +965,34 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 """,
         headers=_security_headers(script_nonce=script_nonce),
     )
+
+
+@app.post("/upload-cookies")
+async def upload_cookies_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    cookie_file: UploadFile = File(...),
+) -> RedirectResponse:
+    """Replace the runtime yt-dlp cookies.txt file from an authenticated upload."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    if not _verify_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    raw_cookie_file = await cookie_file.read()
+    normalized_cookie_text = _normalize_uploaded_cookie_text(raw_cookie_file)
+    if normalized_cookie_text is None:
+        return RedirectResponse(url="/ui?msg=cookies_invalid", status_code=303)
+
+    try:
+        _write_cookie_file(_configured_cookie_file(), normalized_cookie_text)
+    except OSError:
+        _logger.exception("Could not update cookies file")
+        return RedirectResponse(url="/ui?msg=cookies_error", status_code=303)
+
+    return RedirectResponse(url="/ui?msg=cookies_updated", status_code=303)
 
 
 _LOG_SOURCES = frozenset({"activity", "download"})

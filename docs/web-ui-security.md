@@ -56,7 +56,7 @@ No extra password-generation step is required on the server.
 Two CSRF mechanisms are used:
 
 - The login form gets a one-time anonymous CSRF token with a 10-minute time to live.
-- The authenticated queue form gets a per-session CSRF token.
+- Authenticated state-changing forms, including queue edits, logout, and cookie upload, get a per-session CSRF token.
 
 Both checks use `secrets.compare_digest` for constant-time comparison.
 
@@ -94,4 +94,4 @@ If you expose the app directly, set it to `false`. Otherwise clients can spoof `
 - This is still a personal-use admin surface, not a full internet-facing multi-user application.
 - Sessions are persisted across restarts, but they still expire after 30 days and remain single-user in scope.
 - Password authentication is single-factor.
-- The queue UI trusts any logged-in user with full append access.
+- The queue UI trusts any logged-in user with full queue and cookie-file update access.
