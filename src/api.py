@@ -445,8 +445,13 @@ _BASE_STYLES = """
     --accent-border:#bfdbfe; --ok-bg:#f0fdf4; --ok-text:#166534;
     --ok-border:#bbf7d0; --warn-bg:#fffbeb; --warn-text:#92400e;
     --warn-border:#fde68a; --danger:#b91c1c; --danger-hov:#991b1b;
-    --danger-bg:#fef2f2; --danger-border:#fecaca; --log-bg:#0d1117;
-    --log-text:#c9d1d9; --scrollbar:#30363d;
+    --danger-bg:#fef2f2; --danger-border:#fecaca;
+    --log-bg:#1a2332; --log-border:#2d3a4d; --log-hover:rgba(255,255,255,.04);
+    --log-text:#dbe4f0; --log-time:#8b9cb3; --log-ok:#4ade80; --log-warn:#fbbf24;
+    --log-err:#f87171; --log-info:#7dd3fc; --log-dim:#8b9cb3; --log-neutral:#cbd5e1;
+    --log-ok-soft:rgba(74,222,128,.14); --log-warn-soft:rgba(251,191,36,.14);
+    --log-err-soft:rgba(248,113,113,.14); --log-info-soft:rgba(125,211,252,.14);
+    --log-dim-soft:rgba(139,156,179,.12); --scrollbar:#3d4f66;
     --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06); --r:10px;
   }
   body.theme-dark {
@@ -457,8 +462,13 @@ _BASE_STYLES = """
     --accent-border:#255783; --ok-bg:#0f2f1d; --ok-text:#86efac;
     --ok-border:#166534; --warn-bg:#30230d; --warn-text:#facc15;
     --warn-border:#854d0e; --danger:#fca5a5; --danger-hov:#fecaca;
-    --danger-bg:#2a1215; --danger-border:#7f1d1d; --log-bg:#05080c;
-    --log-text:#d6dee8; --scrollbar:#536170;
+    --danger-bg:#2a1215; --danger-border:#7f1d1d;
+    --log-bg:#0a0e14; --log-border:#1e293b; --log-hover:rgba(255,255,255,.035);
+    --log-text:#e2e8f0; --log-time:#94a3b8; --log-ok:#34d399; --log-warn:#fcd34d;
+    --log-err:#fb7185; --log-info:#93c5fd; --log-dim:#64748b; --log-neutral:#cbd5e1;
+    --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
+    --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
+    --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
     --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
   }
   @media (prefers-color-scheme:dark) {
@@ -470,8 +480,13 @@ _BASE_STYLES = """
       --accent-border:#255783; --ok-bg:#0f2f1d; --ok-text:#86efac;
       --ok-border:#166534; --warn-bg:#30230d; --warn-text:#facc15;
       --warn-border:#854d0e; --danger:#fca5a5; --danger-hov:#fecaca;
-      --danger-bg:#2a1215; --danger-border:#7f1d1d; --log-bg:#05080c;
-      --log-text:#d6dee8; --scrollbar:#536170;
+      --danger-bg:#2a1215; --danger-border:#7f1d1d;
+      --log-bg:#0a0e14; --log-border:#1e293b; --log-hover:rgba(255,255,255,.035);
+      --log-text:#e2e8f0; --log-time:#94a3b8; --log-ok:#34d399; --log-warn:#fcd34d;
+      --log-err:#fb7185; --log-info:#93c5fd; --log-dim:#64748b; --log-neutral:#cbd5e1;
+      --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
+      --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
+      --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
       --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
     }
   }
@@ -817,31 +832,72 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     }}
     .btn-remove:hover {{ background:var(--danger-bg); border-color:var(--danger-border); color:var(--danger-hov); }}
     .empty {{ font-size:.85rem; color:var(--muted); font-style:italic; }}
-    .log-bar {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }}
+    .log-bar {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; flex-wrap:wrap; }}
     .log-controls {{ display:flex; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); }}
     .log-controls label {{ display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; }}
-    .log-source {{
-      font-size:.75rem; color:var(--text); background:var(--surface);
-      border:1px solid var(--border); border-radius:6px; padding:4px 8px; cursor:pointer;
+    #log-ts {{
+      font-variant-numeric:tabular-nums; font-size:.72rem; color:var(--muted);
+      background:var(--input-bg); border:1px solid var(--border); border-radius:999px;
+      padding:2px 10px;
     }}
+    .log-source {{
+      font-size:.75rem; font-weight:600; color:var(--text); background:var(--input-bg);
+      border:1px solid var(--border); border-radius:999px; padding:5px 12px; cursor:pointer;
+      transition:border-color .15s,box-shadow .15s;
+    }}
+    .log-source:focus {{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }}
     .btn-ghost {{
-      padding:4px 11px; font-size:.75rem; font-weight:600; background:transparent;
-      color:var(--accent); border:1px solid var(--accent-border); border-radius:6px;
+      padding:5px 12px; font-size:.75rem; font-weight:600; background:transparent;
+      color:var(--accent); border:1px solid var(--accent-border); border-radius:999px;
       cursor:pointer; transition:all .15s;
     }}
     .btn-ghost:hover {{ background:var(--accent-soft); }}
     #log-box {{
-      background:var(--log-bg); color:var(--log-text);
+      background:var(--log-bg); color:var(--log-text); border:1px solid var(--log-border);
       font-family:"SF Mono","Fira Code","Consolas",monospace;
-      font-size:.71rem; line-height:1.65; border-radius:8px; padding:16px;
-      height:320px; overflow-y:auto; white-space:pre-wrap; word-break:break-word;
+      font-size:.74rem; line-height:1.45; border-radius:10px; padding:6px 0;
+      height:340px; overflow-y:auto; word-break:break-word;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
     }}
-    #log-box::-webkit-scrollbar {{ width:5px; }}
-    #log-box::-webkit-scrollbar-thumb {{ background:var(--scrollbar); border-radius:3px; }}
-    .log-ok   {{ color:#3fb950; }}
-    .log-warn {{ color:#d29922; }}
-    .log-err  {{ color:#f85149; }}
-    .log-dim  {{ color:#8b949e; }}
+    #log-box::-webkit-scrollbar {{ width:6px; }}
+    #log-box::-webkit-scrollbar-thumb {{ background:var(--scrollbar); border-radius:999px; }}
+    .log-empty {{
+      display:flex; align-items:center; justify-content:center; min-height:280px;
+      padding:24px; color:var(--log-dim); font-style:italic; text-align:center;
+    }}
+    .log-line {{
+      display:flex; align-items:flex-start; gap:10px; padding:7px 14px;
+      border-left:3px solid transparent; transition:background .12s;
+    }}
+    .log-line + .log-line {{ border-top:1px solid rgba(255,255,255,.04); }}
+    .log-line:hover {{ background:var(--log-hover); }}
+    .log-line--ok {{ border-left-color:var(--log-ok); }}
+    .log-line--warn {{ border-left-color:var(--log-warn); }}
+    .log-line--err {{ border-left-color:var(--log-err); }}
+    .log-line--info {{ border-left-color:var(--log-info); }}
+    .log-line--dim {{ border-left-color:var(--log-dim); }}
+    .log-line--neutral {{ border-left-color:rgba(255,255,255,.12); }}
+    .log-time {{
+      flex-shrink:0; min-width:64px; font-size:.68rem; color:var(--log-time);
+      font-variant-numeric:tabular-nums; padding-top:1px;
+    }}
+    .log-badge,.log-level {{
+      flex-shrink:0; min-width:42px; text-align:center;
+      font-size:.58rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+      padding:2px 6px; border-radius:999px; margin-top:1px;
+    }}
+    .log-badge--ok,.log-level--ok {{ color:var(--log-ok); background:var(--log-ok-soft); }}
+    .log-badge--warn,.log-level--warn {{ color:var(--log-warn); background:var(--log-warn-soft); }}
+    .log-badge--err,.log-level--err {{ color:var(--log-err); background:var(--log-err-soft); }}
+    .log-badge--info,.log-level--info {{ color:var(--log-info); background:var(--log-info-soft); }}
+    .log-badge--dim,.log-level--dim {{ color:var(--log-dim); background:var(--log-dim-soft); }}
+    .log-badge--neutral,.log-level--neutral {{ color:var(--log-neutral); background:var(--log-dim-soft); }}
+    .log-msg {{ flex:1; color:var(--log-text); white-space:pre-wrap; }}
+    .log-line--ok .log-msg {{ color:var(--log-ok); }}
+    .log-line--warn .log-msg {{ color:var(--log-warn); }}
+    .log-line--err .log-msg {{ color:var(--log-err); }}
+    .log-line--info .log-msg {{ color:var(--log-info); }}
+    .log-line--dim .log-msg {{ color:var(--log-dim); }}
   </style>
 </head>
 <body>
@@ -898,7 +954,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
           <button class="btn-ghost" id="refresh-logs" type="button">Refresh</button>
         </div>
       </div>
-      <div id="log-box">Loading...</div>
+      <div id="log-box"><div class="log-empty">Loading logs…</div></div>
     </div>
 
     <div class="card">
@@ -937,15 +993,108 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }}
 
-    function colorize(raw) {{
-      return raw.split('\\n').map(line => {{
-        const e = esc(line);
-        if (line.indexOf('Failed') !== -1 || line.indexOf('Error') !== -1 || line.indexOf('Timed out') !== -1) return '<span class="log-err">' + e + '</span>';
-        if (line.indexOf('Waiting') !== -1 || line.indexOf('Skipped') !== -1) return '<span class="log-warn">' + e + '</span>';
-        if (line.indexOf('Downloaded') !== -1 || line.indexOf('finished') !== -1) return '<span class="log-ok">' + e + '</span>';
-        if (line.indexOf('No activity') !== -1 || line.indexOf('No log entries') !== -1) return '<span class="log-dim">' + e + '</span>';
-        return e;
-      }}).join('\\n');
+    function classifyActivity(message) {{
+      if (/^Downloaded:/i.test(message)) return 'ok';
+      if (/^Failed:/i.test(message)) return 'err';
+      if (/^Waiting for age gate:/i.test(message)) return 'warn';
+      if (/^Skipped Short:/i.test(message)) return 'warn';
+      if (/^Run finished:/i.test(message) || /^Playlist run finished:/i.test(message)) return 'info';
+      if (/^Retention cleanup|^Deleted expired/i.test(message)) return 'dim';
+      if (/^No activity yet\\./i.test(message)) return 'empty';
+      return 'neutral';
+    }}
+
+    function classifyDownload(level, message) {{
+      const upper = level.toUpperCase();
+      if (upper === 'ERROR' || upper === 'CRITICAL') return 'err';
+      if (upper === 'WARNING') return 'warn';
+      if (upper === 'DEBUG') return 'dim';
+      if (/failed|error|timed out/i.test(message)) return 'err';
+      if (/waiting|skipped/i.test(message)) return 'warn';
+      if (/downloaded|finished|success/i.test(message)) return 'ok';
+      return 'info';
+    }}
+
+    function activityBadge(kind) {{
+      const labels = {{ ok: 'Done', err: 'Fail', warn: 'Wait', info: 'Run', dim: 'Keep', neutral: 'Log' }};
+      return labels[kind] || 'Log';
+    }}
+
+    function renderLogLine(kind, timeLabel, badge, message, fullTimestamp) {{
+      const safeTime = esc(timeLabel);
+      const safeBadge = esc(badge);
+      const safeMessage = esc(message);
+      const safeTitle = fullTimestamp ? ' title="' + esc(fullTimestamp) + '"' : '';
+      return (
+        '<div class="log-line log-line--' + kind + '"' + safeTitle + '>' +
+          '<span class="log-time">' + safeTime + '</span>' +
+          '<span class="log-badge log-badge--' + kind + '">' + safeBadge + '</span>' +
+          '<span class="log-msg">' + safeMessage + '</span>' +
+        '</div>'
+      );
+    }}
+
+    function renderDownloadLine(kind, timeLabel, level, message, fullTimestamp) {{
+      const safeTime = esc(timeLabel);
+      const safeLevel = esc(level);
+      const safeMessage = esc(message);
+      const safeTitle = fullTimestamp ? ' title="' + esc(fullTimestamp) + '"' : '';
+      return (
+        '<div class="log-line log-line--' + kind + '"' + safeTitle + '>' +
+          '<span class="log-time">' + safeTime + '</span>' +
+          '<span class="log-level log-level--' + kind + '">' + safeLevel + '</span>' +
+          '<span class="log-msg">' + safeMessage + '</span>' +
+        '</div>'
+      );
+    }}
+
+    function renderLogLines(raw, source) {{
+      const lines = raw.split('\\n');
+      if (!lines.length || (lines.length === 1 && !lines[0].trim())) {{
+        return '<div class="log-empty">No entries yet.</div>';
+      }}
+
+      const rendered = lines.map(line => {{
+        if (!line.trim()) return '';
+
+        if (source === 'download') {{
+          if (/^No log entries yet\\./i.test(line)) {{
+            return '<div class="log-empty">' + esc(line) + '</div>';
+          }}
+
+          const downloadMatch = line.match(/^\\[([^\\]]+)\\]\\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL):\\s*(.*)$/);
+          if (downloadMatch) {{
+            const timestamp = downloadMatch[1];
+            const level = downloadMatch[2];
+            const message = downloadMatch[3];
+            const kind = classifyDownload(level, message);
+            const timeLabel = timestamp.includes(' ') ? timestamp.split(' ')[1] : timestamp;
+            return renderDownloadLine(kind, timeLabel, level, message, timestamp);
+          }}
+        }} else {{
+          if (/^No activity yet\\./i.test(line)) {{
+            return '<div class="log-empty">' + esc(line) + '</div>';
+          }}
+
+          const activityMatch = line.match(/^\\[([^\\]]+)\\]\\s*(.*)$/);
+          if (activityMatch) {{
+            const timestamp = activityMatch[1];
+            const message = activityMatch[2];
+            const kind = classifyActivity(message);
+            const timeLabel = timestamp.includes(' ') ? timestamp.split(' ')[1] : timestamp;
+            return renderLogLine(kind, timeLabel, activityBadge(kind), message, timestamp);
+          }}
+        }}
+
+        const fallbackKind =
+          /Failed|Error|Timed out/i.test(line) ? 'err' :
+          /Waiting|Skipped/i.test(line) ? 'warn' :
+          /Downloaded|finished/i.test(line) ? 'ok' :
+          'neutral';
+        return renderLogLine(fallbackKind, '—', activityBadge(fallbackKind), line, '');
+      }}).filter(Boolean);
+
+      return rendered.join('') || '<div class="log-empty">No entries yet.</div>';
     }}
 
     const logSourceSelect = document.getElementById('log-source');
@@ -958,7 +1107,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         const text = await r.text();
         const box = document.getElementById('log-box');
         const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-        box.innerHTML = colorize(text);
+        box.innerHTML = renderLogLines(text, source);
         if (atBottom) box.scrollTop = box.scrollHeight;
         document.getElementById('log-ts').textContent = new Date().toLocaleTimeString();
       }} catch (_) {{}}
