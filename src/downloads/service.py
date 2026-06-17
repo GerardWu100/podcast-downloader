@@ -23,6 +23,7 @@ from ..url_utils import (
     get_youtube_playlist_folder_name,
     is_channel_or_playlist,
     is_old_enough,
+    is_youtube_playlist,
     is_youtube_short_url,
     is_youtube_url,
     load_bypass_age_urls,
@@ -1150,6 +1151,65 @@ class PodcastDownloadService:
                 time.sleep(self.delay_seconds)
 
         self._record_activity(f"Run finished: {successful} successful, {failed} failed")
+        self._run_retention_cleanup(retention_dirs)
+        return successful, failed
+
+    def download_full_playlist_now(self, playlist_url: str) -> tuple[int, int]:
+        """Expand and download every video in one YouTube playlist immediately.
+
+        Returns
+        -------
+        tuple[int, int]
+            ``(successful, failed)`` counts matching ``download_all()``.
+        """
+        normalized_url = normalize_youtube_url(playlist_url.strip())
+        if not is_youtube_playlist(normalized_url):
+            self.logger.info(
+                "Full-playlist immediate downloads require a playlist URL: %s",
+                normalized_url,
+            )
+            return 0, 0
+
+        current_queue_urls = read_urls_file(self.urls_file, self.logger)
+        retention_dirs = self._retention_channel_output_dirs(current_queue_urls)
+        self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        self.intermediate_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = self._download_output_dir_for_source(normalized_url)
+        video_urls = expand_channel_or_playlist(
+            normalized_url,
+            self.channel_count,
+            self.min_channel_video_age_hours,
+            self.logger,
+            self.cookies_file,
+            self.always_use_cookies,
+            full_playlist=True,
+        )
+        if not video_urls:
+            self._run_retention_cleanup(retention_dirs)
+            return 0, 0
+
+        total = len(video_urls)
+        successful = 0
+        failed = 0
+        for index, video_url in enumerate(video_urls, 1):
+            _, success = self._download_video(
+                video_url,
+                index=index,
+                total=total,
+                use_archive=True,
+                final_output_dir=output_dir,
+            )
+            if success:
+                successful += 1
+            else:
+                failed += 1
+
+            if index < total and self.delay_seconds > 0:
+                time.sleep(self.delay_seconds)
+
+        self._record_activity(
+            f"Playlist run finished: {successful} successful, {failed} failed"
+        )
         self._run_retention_cleanup(retention_dirs)
         return successful, failed
 

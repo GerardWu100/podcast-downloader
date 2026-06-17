@@ -298,6 +298,46 @@ def test_playlist_expansion_limits_ytdlp_fetch_to_channel_count(monkeypatch) -> 
     assert captured_command[captured_command.index("--playlist-end") + 1] == "2"
 
 
+def test_playlist_expansion_can_fetch_every_entry_when_full_playlist_enabled(
+    monkeypatch,
+) -> None:
+    """Full playlist expansion should omit the playlist-end cap."""
+    playlist_url = "https://www.youtube.com/playlist?list=PL123"
+    captured_command: list[str] = []
+
+    def fake_run(
+        command: list[str],
+        *args,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        captured_command.extend(command)
+        stdout = "\n".join(
+            [
+                "https://www.youtube.com/watch?v=video001\tNA\t20260501",
+                "https://www.youtube.com/watch?v=video002\tNA\t20260430",
+                "https://www.youtube.com/watch?v=video003\tNA\t20260429",
+            ]
+        )
+        return subprocess.CompletedProcess(command, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
+
+    video_urls = expand_channel_or_playlist(
+        playlist_url,
+        channel_count=2,
+        min_channel_video_age_hours=24,
+        logger=logging.getLogger("test"),
+        full_playlist=True,
+    )
+
+    assert video_urls == [
+        "https://www.youtube.com/watch?v=video001",
+        "https://www.youtube.com/watch?v=video002",
+        "https://www.youtube.com/watch?v=video003",
+    ]
+    assert "--playlist-end" not in captured_command
+
+
 def test_playlist_title_lookup_fetches_only_one_metadata_entry(monkeypatch) -> None:
     """Playlist folder naming should not enumerate a full large playlist."""
     playlist_url = "https://www.youtube.com/playlist?list=PL123"

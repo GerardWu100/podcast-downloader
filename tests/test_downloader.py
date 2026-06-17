@@ -1963,6 +1963,71 @@ def test_single_queue_url_bypass_downloads_too_new_youtube_video(
     assert (successful, failed) == (1, 0)
 
 
+def test_download_full_playlist_now_downloads_every_expanded_video(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Immediate playlist runs should download every expanded entry with archive use."""
+    playlist_url = "https://www.youtube.com/playlist?list=playlist-name1"
+    playlist_video_urls = [
+        "https://www.youtube.com/watch?v=playlist001",
+        "https://www.youtube.com/watch?v=playlist002",
+    ]
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{playlist_url}\n", encoding="utf-8")
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+    archive_file = tmp_path / "downloaded_urls.txt"
+
+    downloader = PodcastDownloader(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=archive_file,
+    )
+
+    def fake_expand(
+        url: str,
+        *args,
+        **kwargs,
+    ) -> list[str]:
+        assert kwargs.get("full_playlist") is True
+        if url == playlist_url:
+            return playlist_video_urls
+        raise AssertionError(f"unexpected expandable URL: {url}")
+
+    downloaded_urls: list[str] = []
+
+    def fake_run(
+        command: list[str],
+        *args,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        if command[0] == "yt-dlp":
+            output_template = Path(command[command.index("--output") + 1])
+            output_template.parent.mkdir(parents=True, exist_ok=True)
+            output_mp3 = (
+                output_template.parent / f"creator - {len(downloaded_urls) + 1}.mp3"
+            )
+            output_mp3.write_text("audio", encoding="utf-8")
+            downloaded_urls.append(command[-1])
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        write_fake_ffmpeg_output(command, "audio with date tag")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        downloads_service_module, "expand_channel_or_playlist", fake_expand
+    )
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+
+    successful, failed = downloader.download_full_playlist_now(playlist_url)
+
+    assert (successful, failed) == (2, 0)
+    assert downloaded_urls == playlist_video_urls
+    assert archive_file.read_text(encoding="utf-8").splitlines() == playlist_video_urls
+
+
 def test_download_all_routes_mp3s_to_source_folders_without_moving_queue(
     tmp_path,
     monkeypatch,

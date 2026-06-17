@@ -20,6 +20,7 @@ YTDLP_MISSING_VALUE_PLACEHOLDERS = {"", "NA", "N/A", "None", "none", "null"}
 YOUTUBE_CHANNEL_CONTENT_TABS = {"streams", "videos"}
 YOUTUBE_CHANNEL_ID_PATTERN = re.compile(r"^UC[\w-]{20,}$")
 YTDLP_METADATA_TIMEOUT_SECONDS = 30
+FULL_PLAYLIST_EXPANSION_TIMEOUT_SECONDS = 300
 
 
 def _normalized_hostname(url: str) -> str:
@@ -92,6 +93,14 @@ def normalize_youtube_url(url: str) -> str:
             return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
 
     return url
+
+
+def is_youtube_playlist(url: str) -> bool:
+    """Return ``True`` for dedicated YouTube playlist URLs."""
+    if not is_youtube_url(url):
+        return False
+
+    return "/playlist?" in url.rstrip("/")
 
 
 def is_channel_or_playlist(url: str) -> bool:
@@ -536,13 +545,16 @@ def _build_expansion_command(
     url_clean: str,
     channel_count: int,
     cookies_file: Path | None,
+    *,
+    full_playlist: bool = False,
 ) -> list[str]:
     """Build the ``yt-dlp`` metadata command for a channel or playlist.
 
     Channels fetch extra entries because Shorts and fresh uploads can be
     filtered out before the service reaches the requested ``channel_count``.
     Playlists use the configured count directly because playlist order is the
-    intended source order.
+    intended source order. When ``full_playlist`` is ``True`` for a playlist
+    source, the command omits ``--playlist-end`` so every entry is listed.
     """
     is_channel = _is_channel_url(url_clean)
     expansion_url = _channel_tab_expansion_url(url_clean) if is_channel else url_clean
@@ -561,7 +573,8 @@ def _build_expansion_command(
     if cookies_file:
         command.extend(["--cookies", str(cookies_file)])
 
-    command.extend(["--playlist-end", str(fetch_count)])
+    if not (full_playlist and not is_channel):
+        command.extend(["--playlist-end", str(fetch_count)])
 
     command.extend(["--", expansion_url])
     return command
@@ -639,14 +652,26 @@ def _expand_channel_or_playlist_once(
     min_channel_video_age_hours: int,
     logger: logging.Logger,
     cookies_for_attempt: Path | None,
+    *,
+    full_playlist: bool = False,
 ) -> list[str] | None:
     """Run one channel/playlist expansion attempt and return video URLs on success."""
-    command = _build_expansion_command(url_clean, channel_count, cookies_for_attempt)
+    command = _build_expansion_command(
+        url_clean,
+        channel_count,
+        cookies_for_attempt,
+        full_playlist=full_playlist,
+    )
+    expansion_timeout_seconds = (
+        FULL_PLAYLIST_EXPANSION_TIMEOUT_SECONDS
+        if full_playlist and not _is_channel_url(url_clean)
+        else YTDLP_METADATA_TIMEOUT_SECONDS
+    )
     result = subprocess.run(
         command,
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=expansion_timeout_seconds,
         check=False,
     )
 
@@ -668,8 +693,8 @@ def _expand_channel_or_playlist_once(
     # Playlists preserve the flat playlist order and skip only metadata columns
     # that were printed to support channel age filtering. Slice defensively in
     # case an extractor ignores ``--playlist-end``.
-    capped_entries = all_entries[:channel_count]
-    video_urls = [_split_expanded_entry(entry)[0] for entry in capped_entries]
+    playlist_entries = all_entries if full_playlist else all_entries[:channel_count]
+    video_urls = [_split_expanded_entry(entry)[0] for entry in playlist_entries]
     logger.info("Found %s videos", len(video_urls))
     return video_urls
 
@@ -681,6 +706,8 @@ def expand_channel_or_playlist(
     logger: logging.Logger,
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
+    *,
+    full_playlist: bool = False,
 ) -> list[str]:
     """Expand a channel or playlist into individual video URLs."""
     url_clean = url.rstrip("/")
@@ -698,6 +725,7 @@ def expand_channel_or_playlist(
             min_channel_video_age_hours,
             logger,
             first_attempt_cookies,
+            full_playlist=full_playlist,
         )
         if video_urls is not None:
             return video_urls
@@ -730,6 +758,7 @@ def expand_channel_or_playlist(
                 min_channel_video_age_hours,
                 logger,
                 retry_cookies,
+                full_playlist=full_playlist,
             )
             if retry_video_urls is not None:
                 return retry_video_urls

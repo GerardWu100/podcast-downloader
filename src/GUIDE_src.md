@@ -52,9 +52,10 @@ The folder solves four distinct problems:
 8. Authenticated users can also submit a new URL through a simple HTML form.
 9. Authenticated users can upload a replacement YouTube cookie file. The endpoint requires the same session and CSRF token as queue edits, validates the Netscape header, normalizes line endings to LF, overwrites the configured cookie path, and sets permission mode `600`.
 10. The submitted URL is normalized and appended to the queue file through the shared URL utility layer.
-11. If the configured age gate is active, the UI also offers a `Download this video now` checkbox that writes direct YouTube video URLs into the same bypass file used by the CLI.
+11. The UI offers a `Download now` checkbox. For direct YouTube videos it writes a one-shot age-gate bypass into the same file used by the CLI. For playlist URLs it queues an immediate full-playlist download instead of waiting for the scheduled `channel_count`-limited run.
 12. Direct-video submissions enqueue a single-URL scheduler payload, so Docker considers only that submitted video immediately without processing unrelated queue entries.
-13. Channel and playlist submissions stay queued for the normal scheduled full-queue run.
+13. Checked playlist submissions enqueue a full-playlist scheduler payload, so Docker expands and downloads every playlist entry immediately.
+14. Unchecked channel and playlist submissions stay queued for the normal scheduled full-queue run.
 14. If a UI submission arrives during the Docker startup post-update delay, the scheduler handles that UI trigger before the startup full-queue run.
 15. Queue, archive, bypass, and activity-log reads and writes go through [`state/`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/state) stores so each file-backed state rule has one owner.
 16. Archive-file reads and writes now use the same locking model because the UI checks `downloaded_urls.txt` before accepting a URL.
@@ -73,6 +74,7 @@ The folder solves four distinct problems:
 | Cookie uploads | browser form | Netscape cookie file with LF endings and mode `600` | configured `cookies_file` |
 | CLI/UI age-bypass requests | shell flag or browser checkbox | one-shot bypass entries | `bypass_age_check_urls.txt` |
 | Direct-video UI submissions | browser form | single-URL scheduler payloads | in-memory trigger queue |
+| Checked playlist UI submissions | browser form | full-playlist scheduler payloads | in-memory trigger queue |
 | Download outcomes | downloader | concise browser activity feed | `activity.log` |
 
 ## Key Design Decisions
@@ -87,7 +89,7 @@ SponsorBlock coverage can lag shortly after a video is published. The minimum-ag
 
 The same reasoning applies to direct YouTube video URLs. If the user pastes a newly published YouTube single-video link, the default behavior is to wait until the configured age threshold has passed. The bypass file exists so this policy can be overridden intentionally for a specific URL instead of disabled globally. Non-YouTube direct URLs skip this policy because SponsorBlock does not apply to them.
 
-For the web UI, the immediate path is intentionally narrow. Every direct-video submission queues that exact normalized URL for a single immediate scheduler run. The checkbox only adds a one-shot YouTube age-gate bypass; it does not decide whether the URL uses the single-item path. Channel and playlist submissions do not wake a full-queue immediate run, because an immediate UI click should not accidentally expand old monitored channels or other queued lists.
+For the web UI, the immediate path is intentionally narrow. Every direct-video submission queues that exact normalized URL for a single immediate scheduler run. The checkbox adds a one-shot YouTube age-gate bypass for direct videos, and for playlist URLs it queues an immediate full-playlist run that downloads every entry instead of the configured `channel_count` cap. Channel URLs ignore the checkbox and always wait for the scheduled run. Unchecked channel and playlist submissions do not wake an immediate run, because an immediate UI click should not accidentally expand old monitored channels or other queued lists.
 
 Direct-video success removes the URL from `urls.txt` but does not write it to `downloaded_urls.txt`. The archive is reserved for expanded channel and playlist entries, where future scheduled scans need a memory of concrete videos that have already been handled. For expanded entries, the downloader holds the archive lock across duplicate detection, the download attempt, and the success append. That serializes competing downloader processes for the same archive file and avoids duplicate work without marking failed attempts as completed.
 
@@ -247,6 +249,7 @@ src/
 
 ## Journal
 
+- 2026-06-17: The UI checkbox now queues immediate full-playlist downloads when a playlist URL is submitted, and the label was shortened to `Download now (skip age wait or full playlist)`.
 - 2026-05-16: YouTube channel expansion now respects `/videos` versus `/streams`, and bare channel URLs default to `/videos`.
 - 2026-04-30: Direct one-off video downloads now remove queue entries without adding them to the expanded-item archive, and bypass-file writes are limited to YouTube age-gate overrides.
 - 2026-04-30: MP3 outputs now write local completion time into embedded date metadata so Audiobookshelf shows the download date.

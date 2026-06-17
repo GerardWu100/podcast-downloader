@@ -15,6 +15,7 @@ import threading
 download_trigger: threading.Event = threading.Event()
 _single_url_lock = threading.Lock()
 _single_url_download_requests: list[str] = []
+_full_playlist_download_requests: list[str] = []
 _batch_download_requested = False
 
 
@@ -32,6 +33,30 @@ def queue_single_url_download(url: str) -> None:
         _single_url_download_requests.append(url)
         _batch_download_requested = False
     download_trigger.set()
+
+
+def queue_full_playlist_download(url: str) -> None:
+    """Queue one playlist URL for an immediate full-playlist scheduler run.
+
+    Parameters
+    ----------
+    url:
+        YouTube playlist URL whose entire contents should be expanded and
+        downloaded immediately instead of waiting for the scheduled run.
+    """
+    global _batch_download_requested
+    with _single_url_lock:
+        _full_playlist_download_requests.append(url)
+        _batch_download_requested = False
+    download_trigger.set()
+
+
+def pop_full_playlist_download_requests() -> list[str]:
+    """Return and clear pending full-playlist download requests."""
+    with _single_url_lock:
+        pending_requests = list(_full_playlist_download_requests)
+        _full_playlist_download_requests.clear()
+    return pending_requests
 
 
 def queue_batch_download() -> None:

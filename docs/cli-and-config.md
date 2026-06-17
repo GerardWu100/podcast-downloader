@@ -34,7 +34,9 @@ uv run python main.py --add-url-stdin < new_urls.txt
 
 Use `--skip-age-check` with `--add-url` or `--add-url-stdin` when you want a direct YouTube video URL to bypass the configured minimum-age gate on the next downloader run. Non-YouTube direct URLs do not use SponsorBlock, so they do not need the age gate.
 
-The Docker web UI uses the same bypass idea, but every direct video URL uses the single-item immediate path. When you add a direct URL, the scheduler runs `python -m src.cli --download-single-url "<url>"` from the project root so only that new video is considered immediately. Checking the box adds the URL to the bypass file first, which lets a direct YouTube video skip the configured minimum-age gate for that one attempt.
+The Docker web UI uses the same bypass idea for direct videos. When you add a direct URL, the scheduler runs `python -m src.cli --download-single-url "<url>"` from the project root so only that new video is considered immediately. Checking the box adds the URL to the bypass file first, which lets a direct YouTube video skip the configured minimum-age gate for that one attempt.
+
+For playlist URLs, checking the box queues `python -m src.cli --download-full-playlist "<url>"`, which expands and downloads every playlist entry immediately instead of waiting for the scheduled `channel_count`-limited run.
 
 Override the queue file, output folder, or channel depth:
 

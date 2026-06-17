@@ -22,12 +22,18 @@ from .activity_log import (
 )
 from .config import ConfigError, load_config
 from .passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
-from .trigger import pop_single_url_download_requests, queue_single_url_download
+from .trigger import (
+    pop_full_playlist_download_requests,
+    pop_single_url_download_requests,
+    queue_full_playlist_download,
+    queue_single_url_download,
+)
 from .url_utils import (
     add_to_bypass_age_file,
     append_urls,
     is_channel_or_playlist,
     is_supported_media_url,
+    is_youtube_playlist,
     is_youtube_url,
     load_queue_urls,
     load_downloaded_url_archive,
@@ -38,7 +44,11 @@ from .url_utils import (
 _logger = logging.getLogger("api")
 
 # Tests and older callers reset pending trigger state through this module.
-__all__ = ["app", "pop_single_url_download_requests"]
+__all__ = [
+    "app",
+    "pop_full_playlist_download_requests",
+    "pop_single_url_download_requests",
+]
 
 app = FastAPI(
     title="Podcast URL Ingest", docs_url=None, redoc_url=None, openapi_url=None
@@ -726,9 +736,11 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     bypass_row_html = ""
     if CONFIG.min_channel_video_age_hours > 0:
         bypass_label = html.escape(
-            f"Download this video now and skip the {CONFIG.min_channel_video_age_hours}h age check"
+            "Download now (skip age wait or full playlist)"
         )
-        bypass_row_html = f"""
+    else:
+        bypass_label = html.escape("Download now (full playlist)")
+    bypass_row_html = f"""
         <div class="bypass-row">
           <label>
             <input type="checkbox" name="skip_age_check" value="1" />
@@ -1066,11 +1078,13 @@ def add_url_form(
 
     # Direct-video additions wake the scheduler with the exact new URL, so an
     # immediate UI run cannot expand channels or process older urls.txt entries.
-    # The checkbox only controls the YouTube age gate; it no longer controls
-    # whether a direct URL gets an immediate single-item attempt.
+    # Checked playlist additions wake a full-playlist immediate run. Channel URLs
+    # ignore the checkbox and stay queued for the scheduled channel_count run.
     skip_age_check_value = skip_age_check if isinstance(skip_age_check, str) else ""
     is_direct_video = not is_channel_or_playlist(normalized)
-    if is_direct_video:
+    if skip_age_check_value and is_youtube_playlist(normalized):
+        queue_full_playlist_download(normalized)
+    elif is_direct_video:
         # The bypass file only affects YouTube's minimum-age policy. Non-YouTube
         # direct videos are immediate already, so writing them there is noise.
         if skip_age_check_value and is_youtube_url(normalized):

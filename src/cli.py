@@ -122,6 +122,15 @@ Examples:
         ),
     )
 
+    parser.add_argument(
+        "--download-full-playlist",
+        default="",
+        help=(
+            "Expand and download every video in one YouTube playlist URL "
+            "immediately instead of using the configured channel_count cap."
+        ),
+    )
+
     return parser
 
 
@@ -156,9 +165,23 @@ def main() -> int:
         return 0
 
     single_url = args.download_single_url.strip()
+    full_playlist_url = args.download_full_playlist.strip()
+    if single_url and full_playlist_url:
+        print(
+            f"{Colors.RED}Error: use only one of --download-single-url or "
+            f"--download-full-playlist{Colors.NC}"
+        )
+        return 1
+
     if single_url and not is_supported_media_url(single_url):
         print(
             f"{Colors.RED}Error: --download-single-url must be a web media URL{Colors.NC}"
+        )
+        return 1
+
+    if full_playlist_url and not is_supported_media_url(full_playlist_url):
+        print(
+            f"{Colors.RED}Error: --download-full-playlist must be a web media URL{Colors.NC}"
         )
         return 1
 
@@ -193,6 +216,8 @@ def main() -> int:
 
     if single_url:
         successful, failed = downloader.download_single_queue_url(single_url)
+    elif full_playlist_url:
+        successful, failed = downloader.download_full_playlist_now(full_playlist_url)
     else:
         successful, failed = downloader.download_all()
 

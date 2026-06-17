@@ -90,7 +90,8 @@ The web UI upload does this line-ending conversion automatically.
 - If the package update fails, the scheduler logs the warning, reports the current `yt-dlp` version, and skips the post-update wait.
 - A direct video URL added through the web UI triggers an immediate single-URL run for only that submitted URL.
 - Direct non-YouTube URLs are always attempted in that immediate single-URL run because they do not use the YouTube age gate.
-- Direct YouTube URLs are attempted immediately only when they pass the configured minimum-age gate, unless the `Download this video now` checkbox is checked.
+- Direct YouTube URLs are attempted immediately only when they pass the configured minimum-age gate, unless the `Download now` checkbox is checked.
+- Checked playlist URLs trigger an immediate full-playlist run that downloads every entry instead of the configured `channel_count` cap.
 - Channel and playlist additions stay queued for the normal scheduled full-queue run. Each run expands only the latest configured `channel_count` entries from each monitored playlist or channel source.
 - Single-URL immediate runs do not inspect the rest of `urls.txt`, so they do not expand older channel or playlist entries.
 - After an immediate run, the scheduler waits a full interval again before the next scheduled run.

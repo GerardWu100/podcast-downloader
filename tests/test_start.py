@@ -9,8 +9,10 @@ import pytest
 import start
 import src.config as config_module
 from src.trigger import pop_batch_download_request
+from src.trigger import pop_full_playlist_download_requests
 from src.trigger import pop_single_url_download_requests
 from src.trigger import queue_batch_download
+from src.trigger import queue_full_playlist_download
 from src.trigger import queue_single_url_download
 
 
@@ -34,6 +36,36 @@ def test_run_immediate_downloads_processes_single_url_requests(monkeypatch) -> N
                 "src.cli",
                 "--download-single-url",
                 "https://www.youtube.com/watch?v=abc123",
+            ],
+            str(start.PROJECT_ROOT),
+        )
+    ]
+
+
+def test_run_immediate_downloads_processes_full_playlist_requests(monkeypatch) -> None:
+    """Playlist payloads should run the full-playlist CLI path."""
+    calls: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command: list[str], check: bool, cwd: str | None = None) -> None:
+        calls.append((command, cwd))
+
+    monkeypatch.setattr(start.subprocess, "run", fake_run)
+    monkeypatch.setattr(start.sys, "executable", "/python")
+
+    playlist_url = "https://www.youtube.com/playlist?list=PL123"
+    start._run_immediate_downloads(
+        [],
+        [playlist_url],
+    )
+
+    assert calls == [
+        (
+            [
+                "/python",
+                "-m",
+                "src.cli",
+                "--download-full-playlist",
+                playlist_url,
             ],
             str(start.PROJECT_ROOT),
         )
@@ -99,6 +131,7 @@ def test_post_update_delay_runs_pending_single_url_instead_of_waiting(
 
     def fake_run_immediate_downloads(
         single_url_requests: list[str],
+        full_playlist_requests: list[str] | None = None,
         batch_requested: bool = False,
     ) -> None:
         handled.append((single_url_requests, batch_requested))
@@ -120,6 +153,7 @@ def test_post_update_delay_runs_pending_batch_trigger(monkeypatch) -> None:
 
     def fake_run_immediate_downloads(
         single_url_requests: list[str],
+        full_playlist_requests: list[str] | None = None,
         batch_requested: bool = False,
     ) -> None:
         handled.append((single_url_requests, batch_requested))

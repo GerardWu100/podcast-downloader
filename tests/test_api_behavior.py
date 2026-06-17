@@ -11,7 +11,7 @@ import pytest
 import src.api as api_module
 import src.config as config_module
 from src.passwords import DEFAULT_UI_PASSWORD, hash_password
-from src.trigger import pop_batch_download_request, queue_batch_download
+from src.trigger import pop_batch_download_request, pop_full_playlist_download_requests, queue_batch_download
 
 
 class _FakeClient:
@@ -388,8 +388,8 @@ def test_ui_uses_nonce_based_script_instead_of_inline_handlers() -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
-def test_ui_bypass_label_uses_configured_age_threshold(monkeypatch) -> None:
-    """The checkbox label should explain the immediate download behavior."""
+def test_ui_bypass_label_uses_shorter_immediate_download_text(monkeypatch) -> None:
+    """The checkbox label should explain immediate video and playlist behavior."""
     session_id = "test-ui-bypass-label"
     api_module.SESSIONS[session_id] = {
         "ip": "127.0.0.1",
@@ -409,15 +409,14 @@ def test_ui_bypass_label_uses_configured_age_threshold(monkeypatch) -> None:
     response = api_module.ui(request)
     body = response.body.decode("utf-8")
 
-    assert "Download this video now" in body
-    assert "skip the 12h age check" in body
-    assert "skip the 24h age check" not in body
+    assert "Download now (skip age wait or full playlist)" in body
+    assert "Download this video now" not in body
 
     api_module.SESSIONS.pop(session_id, None)
 
 
-def test_ui_hides_bypass_checkbox_when_age_gate_disabled(monkeypatch) -> None:
-    """The bypass control should disappear when there is no age gate to bypass."""
+def test_ui_shows_playlist_checkbox_when_age_gate_disabled(monkeypatch) -> None:
+    """The immediate-download control should stay visible for full-playlist adds."""
     session_id = "test-ui-no-bypass"
     api_module.SESSIONS[session_id] = {
         "ip": "127.0.0.1",
@@ -437,7 +436,8 @@ def test_ui_hides_bypass_checkbox_when_age_gate_disabled(monkeypatch) -> None:
     response = api_module.ui(request)
     body = response.body.decode("utf-8")
 
-    assert "skip_age_check" not in body
+    assert "skip_age_check" in body
+    assert "Download now (full playlist)" in body
 
     api_module.SESSIONS.pop(session_id, None)
 
@@ -657,6 +657,120 @@ def test_add_url_with_bypass_enqueues_single_immediate_video(
     assert api_module.pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=abc123"
     ]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_playlist_with_bypass_enqueues_full_playlist_immediate_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Checked playlist adds should trigger a full immediate playlist run."""
+    session_id = "test-add-playlist-full-immediate"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    playlist_url = "https://www.youtube.com/playlist?list=PL123"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_full_playlist_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url=playlist_url,
+        csrf_token="csrf-token",
+        skip_age_check="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert queue_file.read_text(encoding="utf-8") == f"{playlist_url}\n"
+    assert not bypass_file.exists()
+    assert api_module.pop_single_url_download_requests() == []
+    assert pop_full_playlist_download_requests() == [playlist_url]
+    assert pop_batch_download_request() is False
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_add_channel_with_checkbox_does_not_enqueue_immediate_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Checked channel adds should stay queued for the normal scheduled run."""
+    session_id = "test-add-channel-checkbox-no-op"
+    queue_file = tmp_path / "urls.txt"
+    archive_file = tmp_path / "downloaded_urls.txt"
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    channel_url = "https://www.youtube.com/@channel-one/videos"
+
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            downloaded_urls_file=archive_file,
+            bypass_age_check_file=bypass_file,
+        ),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    api_module.pop_single_url_download_requests()
+    pop_full_playlist_download_requests()
+    pop_batch_download_request()
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.add_url_form(
+        request,
+        url=channel_url,
+        csrf_token="csrf-token",
+        skip_age_check="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=added"
+    assert queue_file.read_text(encoding="utf-8") == f"{channel_url}\n"
+    assert not bypass_file.exists()
+    assert api_module.pop_single_url_download_requests() == []
+    assert pop_full_playlist_download_requests() == []
     assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
