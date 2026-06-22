@@ -750,9 +750,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 
     bypass_row_html = ""
     if CONFIG.min_channel_video_age_hours > 0:
-        bypass_label = html.escape(
-            "Download now (skip age wait or full playlist)"
-        )
+        bypass_label = html.escape("Download now (skip age wait or full playlist)")
     else:
         bypass_label = html.escape("Download now (full playlist)")
     bypass_row_html = f"""

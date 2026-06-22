@@ -11,7 +11,11 @@ import pytest
 import src.api as api_module
 import src.config as config_module
 from src.passwords import DEFAULT_UI_PASSWORD, hash_password
-from src.trigger import pop_batch_download_request, pop_full_playlist_download_requests, queue_batch_download
+from src.trigger import (
+    pop_batch_download_request,
+    pop_full_playlist_download_requests,
+    queue_batch_download,
+)
 
 
 class _FakeClient:

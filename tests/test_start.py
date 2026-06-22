@@ -9,10 +9,8 @@ import pytest
 import start
 import src.config as config_module
 from src.trigger import pop_batch_download_request
-from src.trigger import pop_full_playlist_download_requests
 from src.trigger import pop_single_url_download_requests
 from src.trigger import queue_batch_download
-from src.trigger import queue_full_playlist_download
 from src.trigger import queue_single_url_download
 
 
