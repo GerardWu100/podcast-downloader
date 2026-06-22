@@ -67,6 +67,7 @@ tests/
 - Responsibility: protect the concise activity feed shown in the browser.
 - Key checks:
   - `activity.log` is derived from the directory containing `download.log`.
+  - `activity.log` and `download.log` timestamps use Toronto/Eastern time and omit seconds.
   - only the requested number of recent activity lines are returned.
   - a missing activity file shows a short empty-state message.
   - `ActivityLogStore` can write concise events and read a bounded tail.

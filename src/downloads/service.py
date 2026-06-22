@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ..activity_log import activity_log_file_for, write_activity_event
-from ..log_timezone import LOG_TIME_ZONE
+from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..config import DEFAULT_CHANNEL_VIDEO_COUNT
 from ..url_utils import (
     expand_channel_or_playlist,
@@ -411,8 +411,11 @@ class PodcastDownloadService:
         return sorted(changed_files)
 
     def _format_download_date_metadata(self, download_timestamp: float) -> str:
-        """Format a POSIX timestamp as a local timezone-aware ISO string."""
-        local_download_time = datetime.fromtimestamp(download_timestamp).astimezone()
+        """Format a POSIX timestamp as a Toronto timezone-aware ISO string."""
+        local_download_time = datetime.fromtimestamp(
+            download_timestamp,
+            tz=LOG_TIME_ZONE,
+        )
         return local_download_time.isoformat()
 
     def _write_audio_download_date_metadata(
@@ -472,7 +475,7 @@ class PodcastDownloadService:
 
         file_formatter = TorontoLogFormatter(
             "[%(asctime)s] %(levelname)s: %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+            datefmt=OPERATOR_LOG_TIMESTAMP_FORMAT,
         )
 
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -601,7 +604,7 @@ class PodcastDownloadService:
         source URL metadata are left in place so cleanup can also remove the
         matching entry from ``downloaded_urls.txt``.
         """
-        reference_time = current_time or datetime.now().astimezone()
+        reference_time = current_time or datetime.now(LOG_TIME_ZONE)
         normalized_retention_dirs = {path.resolve() for path in retention_dirs or set()}
         if not normalized_retention_dirs:
             return []

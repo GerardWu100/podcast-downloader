@@ -6,7 +6,7 @@ import fcntl
 from datetime import datetime
 from pathlib import Path
 
-from ..log_timezone import LOG_TIME_ZONE
+from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from .file_locks import locked_text_file
 
 
@@ -24,7 +24,7 @@ class ActivityLogStore:
 
     def write_event(self, message: str) -> None:
         """Append one timestamped user-facing activity event."""
-        timestamp = datetime.now(LOG_TIME_ZONE).strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now(LOG_TIME_ZONE).strftime(OPERATOR_LOG_TIMESTAMP_FORMAT)
         with locked_text_file(
             self.activity_log_file,
             "a",

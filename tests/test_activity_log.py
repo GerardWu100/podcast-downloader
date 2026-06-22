@@ -18,7 +18,6 @@ from src.activity_log import (
     read_download_log_tail,
 )
 from src.downloads.service import PodcastDownloadService
-from src.log_timezone import LOG_TIME_ZONE
 import src.state.activity_store as activity_store_module
 from src.state.activity_store import ActivityLogStore
 
@@ -88,7 +87,7 @@ def test_activity_log_store_writes_and_reads_tail(tmp_path: Path) -> None:
 
 
 def test_download_log_formatter_uses_toronto_time(tmp_path: Path) -> None:
-    """Full diagnostic log timestamps should use the shared Toronto timezone."""
+    """Full diagnostic log timestamps should use Toronto time without seconds."""
     urls_file = tmp_path / "urls.txt"
     urls_file.write_text("", encoding="utf-8")
     log_file = tmp_path / "download.log"
@@ -115,18 +114,16 @@ def test_download_log_formatter_uses_toronto_time(tmp_path: Path) -> None:
         args=(),
         exc_info=None,
     )
-    record.created = datetime(2026, 5, 5, 21, 49, 4, tzinfo=LOG_TIME_ZONE).timestamp()
+    record.created = datetime(2026, 5, 6, 1, 49, 4, tzinfo=ZoneInfo("UTC")).timestamp()
 
-    assert formatter.formatTime(record, datefmt="%Y-%m-%d %H:%M:%S") == (
-        "2026-05-05 21:49:04"
-    )
+    assert formatter.format(record) == "[2026-05-05 21:49] INFO: queued"
 
 
 def test_activity_log_store_writes_toronto_time(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Activity log timestamps should use the shared Toronto operator timezone."""
+    """Activity log timestamps should use Toronto time without seconds."""
     activity_log_file = tmp_path / "activity.log"
     seen_timezones: list[ZoneInfo | None] = []
 
@@ -144,7 +141,7 @@ def test_activity_log_store_writes_toronto_time(
 
     assert seen_timezones == [ZoneInfo("America/Toronto")]
     assert activity_log_file.read_text(encoding="utf-8") == (
-        "[2026-05-05 21:49:04] downloaded\n"
+        "[2026-05-05 21:49] downloaded\n"
     )
 
 
