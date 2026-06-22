@@ -1115,8 +1115,13 @@ class PodcastDownloadService:
 
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
         self.intermediate_dir.mkdir(parents=True, exist_ok=True)
-        bypass_urls = load_bypass_age_urls(self.bypass_age_check_file, self.logger)
         retention_dirs = self._retention_channel_output_dirs(urls)
+        # Scheduled runs must clear expired channel files from the archive before
+        # candidate downloads are checked. Otherwise the same 48-hour cycle can
+        # skip an archived item and only then make it eligible by deleting it.
+        self._run_retention_cleanup(retention_dirs)
+
+        bypass_urls = load_bypass_age_urls(self.bypass_age_check_file, self.logger)
         download_targets: list[DownloadTarget] = []
 
         for url in urls:
@@ -1151,7 +1156,6 @@ class PodcastDownloadService:
                 time.sleep(self.delay_seconds)
 
         self._record_activity(f"Run finished: {successful} successful, {failed} failed")
-        self._run_retention_cleanup(retention_dirs)
         return successful, failed
 
     def download_full_playlist_now(self, playlist_url: str) -> tuple[int, int]:

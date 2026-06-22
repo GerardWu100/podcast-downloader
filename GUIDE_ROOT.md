@@ -64,7 +64,7 @@ Completed MP3 files are stamped with the local download completion time after `y
 
 Downloaded MP3 files are grouped directly under the configured download directory by source. Channel URLs write to sanitized direct child folders, playlist URLs prefer readable `yt-dlp` playlist-title folders with the `list=` identifier as fallback, and direct individual videos from YouTube or other supported sites write to `singles/`. The root/data `urls.txt` file remains the queue file and is not moved or copied into the download directory.
 
-After each download cycle, retention cleanup scans MP3 files recursively under the download directory, but only current YouTube channel folders are eligible. The cleanup clock is the embedded MP3 date metadata written at download completion. Playlist and single-video MP3 files are left alone. Channel files older than `retention_days` are deleted only when the source URL comment tag is also present, and the same concrete video URL is removed from `downloaded_urls.txt`.
+On scheduled full-queue runs, retention cleanup scans MP3 files recursively under the download directory before archive-backed channel candidates are checked. Only current YouTube channel folders are eligible. The cleanup clock is the embedded MP3 date metadata written at download completion. Playlist and single-video MP3 files are left alone. Channel files older than `retention_days` are deleted only when the source URL comment tag is also present, and the same concrete video URL is removed from `downloaded_urls.txt` so it can be downloaded again in the same scheduler cycle.
 
 If `yt-dlp` reports that an expanded item is already downloaded or if it completes without changing an MP3, the download service now checks the output folder for the expected file and stamps it if the file already exists. That makes partial success recoverable instead of forcing a future run to get stuck on a stale metadata state.
 
@@ -197,3 +197,4 @@ podcast-downloader/
 - 2026-05-06: File-backed queue, archive, bypass, and activity-log behavior moved into `src/state/` stores so persistence rules have one owner.
 - 2026-05-15: YouTube `/live/VIDEO_ID` URLs now normalize to standard watch URLs so completed livestreams are treated like ordinary videos without archiving direct downloads.
 - 2026-05-15: MP3 outputs now route into direct source folders under `downloads/`, and retention cleanup deletes only YouTube channel files older than the configurable embedded-download-date window while removing their URLs from the archive.
+- 2026-06-22: Scheduled full-queue retention cleanup now runs before archive-backed channel checks so expired channel audio can be replaced in the same 48-hour cycle.

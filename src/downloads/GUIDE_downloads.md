@@ -22,7 +22,7 @@ Success detection is based on recursive MP3 state in the intermediate tree. The 
 
 Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When true (default), every YouTube `yt-dlp` call passes the configured Netscape-format cookie file on the first attempt and retries once without cookies on failure. When false, the order is inverted: plain first, cookies on retry. Non-YouTube downloads never use cookies.
 
-Retention cleanup uses that same embedded download date, but only for current YouTube channel output folders. Playlist and single-video files are not eligible. A channel file older than `retention_days` is deleted only when the source URL comment tag is present too, because cleanup must remove the same concrete URL from `downloaded_urls.txt`. Files with missing or unreadable date or source URL metadata are logged and kept.
+Retention cleanup uses that same embedded download date, but only for current YouTube channel output folders. Playlist and single-video files are not eligible. On scheduled full-queue runs, cleanup happens before archive-backed channel candidates are checked, so deleting an expired MP3 also makes that concrete URL eligible for replacement in the same run. A channel file older than `retention_days` is deleted only when the source URL comment tag is present too, because cleanup must remove the same concrete URL from `downloaded_urls.txt`. Files with missing or unreadable date or source URL metadata are logged and kept.
 
 ## Code Reference
 
@@ -41,6 +41,7 @@ Start in `service.py` when changing downloader behavior. Start in `audio_metadat
 - 2026-05-21: Failed download attempts now remove scratch files too, except when one MP3 must be kept for a metadata-stamp retry; `yt-dlp` temp files now live inside each work folder and legacy root temp files are swept after every attempt.
 - 2026-05-16: Channel source URLs now support upload-only `/videos` and livestream-only `/streams` modes, with bare channel URLs defaulting to `/videos`.
 - 2026-05-15: MP3 output routing moved from one flat folder to direct source folders, and retention cleanup began deleting only old YouTube channel files while removing their URLs from the archive.
+- 2026-06-22: Scheduled full-queue runs now perform retention cleanup before archive-backed download checks so an expired channel item can be deleted and replaced in the same cycle.
 - 2026-05-15: YouTube cookie files are now a direct-download fallback retry instead of being used on the first `yt-dlp` attempt.
 - 2026-06-07: Added `always_use_cookies` so YouTube cookie usage can stay fallback-only or switch to always-on across downloads, expansion, and metadata.
 - 2026-05-31: `AudioMetadataWriter` now decodes ffmpeg stderr with `errors="replace"` so metadata stamping survives MP3s whose existing ID3 tags contain non-UTF-8 bytes.

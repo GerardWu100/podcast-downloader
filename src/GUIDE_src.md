@@ -38,7 +38,7 @@ The folder solves four distinct problems:
    - changed MP3 files get embedded date metadata stamped with the local download completion time and comment metadata stamped with the source URL
    - if `yt-dlp` reports success without changing an MP3, the downloader looks for the expected output file and stamps it if it already exists
    - the event is written to the full diagnostic log and the concise browser activity log
-14. After each cycle, retention cleanup deletes only YouTube channel MP3 files older than `retention_days` based on embedded download-date metadata, then removes the deleted file's concrete video URL from `downloaded_urls.txt`.
+14. On scheduled full-queue runs, retention cleanup deletes only YouTube channel MP3 files older than `retention_days` before archive-backed candidates are checked, then removes the deleted file's concrete video URL from `downloaded_urls.txt` so that URL can be downloaded again in the same cycle.
 
 ### Web path
 
@@ -103,7 +103,7 @@ A plain exit code is not enough, and counting MP3 files is also wrong. A success
 
 The downloader tells `yt-dlp` not to preserve source modification times. That is useful hygiene, but the Audiobookshelf-visible date comes from embedded audio metadata. The downloader uses a small `ffmpeg` copy pass to overwrite the MP3 `date` metadata with the local completion time, because Audiobookshelf maps that embedded audio date into `podcastEpisode.pubDate` / `podcastEpisode.publishedAt`. That pass also writes the source URL to the MP3 `comment` metadata. YouTube URLs are normalized before this point, so live links and watch links for the same video share one canonical watch URL in the metadata. The copy pass writes to a non-`.mp3` temporary file, then copies the rewritten bytes into the existing MP3 path without replacing the inode. This keeps both extension-based and inode-based library scanners from seeing a duplicate audio item.
 
-That embedded date is also the retention timestamp. The cleanup pass applies only to current YouTube channel output folders. It deletes channel MP3 files older than the configured retention window, removes the same concrete source URL from `downloaded_urls.txt`, and leaves playlists, singles, files with missing date metadata, and files with missing source URL metadata untouched.
+That embedded date is also the retention timestamp. The cleanup pass applies only to current YouTube channel output folders. On scheduled full-queue runs it runs before archive-backed download checks, so an expired channel file is removed from disk and from `downloaded_urls.txt` before the downloader decides whether the concrete source URL has already been handled. It leaves playlists, singles, files with missing date metadata, and files with missing source URL metadata untouched.
 
 ### Why `X-Forwarded-For` is opt-in
 
@@ -265,3 +265,4 @@ src/
 - 2026-05-05: Expanded-item downloads now serialize on the archive lock, config validation rejects bad ranges and blank paths, and `src.cli` can run as a package module for scheduler subprocesses.
 - 2026-05-06: Queue, archive, bypass, and activity-log persistence moved behind `src/state/` stores while compatibility wrappers kept existing imports working.
 - 2026-05-15: Downloaded MP3 files now route into direct source folders under the output directory, with direct individual videos in `singles/`, and retention cleanup deletes only old YouTube channel files while removing their concrete URLs from the archive.
+- 2026-06-22: Scheduled full-queue retention cleanup now runs before archive-backed download checks so expired channel audio can be replaced without waiting another scheduler interval.

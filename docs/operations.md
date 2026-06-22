@@ -116,7 +116,7 @@ Channel folder names come from the source URL after filesystem-safe cleanup. Pla
 
 ## Retention cleanup
 
-After each download cycle, the downloader scans MP3 files recursively under the configured download directory, but only files in current YouTube channel output folders are eligible for retention cleanup. Playlist and single-video files are never deleted by this cleanup rule.
+On scheduled full-queue runs, the downloader scans MP3 files recursively under the configured download directory before it checks archive-backed channel candidates. Only files in current YouTube channel output folders are eligible for retention cleanup. Playlist and single-video files are never deleted by this cleanup rule.
 
 Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files older than `retention_days`. The checked-in default is 30 days. Cleanup does not use YouTube release dates. It also does not use filesystem modification time as the deletion clock. If an MP3 has missing or unreadable date metadata, or does not have a source URL in the comment tag, the file is logged and left alone. When a channel MP3 is deleted, its source video URL is removed from `downloaded_urls.txt`.
 

@@ -2176,3 +2176,80 @@ def test_delete_expired_channel_audio_removes_archive_url_and_preserves_other_so
     assert single_file.exists()
     assert missing_url_file.exists()
     assert archive_file.read_text(encoding="utf-8") == f"{playlist_video_url}\n"
+
+
+def test_download_all_retries_channel_item_after_retention_removes_archive_entry(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A scheduled run should delete expired channel audio before archive checks."""
+    channel_url = "https://www.youtube.com/@channel-one"
+    channel_video_url = "https://www.youtube.com/watch?v=channel001"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{channel_url}\n", encoding="utf-8")
+
+    downloads_dir = tmp_path / "downloads"
+    expired_audio_file = downloads_dir / "channel-one" / "old.mp3"
+    expired_audio_file.parent.mkdir(parents=True, exist_ok=True)
+    expired_audio_file.write_text("audio", encoding="utf-8")
+
+    archive_file = tmp_path / "downloaded_urls.txt"
+    archive_file.write_text(f"{channel_video_url}\n", encoding="utf-8")
+
+    downloader = PodcastDownloader(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=archive_file,
+        retention_days=30,
+        delay_seconds=0,
+    )
+
+    expired_download_time = datetime(2000, 1, 1, 12, 0, tzinfo=timezone.utc)
+    attempted_urls: list[str] = []
+
+    def fake_expand(
+        url: str,
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[str]:
+        assert url == channel_url
+        return [channel_video_url]
+
+    def fake_download_video_unlocked(
+        video_url: str,
+        _index: int,
+        _total: int,
+        _final_output_dir: Path,
+        _work_dir: Path,
+    ) -> tuple[str, bool]:
+        attempted_urls.append(video_url)
+        return video_url, True
+
+    monkeypatch.setattr(
+        downloads_service_module,
+        "expand_channel_or_playlist",
+        fake_expand,
+    )
+    monkeypatch.setattr(
+        downloader,
+        "_read_audio_download_date_metadata",
+        lambda _audio_file: expired_download_time.isoformat(),
+    )
+    monkeypatch.setattr(
+        downloader,
+        "_read_audio_source_url_metadata",
+        lambda _audio_file: channel_video_url,
+    )
+    monkeypatch.setattr(
+        downloader,
+        "_download_video_unlocked",
+        fake_download_video_unlocked,
+    )
+
+    successful, failed = downloader.download_all()
+
+    assert (successful, failed) == (1, 0)
+    assert attempted_urls == [channel_video_url]
+    assert not expired_audio_file.exists()
+    assert archive_file.read_text(encoding="utf-8") == f"{channel_video_url}\n"
