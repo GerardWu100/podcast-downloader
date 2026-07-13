@@ -1,0 +1,38 @@
+{
+  "pipeline": [
+    {"title": "Queue", "detail": "direct URL, channel, or playlist"},
+    {"title": "Expand & filter", "detail": "normalize, age gate, skip Shorts"},
+    {"title": "Extract audio", "detail": "yt-dlp; SponsorBlock on YouTube"},
+    {"title": "Verify output", "detail": "new or changed MP3 required"},
+    {"title": "Stamp metadata", "detail": "date, source URL, channel name"},
+    {"title": "Publish", "detail": "move into Audiobookshelf library"},
+    {"title": "Commit state", "detail": "remove queue item or append archive"}
+  ],
+  "gates": [
+    {
+      "title": "Subprocess gate",
+      "condition": "return code is zero",
+      "on_failure": "retry eligible YouTube requests with alternate cookie mode"
+    },
+    {
+      "title": "Artifact gate",
+      "condition": "at least one MP3 is new or changed",
+      "on_failure": "leave the item retryable"
+    },
+    {
+      "title": "Metadata gate",
+      "condition": "ffmpeg writes required tags",
+      "on_failure": "preserve recoverable MP3 for a later retry"
+    },
+    {
+      "title": "Publication gate",
+      "condition": "stamped MP3 reaches the library folder",
+      "on_failure": "do not record success"
+    },
+    {
+      "title": "Retention gate",
+      "condition": "date and source URL tags are both readable",
+      "on_failure": "keep the file; deletion is fail-safe"
+    }
+  ]
+}
