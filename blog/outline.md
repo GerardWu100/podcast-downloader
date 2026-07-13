@@ -32,6 +32,10 @@
    - Purpose: explain why the duplicate check, download, and success append share one exclusive lock.
    - Symbols: `u` is a normalized URL; `D(u)` is the download action; `H` is the archive set.
    - Delimiter: display.
+4. Durable-success predicate:
+   - Purpose: show that artifact verification, metadata stamping, and publication must all succeed before durable state changes.
+   - Symbols: `u` is a normalized URL; `r_u` is the subprocess return code; `C_u` is the source-scoped changed-file set; `R_u` is the recovery set; `M(u)` and `P(u)` are metadata and publication success indicators.
+   - Delimiter: display.
 
 ## Planned code excerpts
 
@@ -56,4 +60,5 @@
 - Data gaps: the repository contains no production throughput, download-duration, or SponsorBlock hit-rate dataset, so the article will not claim such measurements.
 - Assumptions: the reader knows what a web video and an MP3 are; `yt-dlp`, SponsorBlock, Cross-Site Request Forgery (CSRF), and inode are defined on first use.
 - Validation checks to run before final draft: run the offline `tests/` suite, run the chart generator, validate both Markdown files, confirm every referenced image exists, and confirm English/French protected code and math blocks remain identical.
+- Audit corrections: keep the optional live `yt-dlp` import out of pytest collection, scope recovery to the active work folder, and include the extractor media ID in output filenames.
 - Deployment note: the canonical workspace is `podcast-downloader/blog/`. At the user’s explicit request, there is no publish bundle and no copy, build, commit, or other access to `~/projects/website` in this task. Only the project-local blog package will be committed and pushed.

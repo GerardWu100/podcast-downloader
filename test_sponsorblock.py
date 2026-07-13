@@ -7,15 +7,20 @@ want to validate SponsorBlock behavior against a live YouTube video.
 
 from __future__ import annotations
 
-import yt_dlp
-
 
 def main() -> None:
     """Run a live download to inspect SponsorBlock handling manually."""
+    try:
+        import yt_dlp
+    except ModuleNotFoundError as exc:
+        raise SystemExit(
+            'Install the optional live dependency first: uv pip install "yt-dlp[default]"'
+        ) from exc
+
     # Mirror the production SponsorBlock categories used by the downloader CLI.
     ydl_opts = {
         "format": "bestaudio/best",
-        "sponsorblock_remove": "all",
+        "sponsorblock_remove": {"sponsor", "selfpromo"},
         "outtmpl": "./downloads/test_string.%(ext)s",
         "postprocessors": [
             {

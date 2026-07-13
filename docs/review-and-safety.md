@@ -42,6 +42,14 @@ Failed `yt-dlp` package updates now log a warning, report the current installed 
 
 The Docker scheduler now launches `python -m src.cli` from the resolved project root instead of relying on a relative `main.py` path.
 
+### 7. Artifact recovery scoped to the active source
+
+MP3 snapshots and zero-delta metadata recovery now inspect only the current source work folder. The former intermediate-tree scan could mistake the sole MP3 from another source for the current URL's output. Output filenames now include the extractor media ID so equal channel-title pairs do not collide.
+
+### 8. Optional live smoke dependency isolated
+
+`test_sponsorblock.py` imports the optional `yt-dlp` Python package only when the script is run directly. The documented offline pytest command can therefore collect the repository without that separately installed package. The smoke script now uses the same `sponsor` and `selfpromo` categories as production.
+
 ## Verification performed
 
 - `uv run python -m pytest -q`

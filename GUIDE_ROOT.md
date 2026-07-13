@@ -34,7 +34,7 @@ The root does not contain business logic beyond entrypoints and operational scri
 - [`downloaded_urls.txt`](/Users/gwh/projects/one-time-projects/podcast-downloader/downloaded_urls.txt) is the archive used to avoid re-downloading channel and playlist entries and to reject already-downloaded URLs in the web UI.
 - [`download.log`](/Users/gwh/projects/one-time-projects/podcast-downloader/download.log) is the main diagnostic runtime log produced by the downloader.
 - `activity.log` is the concise browser-facing activity feed written beside `download.log`.
-- [`test_sponsorblock.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/test_sponsorblock.py) is a manual smoke script for live SponsorBlock debugging. It is not part of the automated test suite.
+- [`test_sponsorblock.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/test_sponsorblock.py) is a manual smoke script for live SponsorBlock debugging. Its optional `yt-dlp` import is lazy, so pytest can collect the repository without installing the live dependency.
 - [`pyproject.toml`](/Users/gwh/projects/one-time-projects/podcast-downloader/pyproject.toml) and [`uv.lock`](/Users/gwh/projects/one-time-projects/podcast-downloader/uv.lock) define the managed Python environment.
 
 ## Design Notes
@@ -62,7 +62,7 @@ Invalid numeric settings in `config.ini` now fail fast instead of silently falli
 
 Completed MP3 files are stamped with the Toronto/Eastern download completion time after `yt-dlp` finishes. The downloader writes that value into the MP3 date metadata that Audiobookshelf maps into the visible podcast episode date. The same metadata pass writes the source URL into the MP3 comment tag. YouTube live, short, and watch links are normalized to the canonical watch URL before that tag is written, so completed livestreams do not get a separate metadata identity from the same video's watch URL. The metadata rewrite uses a temporary file without an `.mp3` extension, then copies the rewritten bytes into the existing MP3 path instead of replacing that path's inode, so Audiobookshelf should not index a temporary or replacement duplicate episode during the rewrite.
 
-Downloaded MP3 files are grouped directly under the configured download directory by source. Channel URLs write to sanitized direct child folders, playlist URLs prefer readable `yt-dlp` playlist-title folders with the `list=` identifier as fallback, and direct individual videos from YouTube or other supported sites write to `singles/`. The root/data `urls.txt` file remains the queue file and is not moved or copied into the download directory.
+Downloaded MP3 files are grouped directly under the configured download directory by source. Channel URLs write to sanitized direct child folders, playlist URLs prefer readable `yt-dlp` playlist-title folders with the `list=` identifier as fallback, and direct individual videos from YouTube or other supported sites write to `singles/`. Filenames contain the channel or uploader, title, and extractor media ID so equal titles remain distinct. Artifact snapshots and recovery are restricted to the active source work folder. The root/data `urls.txt` file remains the queue file and is not moved or copied into the download directory.
 
 On scheduled full-queue runs, retention cleanup scans MP3 files recursively under the download directory before archive-backed channel candidates are checked. Only current YouTube channel folders are eligible. The cleanup clock is the embedded MP3 date metadata written at download completion. Playlist and single-video MP3 files are left alone. Channel files older than `retention_days` are deleted only when the source URL comment tag is also present, and the same concrete video URL is removed from `downloaded_urls.txt` so it can be downloaded again in the same scheduler cycle.
 
@@ -178,6 +178,8 @@ podcast-downloader/
 - Run SponsorBlock smoke script manually: `uv run python test_sponsorblock.py`
 
 ## Journal
+
+- 2026-07-13: The manual SponsorBlock script now keeps its optional import out of pytest collection and matches production categories; download filenames now include media IDs and recovery is source-folder scoped.
 
 - 2026-05-16: YouTube channel expansion now uses `/videos` for bare channels and preserves explicit `/streams` URLs for livestream-only monitoring.
 - 2026-05-15: Direct YouTube downloads now try without cookies first and retry once with a configured cookie file only after the plain attempt fails.

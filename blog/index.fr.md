@@ -10,7 +10,7 @@ categories: ["Computer Science", "Data Engineering"]
 
 Je voulais un petit service capable de surveiller une chaîne YouTube, de retirer les segments sponsorisés et de déposer les épisodes terminés dans Audiobookshelf. Formulé ainsi, le projet ressemble à un simple wrapper autour d’une commande. En pratique, l’essentiel du travail concerne tout ce qui peut mal se passer autour de cette commande.
 
-`yt-dlp` se charge de l’extraction. SponsorBlock fournit des plages temporelles maintenues par la communauté pour les segments de sponsoring et d’autopromotion. `ffmpeg` recopie l’audio tout en mettant ses tags à jour. Ces outils font bien le travail multimédia. L’application doit encore déterminer si l’épisode existe réellement, s’il est prudent de marquer l’URL comme terminée et ce qui se passe lorsque deux processus du scheduler voient le même élément.
+`yt-dlp` se charge de l’extraction. SponsorBlock fournit des plages temporelles maintenues par la communauté pour les segments de sponsoring et d’autopromotion. `ffmpeg` recopie l’audio tout en mettant ses tags à jour. Ces outils prennent en charge le traitement multimédia. L’application doit encore déterminer si l’épisode existe réellement, s’il est prudent de marquer l’URL comme terminée et ce qui se passe lorsque deux processus du scheduler voient le même élément.
 
 La leçon de conception la plus utile tient en une phrase : la réussite d’un sous-processus est un indice, pas la transition d’état elle-même.
 
@@ -18,13 +18,15 @@ La leçon de conception la plus utile tient en une phrase : la réussite d’un 
 
 La file d’attente accepte trois types d’entrée : une URL directe, une chaîne YouTube ou une playlist YouTube. Les chaînes et playlists sont développées en vidéos concrètes. Les URL directes restent des tâches ponctuelles. La politique de sélection réduit ensuite les candidats : les publications d’une chaîne peuvent attendre un âge minimal, les Shorts sont ignorés et les playlists sont limitées au nombre configuré d’entrées récentes.
 
-Pour YouTube, le téléchargement demande à SponsorBlock de retirer les catégories `sponsor` et `selfpromo`. Le traitement des autres sites est volontairement plus prudent : un seul élément, sans option SponsorBlock et sans développement de playlist. Les cookies peuvent être utilisés dès le premier essai ou seulement en repli, mais uniquement pour YouTube.
+Pour YouTube, le téléchargement demande à SponsorBlock de retirer les catégories `sponsor` et `selfpromo`. Ces noms suivent la [taxonomie des segments SponsorBlock](https://wiki.sponsor.ajay.app/w/Segment_Categories), et `yt-dlp` les expose par son [option `--sponsorblock-remove`](https://github.com/yt-dlp/yt-dlp#sponsorblock-options). Le traitement des autres sites reste limité à un seul élément, sans option SponsorBlock ni développement de playlist. Les cookies peuvent être utilisés dès le premier essai ou seulement en repli, mais uniquement pour YouTube.
 
 ![Le pipeline complet, de l’URL à la bibliothèque](images/pipeline-flow.png)
 
 Le schéma sépare trois préoccupations que l’on confond facilement. La politique de source décide *quoi* tenter. La preuve locale établit si la tentative a produit un artefact exploitable. L’état durable ne change qu’après cette preuve et la publication du fichier.
 
 Le répertoire de travail et la bibliothèque finale sont également distincts. `yt-dlp` écrit les fichiers partiels, miniatures et fichiers convertis dans un dossier de travail propre à la source. Seul un MP3 dont les tags ont été écrits rejoint le répertoire lu par Audiobookshelf. Après un échec, les fichiers temporaires sont supprimés, sauf dans un cas de récupération précis où un MP3 existant peut être conservé pour retenter l’écriture des métadonnées.
+
+Le modèle de nom est `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. Le premier champ préfère le nom de la chaîne et utilise l’uploader en repli ; `id` est l’identifiant du média fourni par l’extracteur. Cet identifiant n’est pas décoratif. Deux épisodes d’une même chaîne peuvent porter le même titre : chaîne plus titre ne forme donc pas une clé unique. L’identifiant sépare les fichiers tout en conservant un nom lisible.
 
 ## Définir la réussite à partir du système de fichiers
 
@@ -42,7 +44,21 @@ $$
 C = \left\{p \in A : p \notin B \;\lor\; s_A(p) \ne s_B(p)\right\}.
 $$
 
-Ici, $s_A(p)$ est l’état du chemin $p$ après la tentative et $s_B(p)$ son état avant celle-ci. Le chemin normal de réussite exige à la fois un code de sortie nul et au moins un chemin dans $C$. Vérifier l’heure de modification et la taille détecte aussi bien un nouveau fichier qu’un fichier existant dont le contenu a été remplacé.
+Ici, $s_A(p)$ est l’état du chemin $p$ après la tentative et $s_B(p)$ son état avant celle-ci. Les deux instantanés restent limités au dossier de travail de la source active. Cette frontière fait partie de la preuve : un MP3 produit pour une autre source ne peut pas valider la tentative courante. Vérifier l’heure de modification et la taille détecte aussi bien un nouveau fichier qu’un fichier existant dont le contenu a été remplacé.
+
+Pour une URL normalisée $u$, soit $r_u$ le code de retour de `yt-dlp`, $C_u$ l’ensemble des fichiers modifiés dans ce dossier de source et $R_u$ l’ensemble de récupération prudent décrit plus bas. La vérification locale de l’artefact vaut
+
+$$
+V(u) = [r_u = 0] \land [|C_u| > 0 \lor |R_u| = 1].
+$$
+
+Soit $M(u)$ l’indicateur de réussite de l’écriture des métadonnées et $P(u)$ celui de l’arrivée du MP3 dans la bibliothèque finale. La réussite durable est
+
+$$
+S(u) = V(u) \land M(u) \land P(u).
+$$
+
+La file ou l’archive ne change que lorsque $S(u)$ est vrai. Voilà la machine à états derrière le texte : en file, tenté, vérifié, tagué, publié, puis enregistré.
 
 L’implémentation reste volontairement simple :
 
@@ -62,7 +78,13 @@ def _detect_changed_audio_files(
     return sorted(changed_files)
 ```
 
-Il existe une seule règle de récupération, assez stricte. Si les instantanés avant et après sont identiques, que la commande renvoie zéro et qu’un seul MP3 existe déjà dans le répertoire cible, le service peut retenter l’écriture des métadonnées sur ce fichier. Cela couvre un lancement précédent où l’audio a été téléchargé, mais où l’écriture des tags a échoué. S’il existe plusieurs MP3 possibles, le service refuse de deviner.
+Il existe une seule règle de récupération, assez stricte. Si les instantanés avant et après sont identiques, que la commande renvoie zéro et qu’un seul MP3 existe déjà dans le dossier de travail de la source active, le service peut retenter l’écriture des métadonnées sur ce fichier. Cela couvre un lancement précédent où l’audio a été téléchargé, mais où l’écriture des tags a échoué. S’il existe plusieurs MP3 possibles, le service refuse de deviner. La portée de cette recherche compte : une version antérieure parcourait tout l’arbre intermédiaire et pouvait prendre l’unique MP3 d’une autre source pour la sortie de l’URL courante. Un test de régression fixe désormais cette frontière.
+
+## Politique de nouvelle tentative : changer les identifiants, pas répéter à l’aveugle
+
+L’application effectue au plus deux tentatives de téléchargement pour une URL YouTube lorsqu’un fichier de cookies existe. Avec `always_use_cookies=true`, la première utilise les cookies et la seconde n’en utilise pas. Avec `false`, l’ordre s’inverse. La seconde tentative modifie donc le mode d’authentification ; rejouer la même requête ajouterait du trafic sans tester une autre cause d’échec.
+
+L’application n’implémente pas de backoff exponentiel. `delay_seconds` espace les éléments distincts de la file, les lectures de métadonnées demandent à `yt-dlp` d’attendre entre les requêtes, et `yt-dlp` conserve sa propre logique de nouvelle tentative pour les extracteurs. Il s’agit d’un repli entre deux modes d’authentification, pas d’un scheduler général de retries.
 
 ## Les métadonnées font partie de la transaction
 
@@ -74,7 +96,7 @@ Audiobookshelf a besoin de davantage que des octets audio. Après l’extraction
 
 Cette heure locale sert également d’horloge de rétention. Elle évite de confondre la date de publication de la vidéo avec la date d’entrée du fichier dans la bibliothèque locale.
 
-La réécriture comporte une contrainte discrète, mais importante. `ffmpeg` a besoin d’une sortie temporaire. Remplacer ensuite le chemin final par ce fichier temporaire peut changer l’inode du fichier. Un inode est l’identité qu’utilise le système de fichiers derrière un chemin ; un observateur de bibliothèque peut donc interpréter ce remplacement comme la disparition d’un élément suivie de l’arrivée d’un autre. Le writer crée plutôt un fichier temporaire caché qui n’a pas l’extension `.mp3`, recopie les octets réécrits dans le MP3 d’origine, puis supprime le fichier temporaire. Le chemin et l’inode d’origine survivent.
+La réécriture comporte une contrainte discrète, mais importante. `ffmpeg` a besoin d’une sortie temporaire. Remplacer ensuite le chemin final par ce fichier temporaire peut changer l’inode du fichier. Un inode est l’identité qu’utilise le système de fichiers derrière un chemin ; un observateur de bibliothèque peut donc interpréter ce remplacement comme la disparition d’un élément suivie de l’arrivée d’un autre. Le writer utilise le [streamcopy de FFmpeg](https://ffmpeg.org/ffmpeg.html#Streamcopy) avec `-codec copy`, crée un fichier temporaire caché sans extension `.mp3`, recopie les octets réécrits dans le MP3 d’origine, puis supprime le temporaire. Le chemin et l’inode d’origine survivent, et cette passe de métadonnées ne réencode pas le flux audio.
 
 La rétention choisit de ne pas supprimer en cas de doute. Elle ne vise que les dossiers de chaînes YouTube encore suivies, jamais les playlists ni les téléchargements ponctuels. Un fichier n’est admissible que si sa date de fin et son URL source intégrées sont toutes deux lisibles. Si un tag manque ou est mal formé, le service garde le MP3, car il ne pourrait pas mettre l’archive à jour de façon sûre après la suppression.
 
@@ -108,27 +130,35 @@ if use_archive:
         return result_url, success
 ```
 
-En général, je me méfierais d’un verrou conservé pendant un téléchargement réseau. Ici, il protège un invariant précis de l’archive, et un téléchargement concurrent en double coûte davantage que l’attente. La suite de tests démarre deux instances du téléchargeur sur la même URL développée et vérifie que `yt-dlp` n’est appelé qu’une fois.
+En général, je me méfierais d’un verrou conservé pendant un téléchargement réseau. Ici, il protège un invariant précis de l’archive, et un téléchargement concurrent en double coûte davantage que l’attente. Le verrou utilise [`fcntl.flock` de Python](https://docs.python.org/3/library/fcntl.html#fcntl.flock) ; la conception suppose donc un système de type Unix et un système de fichiers local dont les verrous consultatifs sont compatibles. La suite de tests démarre deux instances du téléchargeur sur la même URL développée et vérifie que `yt-dlp` n’est appelé qu’une fois.
 
-La file d’attente, l’archive, la liste des dérogations ponctuelles à la limite d’âge et le journal d’activité du navigateur restent de simples fichiers texte. Des verrous partagés protègent les lectures ; des verrous exclusifs protègent les opérations de lecture-modification-écriture. Le déploiement reste ainsi facile à inspecter et à sauvegarder, sans prétendre que des écritures texte non coordonnées seraient sûres.
+Cette décision sérialise le travail. Le verrou porte sur le fichier d’archive entier, pas sur une URL : deux vidéos distinctes issues d’un développement doivent donc aussi s’attendre. Ce compromis convient à un scheduler personnel. Il gaspillerait de la capacité dans un service à plusieurs workers, où une file en base de données avec un bail par tâche serait plus adaptée.
+
+La file d’attente, l’archive, la liste des dérogations ponctuelles à la limite d’âge et le journal d’activité du navigateur restent de simples fichiers texte UTF-8. Des verrous partagés protègent les lectures ; des verrous exclusifs protègent les opérations de lecture-modification-écriture. Le déploiement reste ainsi facile à inspecter et à sauvegarder, sans prétendre que des écritures texte non coordonnées seraient sûres.
+
+## Frontières de sécurité et de confidentialité
+
+Chaque URL fournie par l’utilisateur apparaît après `--` dans la commande du sous-processus. Une URL commençant par des tirets ne peut donc pas devenir une option de `yt-dlp`. Les requêtes hors YouTube ne reçoivent jamais le chemin du fichier de cookies. Les imports depuis le navigateur acceptent le format Netscape, normalisent les fins de ligne et écrivent le fichier avec le mode propriétaire uniquement `600` sur les systèmes de type Unix.
+
+Ce droit d’accès ne rend pas inoffensive une exportation de navigateur. Le fichier peut contenir des sessions pour d’autres sites que YouTube : il doit rester dans un stockage persistant privé et hors du contrôle de version. L’interface web est une surface d’administration pour un opérateur. Le hachage du mot de passe, l’expiration des sessions, la protection contre la falsification de requête intersite et les en-têtes restrictifs réduisent des risques courants du navigateur, sans faire du service une application publique multi-utilisateur.
 
 ## Ce que la suite de tests établit
 
-J’ai lancé la suite de régression hors ligne le 13 juillet 2026. Les 184 tests ont réussi en 9,32 secondes. Il s’agit de tests comportementaux fondés sur des répertoires temporaires et des sous-processus simulés, pas d’un benchmark de débit.
+J’ai lancé toute la suite de régression hors ligne le 13 juillet 2026. Les 185 tests ont réussi en environ neuf secondes sur la machine d’audit. Il s’agit de tests comportementaux fondés sur des répertoires temporaires et des sous-processus simulés, pas d’un benchmark de débit.
 
 | Frontière vérifiée | Preuve apportée par la suite |
 |---|---|
-| Détection des artefacts | Un MP3 nouveau ou remplacé compte ; un code de sortie nul sans MP3 ne compte pas |
+| Détection des artefacts | Un MP3 nouveau ou remplacé dans le dossier actif compte ; les autres dossiers et un code de sortie nul sans MP3 ne comptent pas |
 | Publication sûre | Le MP3 terminé passe de l’espace de travail à la bibliothèque ; les artefacts temporaires sont supprimés |
 | Métadonnées | La date et l’URL source sont écrites ; l’inode du MP3 final est préservé |
 | Concurrence | Les lecteurs et writers de l’archive se sérialisent ; deux workers ne téléchargent qu’une fois une même URL développée |
 | Rétention | Seuls les fichiers de chaîne admissibles sont supprimés ; l’absence de métadonnées conserve le fichier |
-| Politique de source | SponsorBlock reste propre à YouTube ; URL directes, chaînes, playlists, Shorts, limites d’âge et cookies suivent des règles distinctes |
+| Politique de source | SponsorBlock reste propre à YouTube ; URL directes, chaînes, playlists, Shorts, limites d’âge, cookies et noms avec identifiant suivent des règles distinctes |
 | Interface web | Mots de passe, sessions, jetons contre la falsification de requête intersite, confiance envers le proxy, import de cookies et mutation de la file ont une couverture de régression |
 
 La falsification de requête intersite, ou Cross-Site Request Forgery (CSRF), consiste à pousser un navigateur à soumettre une action authentifiée à l’insu de l’utilisateur. L’interface utilise des jetons de connexion à usage unique et des jetons propres à chaque session pour les formulaires qui modifient l’état, en plus d’un mot de passe haché et d’en-têtes de navigateur restrictifs. C’est une protection raisonnable pour une interface d’administration personnelle, pas une transformation du service en plateforme multi-utilisateur.
 
-Le dépôt contient aussi, à la racine, un smoke test SponsorBlock qui appelle réellement le réseau. Il importe le paquet `yt-dlp`, installé séparément, et contacte des services externes. Je ne l’ai pas inclus dans le résultat des 184 tests hors ligne : sans ce paquet optionnel, la collecte de tout le dépôt s’arrête dès l’import. Sur un vrai déploiement, ce test devrait être lancé séparément lorsque `yt-dlp`, `ffmpeg`, les cookies et l’accès réseau sont disponibles.
+Le dépôt contient aussi, à la racine, un smoke test SponsorBlock qui appelle réellement le réseau. Il importe le paquet `yt-dlp`, installé séparément, uniquement dans son point d’entrée et contacte les services externes lorsqu’on l’exécute directement. Cet import tardif permet à toute la suite hors ligne de collecter le dépôt sans ce paquet optionnel. Je n’ai pas lancé le téléchargement réel pendant cet audit ; un déploiement devrait le vérifier séparément lorsque `yt-dlp`, `ffmpeg`, les cookies et l’accès réseau sont disponibles.
 
 ## Les limites de cette conception
 
@@ -137,3 +167,11 @@ Ce projet vise une utilisation personnelle avec Audiobookshelf. L’état conser
 Le comportement externe reste la plus grande variable incontrôlée. YouTube modifie ses exigences d’extraction, les cookies expirent, la couverture SponsorBlock varie selon la vidéo et `yt-dlp` évolue assez vite pour que le projet installe une version courante hors du fichier de verrouillage. L’image Docker inclut Deno pour les défis JavaScript actuels de YouTube, mais aucun choix de packaging ne peut stabiliser définitivement un extracteur externe.
 
 La frontière locale, elle, est nette : on ne modifie pas l’état durable parce qu’une commande semble sûre d’elle. On observe l’artefact, on inscrit sa provenance, on le publie, puis seulement on marque le travail comme terminé.
+
+## Références
+
+- [README de `yt-dlp` : modèles de sortie, chemins, retries et options SponsorBlock](https://github.com/yt-dlp/yt-dlp)
+- [Catégories de segments SponsorBlock](https://wiki.sponsor.ajay.app/w/Segment_Categories)
+- [Documentation FFmpeg : streamcopy et options de métadonnées](https://ffmpeg.org/ffmpeg.html)
+- [Documentation Python : `fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock)
+- [Documentation Audiobookshelf](https://www.audiobookshelf.org/docs/)

@@ -2,8 +2,8 @@
   "pipeline": [
     {"title": "Queue", "detail": "direct URL, channel, or playlist"},
     {"title": "Expand & filter", "detail": "normalize, age gate, skip Shorts"},
-    {"title": "Extract audio", "detail": "yt-dlp; SponsorBlock on YouTube"},
-    {"title": "Verify output", "detail": "new or changed MP3 required"},
+    {"title": "Extract audio", "detail": "yt-dlp; SponsorBlock; media-ID filename"},
+    {"title": "Verify output", "detail": "new or changed MP3 in active work folder"},
     {"title": "Stamp metadata", "detail": "date, source URL, channel name"},
     {"title": "Publish", "detail": "move into Audiobookshelf library"},
     {"title": "Commit state", "detail": "remove queue item or append archive"}
@@ -16,7 +16,7 @@
     },
     {
       "title": "Artifact gate",
-      "condition": "at least one MP3 is new or changed",
+      "condition": "at least one MP3 in the active work folder is new or changed",
       "on_failure": "leave the item retryable"
     },
     {

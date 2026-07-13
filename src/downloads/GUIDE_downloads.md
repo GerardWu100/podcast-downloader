@@ -18,7 +18,7 @@ For YouTube playlist sources, expansion uses the same configured `channel_count`
 
 The configured download directory contains only finished MP3 library files. `yt-dlp`, partial downloads, thumbnails, and metadata temp files stay in `intermediate_dir` until a download succeeds and the MP3 is published into the matching source folder under `output_dir`. When `intermediate_dir` is separate from `output_dir`, the completed scratch work folder is removed after publish so intermediate files do not accumulate. Failed attempts also remove scratch files; the only exception is a retryable metadata-stamp failure, where the existing MP3 is kept and non-MP3 artifacts are deleted. `yt-dlp` temp files are written inside the per-source work folder, and any legacy temp files left at the intermediate root are swept after each attempt. Queue and state files such as `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt` stay in the data directory.
 
-Success detection is based on recursive MP3 state in the intermediate tree. The service snapshots every `*.mp3` file under `intermediate_dir` before and after `yt-dlp` runs. A download succeeds only when at least one MP3 is created or changed, then the metadata writer stores the Toronto/Eastern download completion time in the embedded MP3 `date` tag and the source URL in the embedded MP3 `comment` tag. YouTube source URLs are already normalized at this point, so live URLs and watch URLs for the same video share the same canonical watch URL in metadata.
+Success detection is scoped to the active source work folder. The service snapshots every `*.mp3` file below that folder before and after `yt-dlp` runs. A download succeeds only when at least one MP3 is created or changed there, so an unrelated MP3 in another source folder cannot satisfy the attempt. Filenames include the extractor's media ID as well as channel and title to prevent equal titles from colliding. The metadata writer then stores the Toronto/Eastern completion time in the embedded MP3 `date` tag and the source URL in the embedded MP3 `comment` tag. YouTube source URLs are normalized at this point, so live URLs and watch URLs for the same video share the same canonical watch URL in metadata.
 
 Configured YouTube cookies follow `always_use_cookies` in `config.ini`. When true (default), every YouTube `yt-dlp` call passes the configured Netscape-format cookie file on the first attempt and retries once without cookies on failure. When false, the order is inverted: plain first, cookies on retry. Non-YouTube downloads never use cookies.
 
@@ -35,6 +35,7 @@ Start in `service.py` when changing downloader behavior. Start in `audio_metadat
 
 ## Journal
 
+- 2026-07-13: Scoped artifact snapshots and zero-delta recovery to the active source work folder, and added the media ID to output filenames so unrelated files and duplicate titles cannot be mistaken for the current download.
 - 2026-05-19: Added configurable `intermediate_dir` / `PODCAST_INTERMEDIATE_DIR` so scratch downloads stay separate from the finished MP3 library folder.
 - 2026-05-21: Docker Compose now maps `$HOME/downloads/temporary` to `/temporary` and sets `PODCAST_INTERMEDIATE_DIR` there.
 - 2026-05-21: Successful downloads now remove their completed scratch work folder when `intermediate_dir` is separate from `output_dir`.

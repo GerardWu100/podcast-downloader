@@ -40,7 +40,7 @@ from .audio_metadata import AudioMetadataWriter
 from .ytdlp_client import AudioSnapshot
 
 FALLBACK_SINGLE_DOWNLOAD_FOLDER = "singles"
-YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s.%(ext)s"
+YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
 INTERMEDIATE_ROOT_TEMP_SUFFIXES = (
     ".part",
     ".ytdl",
@@ -158,10 +158,29 @@ class PodcastDownloadService:
                 self.cookies_file,
             )
 
-    def _snapshot_downloaded_audio(self) -> AudioSnapshot:
-        """Capture MP3 state in the work directory so changes can be detected."""
+    def _snapshot_downloaded_audio(
+        self,
+        work_dir: Path | None = None,
+    ) -> AudioSnapshot:
+        """Capture MP3 state for one source work directory.
+
+        Parameters
+        ----------
+        work_dir:
+            Root of the active download attempt. When omitted, use the full
+            intermediate tree for compatibility with callers that only inspect
+            snapshots. Download recovery always passes the active source folder
+            so an unrelated MP3 cannot be mistaken for the current URL's output.
+
+        Returns
+        -------
+        AudioSnapshot
+            Mapping of MP3 paths below ``work_dir`` to modification time and
+            file size.
+        """
+        snapshot_root = work_dir or self.intermediate_dir
         snapshot: dict[Path, tuple[int, int]] = {}
-        for mp3_path in self.intermediate_dir.rglob("*.mp3"):
+        for mp3_path in snapshot_root.rglob("*.mp3"):
             if not mp3_path.is_file():
                 continue
 
@@ -726,11 +745,11 @@ class PodcastDownloadService:
         work_dir: Path | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
         """Run ``yt-dlp`` for one URL and return changed MP3 files in the work tree."""
-        before_snapshot = self._snapshot_downloaded_audio()
         target_work_dir = work_dir or (
             self.intermediate_dir / FALLBACK_SINGLE_DOWNLOAD_FOLDER
         )
         target_work_dir.mkdir(parents=True, exist_ok=True)
+        before_snapshot = self._snapshot_downloaded_audio(target_work_dir)
         command = [
             "yt-dlp",
             "--paths",
@@ -766,7 +785,7 @@ class PodcastDownloadService:
             timeout=300,
             check=False,
         )
-        after_snapshot = self._snapshot_downloaded_audio()
+        after_snapshot = self._snapshot_downloaded_audio(target_work_dir)
         changed_audio_files = self._detect_changed_audio_files(
             before_snapshot,
             after_snapshot,
@@ -912,7 +931,7 @@ class PodcastDownloadService:
             self._record_activity(f"Skipped Short: {video_url}")
             return video_url, True
 
-        before_snapshot = self._snapshot_downloaded_audio()
+        before_snapshot = self._snapshot_downloaded_audio(work_dir)
         first_attempt_cookies = None
         if (
             is_youtube_url(video_url)
@@ -927,7 +946,7 @@ class PodcastDownloadService:
                 first_attempt_cookies,
                 work_dir,
             )
-            after_snapshot = self._snapshot_downloaded_audio()
+            after_snapshot = self._snapshot_downloaded_audio(work_dir)
 
             recoverable_audio_files = []
             if result.returncode == 0 and not changed_audio_files:
@@ -955,13 +974,13 @@ class PodcastDownloadService:
                         "Plain YouTube download failed; retrying with cookies file: %s",
                         self.cookies_file,
                     )
-                before_snapshot = self._snapshot_downloaded_audio()
+                before_snapshot = self._snapshot_downloaded_audio(work_dir)
                 result, changed_audio_files = self._run_ytdlp(
                     video_url,
                     retry_cookies,
                     work_dir,
                 )
-                after_snapshot = self._snapshot_downloaded_audio()
+                after_snapshot = self._snapshot_downloaded_audio(work_dir)
         except subprocess.TimeoutExpired:
             self.logger.error("Timeout downloading: %s", video_url)
             self._record_activity(f"Failed: {video_url}")

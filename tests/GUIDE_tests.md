@@ -21,7 +21,7 @@ That choice is deliberate:
 - Network tests are slow and flaky.
 - The important logic to protect is mostly local policy: command construction, URL normalization, session checks, and how subprocess outcomes are interpreted.
 
-The separate root-level `test_sponsorblock.py` script remains available for manual live-network verification when needed.
+The separate root-level `test_sponsorblock.py` script remains available for manual live-network verification when needed. It imports the optional `yt-dlp` package inside its entrypoint, so normal repository collection remains offline when that package is absent.
 
 ## Folder Tree
 
@@ -111,6 +111,8 @@ tests/
 - Responsibility: downloader success detection around MP3 file changes.
 - Key checks:
   - overwriting an existing MP3 still counts as success.
+  - artifact detection and zero-delta recovery ignore MP3 files in other source work folders.
+  - the output template includes the extractor media ID so equal titles do not collide.
   - channel, playlist, and direct-video downloads write MP3 files into direct source folders under the configured output directory.
   - the `yt-dlp` command disables source modification time preservation.
   - the post-download `ffmpeg` pass writes MP3 date metadata to the local completion time.
@@ -163,3 +165,7 @@ uv run python -m pytest -q
 ```
 
 Run that from the project root. The suite should remain fast and offline.
+
+## Journal
+
+- 2026-07-13: Added regression coverage for source-scoped zero-delta recovery and media-ID filenames; the optional live SponsorBlock import no longer breaks offline collection.

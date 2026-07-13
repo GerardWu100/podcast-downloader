@@ -30,13 +30,13 @@ The folder solves four distinct problems:
 9. Direct YouTube video URLs go through the same minimum-age gate as channel items when the uploader timestamp or upload date is known, unless that URL appears in the bypass file. When only a calendar upload date is available, or when `yt-dlp` reports the timestamp as `NA`, the downloader waits conservatively until the configured hour threshold has elapsed after that date.
 10. Non-YouTube URLs are treated as single direct media URLs, are downloaded with `--no-playlist`, and skip SponsorBlock flags.
 11. The downloader assigns each concrete URL an output folder derived from the source queue entry. Channel and playlist sources write to direct child folders under the configured download directory; playlist folders prefer the playlist title from `yt-dlp` and fall back to the `list=` identifier. Direct individual videos write to `singles/`.
-12. The downloader loops through those concrete URLs, launches `yt-dlp`, and tracks success by comparing recursive MP3 file state before and after the subprocess run.
+12. The downloader loops through those concrete URLs, launches `yt-dlp`, and tracks success by comparing recursive MP3 file state inside the active source work folder before and after the subprocess run.
 13. On success:
    - the queue file is cleaned up for single-video URLs
    - expanded channel and playlist URLs are checked against the archive under an exclusive archive lock and written back after success
    - any matching one-shot bypass entry is removed
    - changed MP3 files get embedded date metadata stamped with the local download completion time and comment metadata stamped with the source URL
-   - if `yt-dlp` reports success without changing an MP3, the downloader looks for the expected output file and stamps it if it already exists
+   - if `yt-dlp` reports success without changing an MP3, the downloader considers recovery only within the active source work folder and only when exactly one candidate exists
    - the event is written to the full diagnostic log and the concise browser activity log
 14. On scheduled full-queue runs, retention cleanup deletes only YouTube channel MP3 files older than `retention_days` before archive-backed candidates are checked, then removes the deleted file's concrete video URL from `downloaded_urls.txt` so that URL can be downloaded again in the same cycle.
 
@@ -99,7 +99,7 @@ YouTube channel tab URLs choose the source mode before expansion. `https://www.y
 
 ### Why success is based on file changes
 
-A plain exit code is not enough, and counting MP3 files is also wrong. A successful run can overwrite an existing filename without increasing the number of MP3s. The downloader therefore snapshots MP3 modification times and file sizes before and after each subprocess call and treats any created or changed MP3 as a real success. The snapshot is recursive because downloads now live in source folders under the configured download directory.
+A plain exit code is not enough, and counting MP3 files is also wrong. A successful run can overwrite an existing filename without increasing the number of MP3s. The downloader therefore snapshots MP3 modification times and file sizes below the active source work folder before and after each subprocess call and treats any created or changed MP3 there as a real success. The source-folder boundary prevents unrelated work from satisfying the current attempt. Filenames include the extractor media ID so episodes with equal channel-title pairs remain distinct.
 
 The downloader tells `yt-dlp` not to preserve source modification times. That is useful hygiene, but the Audiobookshelf-visible date comes from embedded audio metadata. The downloader uses a small `ffmpeg` copy pass to overwrite the MP3 `date` metadata with the Toronto/Eastern completion time, because Audiobookshelf maps that embedded audio date into `podcastEpisode.pubDate` / `podcastEpisode.publishedAt`. That pass also writes the source URL to the MP3 `comment` metadata. YouTube URLs are normalized before this point, so live links and watch links for the same video share one canonical watch URL in the metadata. The copy pass writes to a non-`.mp3` temporary file, then copies the rewritten bytes into the existing MP3 path without replacing the inode. This keeps both extension-based and inode-based library scanners from seeing a duplicate audio item.
 
@@ -248,6 +248,8 @@ src/
 - Start the API: `uv run uvicorn src.api:app --host 127.0.0.1 --port 8000`
 
 ## Journal
+
+- 2026-07-13: Artifact detection and recovery now stay inside the active source work folder, and output filenames include the extractor media ID to prevent cross-source recovery and equal-title collisions.
 
 - 2026-06-17: The UI checkbox now queues immediate full-playlist downloads when a playlist URL is submitted, and the label was shortened to `Download now (skip age wait or full playlist)`.
 - 2026-05-16: YouTube channel expansion now respects `/videos` versus `/streams`, and bare channel URLs default to `/videos`.

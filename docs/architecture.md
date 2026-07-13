@@ -17,8 +17,8 @@ sidebar_position: 2
    - Videos newer than `min_channel_video_age_hours` are skipped when upload age is known, including when `yt-dlp` reports a timestamp placeholder but still provides an upload date.
 7. Each selected video is downloaded as audio. SponsorBlock removal is enabled only for YouTube URLs.
 8. YouTube cookie usage follows `always_use_cookies`: either pass cookies on the first `yt-dlp` call, or try without cookies first and retry once with `--cookies` when the plain attempt fails or produces no usable MP3.
-9. MP3 output goes directly under the configured download directory: channel and playlist sources each get their own folder, while direct individual videos go into `singles/`.
-10. A download only counts as successful if an MP3 file was created or changed anywhere under the configured download directory.
+9. MP3 output goes under the configured download directory: channel and playlist sources each get their own folder, while direct individual videos go into `singles/`. Each filename contains the channel or uploader, title, and extractor media ID.
+10. A download only counts as successful if an MP3 file was created or changed inside the active source work folder.
 11. Successful MP3 files get an embedded MP3 date tag set to the local download completion time and a comment tag containing the source URL.
 12. Before a scheduled full-queue cycle checks archive-backed channel candidates, YouTube channel MP3 files older than `retention_days` are deleted when embedded metadata proves both the download date and source video URL. Playlist and single-video MP3 files are not retention-deleted.
 13. The downloader writes full diagnostic detail to `download.log` and concise browser-facing events to `activity.log`.
@@ -47,7 +47,7 @@ $$
 s_A(p) \ne s_B(p)
 $$
 
-The download is considered successful if at least one MP3 file satisfies that condition.
+The download is considered successful if at least one MP3 file in the active source work folder satisfies that condition. Scoping both snapshots to that folder is part of the invariant: a file created by another source or process cannot prove that the current URL succeeded.
 
 The downloader also passes `--no-mtime` to `yt-dlp`. That flag is useful hygiene because it prevents source timestamps from being preserved on the output file, but Audiobookshelf's visible podcast episode date comes from embedded audio metadata. After a successful download, the downloader runs a small `ffmpeg` copy pass over each changed MP3, preserves existing streams and metadata, and overwrites the embedded `date` metadata with the Toronto/Eastern completion timestamp. The same pass writes the source URL to the embedded `comment` metadata. YouTube URLs are normalized to canonical watch URLs before writing that comment, so `https://www.youtube.com/live/VIDEO_ID` and `https://www.youtube.com/watch?v=VIDEO_ID` do not create separate metadata identities. The rewrite uses a non-`.mp3` temporary filename, then copies the rewritten bytes back into the original MP3 path without replacing that path's inode. That matters because Audiobookshelf's scanner and watcher use file paths and inode values when matching library files. Audiobookshelf maps the embedded audio date into `podcastEpisode.pubDate` / `podcastEpisode.publishedAt`.
 
@@ -72,13 +72,13 @@ The configured `output_dir` is the root for finished MP3 files only. `intermedia
 
 ```text
 downloads/
-├── channel-one/
-├── channel-two/
-├── playlist-name1/
-└── singles/
+├── channel-one/channel-one - episode-title [video-id].mp3
+├── channel-two/channel-two - episode-title [video-id].mp3
+├── playlist-name/creator - episode-title [video-id].mp3
+└── singles/creator - episode-title [media-id].mp3
 ```
 
-YouTube channel folder names are derived from the source URL and sanitized for the filesystem. YouTube playlist folder names prefer the playlist title reported by `yt-dlp`; if that metadata is unavailable, the downloader falls back to the `list=` identifier. Direct individual videos, including direct YouTube videos and non-YouTube videos, are written to `singles/`.
+YouTube channel folder names are derived from the source URL and sanitized for the filesystem. YouTube playlist folder names prefer the playlist title reported by `yt-dlp`; if that metadata is unavailable, the downloader falls back to the `list=` identifier. Direct individual videos, including direct YouTube videos and non-YouTube videos, are written to `singles/`. The media ID in every filename distinguishes episodes that share a title and gives the filesystem identity a stable source component.
 
 ## Queue-file mutation model
 

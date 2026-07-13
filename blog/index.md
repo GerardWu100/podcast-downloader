@@ -10,7 +10,7 @@ categories: ["Computer Science", "Data Engineering"]
 
 I wanted a small service that could watch a YouTube channel, strip sponsor segments, and place finished episodes in Audiobookshelf. The first version of that sentence sounds like a wrapper around one command. The finished project is mostly about everything that can go wrong around that command.
 
-`yt-dlp` handles extraction. SponsorBlock supplies community-maintained time ranges for sponsor and self-promotion segments. `ffmpeg` copies the audio while updating its tags. Those tools do the media work well. The application still has to decide whether an episode really exists, whether it is safe to mark the URL as complete, and what happens when two scheduler processes see the same item.
+`yt-dlp` handles extraction. SponsorBlock supplies community-maintained time ranges for sponsor and self-promotion segments. `ffmpeg` copies the audio while updating its tags. Those tools handle the media work. The application still has to decide whether an episode really exists, whether it is safe to mark the URL as complete, and what happens when two scheduler processes see the same item.
 
 The useful design lesson turned out to be simple: a successful subprocess is only evidence. It is not the state transition.
 
@@ -18,13 +18,15 @@ The useful design lesson turned out to be simple: a successful subprocess is onl
 
 The queue accepts three kinds of input: a direct media URL, a YouTube channel, or a YouTube playlist. Channels and playlists are expanded into concrete videos. Direct URLs stay as one-off jobs. The policy then narrows the candidates: channel uploads can be held behind a minimum-age gate, YouTube Shorts are skipped, and playlists are capped at the configured number of recent entries.
 
-YouTube downloads add SponsorBlock removal for the `sponsor` and `selfpromo` categories. Non-YouTube URLs are deliberately more conservative: they are downloaded as a single item, without SponsorBlock flags and without playlist expansion. Cookies can be tried first or used as a fallback, but only for YouTube.
+YouTube downloads add SponsorBlock removal for the `sponsor` and `selfpromo` categories. Those category names follow the [SponsorBlock segment taxonomy](https://wiki.sponsor.ajay.app/w/Segment_Categories), and `yt-dlp` exposes them through its [`--sponsorblock-remove` option](https://github.com/yt-dlp/yt-dlp#sponsorblock-options). Non-YouTube URLs are downloaded as a single item, without SponsorBlock flags and without playlist expansion. Cookies can be tried first or used as a fallback, but only for YouTube.
 
 ![The complete URL-to-library pipeline](images/pipeline-flow.png)
 
 The diagram separates three concerns that are easy to blur together. Source policy decides *what* to attempt. Local proof decides whether the attempt produced a usable artifact. Durable state changes only after that proof and publication succeed.
 
 The scratch directory and the finished library are also separate. `yt-dlp` writes partial files, thumbnails, and converted audio into a per-source work folder. Only a stamped MP3 is moved into the Audiobookshelf-facing directory. A failed attempt cleans its scratch files, except for one narrow recovery case where an existing MP3 may be kept for a later metadata retry.
+
+The output template is `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. The first field prefers the channel name and falls back to the uploader; `id` is the extractor's media identifier. Including that identifier is not cosmetic. Two episodes from one channel may share a title, so channel plus title is not a unique key. The identifier keeps those files distinct while leaving the title readable.
 
 ## Define success from the filesystem
 
@@ -42,7 +44,21 @@ $$
 C = \left\{p \in A : p \notin B \;\lor\; s_A(p) \ne s_B(p)\right\}.
 $$
 
-Here, $s_A(p)$ is the state of path $p$ after the attempt and $s_B(p)$ is its state before the attempt. The ordinary success path requires both a zero return code and at least one path in $C$. Checking modification time and size catches a new file as well as an existing file whose bytes were overwritten.
+Here, $s_A(p)$ is the state of path $p$ after the attempt and $s_B(p)$ is its state before the attempt. Both snapshots are restricted to the active source work folder. That boundary is part of the proof: an MP3 created by another source cannot satisfy the current attempt. Checking modification time and size catches a new file as well as an existing file whose bytes were overwritten.
+
+For a normalized URL $u$, let $r_u$ be the `yt-dlp` return code, let $C_u$ be the changed-file set in that source folder, and let $R_u$ be the conservative recovery set described below. Local artifact verification is
+
+$$
+V(u) = [r_u = 0] \land [|C_u| > 0 \lor |R_u| = 1].
+$$
+
+Let $M(u)$ mean that the metadata pass succeeded and let $P(u)$ mean that the stamped MP3 reached the final library folder. Durable success is
+
+$$
+S(u) = V(u) \land M(u) \land P(u).
+$$
+
+The queue or archive changes only when $S(u)$ is true. This is the actual state machine behind the prose: queued, attempted, verified, stamped, published, then recorded.
 
 The implementation is intentionally plain:
 
@@ -62,7 +78,13 @@ def _detect_changed_audio_files(
     return sorted(changed_files)
 ```
 
-There is one conservative recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the target directory, the service may retry the metadata step on that file. This covers a prior run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess.
+There is one conservative recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the active source work folder, the service may retry the metadata step on that file. This covers a prior run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess. Scoping this lookup matters: an earlier implementation searched the entire intermediate tree and could mistake the sole MP3 from another source for the current URL's output. A regression test now fixes that boundary.
+
+## Retry policy: alternate credentials, not blind repetition
+
+The application makes at most two download attempts for a YouTube URL when a cookie file exists. If `always_use_cookies=true`, the first attempt uses cookies and the second is plain. If it is `false`, the order is reversed. The second attempt changes the authentication mode; repeating the identical request would add traffic without testing a different failure cause.
+
+There is no application-level exponential backoff. `delay_seconds` spaces separate queue items, metadata lookups ask `yt-dlp` to sleep between requests, and `yt-dlp` retains its own extractor retry behavior. This distinction keeps the operational claim narrow: the service has a two-mode authentication fallback, not a general retry scheduler.
 
 ## Metadata is part of the transaction
 
@@ -74,7 +96,7 @@ Audiobookshelf needs more than audio bytes. After extraction, the service writes
 
 That local completion timestamp is also the retention clock. It avoids confusing the video’s publication date with the date the file entered the local library.
 
-The rewrite has a subtle constraint. `ffmpeg` needs a temporary output, but replacing the final path with that temporary file can change the file’s inode. An inode is the filesystem identity behind a path, and media-library watchers may interpret a replacement as one item disappearing and another appearing. The writer instead creates a hidden non-MP3 temporary file, copies the rewritten bytes back into the original MP3, and removes the temporary file. The original path and inode survive.
+The rewrite has a subtle constraint. `ffmpeg` needs a temporary output, but replacing the final path with that temporary file can change the file’s inode. An inode is the filesystem identity behind a path, and media-library watchers may interpret a replacement as one item disappearing and another appearing. The writer uses [FFmpeg streamcopy](https://ffmpeg.org/ffmpeg.html#Streamcopy) with `-codec copy`, creates a hidden non-MP3 temporary file, copies the rewritten bytes back into the original MP3, and removes the temporary file. The original path and inode survive; the audio stream is not re-encoded during this metadata pass.
 
 Retention is deliberately fail-safe. It applies only to current YouTube channel folders, not playlists or one-off downloads. A file is eligible only when both its embedded completion date and source URL can be read. If either tag is missing or malformed, the service keeps the MP3 because it cannot safely update the archive after deletion.
 
@@ -108,27 +130,35 @@ if use_archive:
         return result_url, success
 ```
 
-Holding a lock during a network download is normally something I would question. Here it protects a narrow per-archive invariant, and concurrent duplicate work is more costly than waiting. The test suite starts two downloader objects against the same expanded URL and verifies that `yt-dlp` is called once.
+Holding a lock during a network download is normally something I would question. Here it protects a narrow per-archive invariant, and concurrent duplicate work is more costly than waiting. The lock uses Python's [`fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock), so this design assumes a Unix-like local filesystem with compatible advisory locking. The test suite starts two downloader objects against the same expanded URL and verifies that `yt-dlp` is called once.
 
-The queue, archive, one-shot age-bypass list, and browser activity feed all remain ordinary text files. Shared locks protect reads; exclusive locks protect read-modify-write operations. This keeps deployment easy to inspect and back up without pretending that uncoordinated text-file writes are safe.
+The cost is serialization. The lock is per archive file, not per URL, so two different expanded videos also wait behind each other. That is acceptable for one personal scheduler; it would waste capacity in a multi-worker service. A database queue with per-job leases would be the natural replacement at larger scale.
+
+The queue, archive, one-shot age-bypass list, and browser activity feed all remain ordinary UTF-8 text files. Shared locks protect reads; exclusive locks protect read-modify-write operations. This keeps deployment easy to inspect and back up without pretending that uncoordinated text-file writes are safe.
+
+## Security and privacy boundaries
+
+Every user-supplied URL appears after `--` in the subprocess command, which prevents a URL beginning with hyphens from becoming a `yt-dlp` option. Non-YouTube requests never receive the cookie path. Browser uploads accept Netscape-format cookie text, normalize line endings, and write the file with owner-only mode `600` on Unix-like systems.
+
+That permission bit does not make exported browser cookies harmless. A browser export may contain sessions for sites other than YouTube, so the file belongs in private persistent storage and outside version control. The web interface is an administrative surface for one operator: password hashing, session expiry, Cross-Site Request Forgery protection, and restrictive response headers reduce common browser risks, but the service is not designed for public multi-user hosting.
 
 ## What the test suite establishes
 
-I ran the offline regression suite on July 13, 2026. All 184 tests passed in 9.32 seconds. These are behavioral tests with temporary directories and patched subprocesses, not a throughput benchmark.
+I ran the full offline regression suite on July 13, 2026. All 185 tests passed in roughly nine seconds on the audit machine. These are behavioral tests with temporary directories and patched subprocesses, not a throughput benchmark.
 
 | Verified boundary | Evidence in the suite |
 |---|---|
-| Artifact detection | New and overwritten MP3 files count; return code zero without an MP3 does not |
+| Artifact detection | New and overwritten MP3 files in the active work folder count; unrelated folders and return code zero without an MP3 do not |
 | Safe publication | Finished MP3 moves from scratch space; temporary artifacts are removed |
 | Metadata | Date and source URL are written; the final MP3 inode is preserved |
 | Concurrency | Locked archive readers and writers serialize; two workers download one expanded URL once |
 | Retention | Only eligible channel files are removed; missing metadata keeps files in place |
-| Source policy | SponsorBlock is YouTube-only; direct URLs, channels, playlists, Shorts, age gates, and cookies follow distinct rules |
+| Source policy | SponsorBlock is YouTube-only; direct URLs, channels, playlists, Shorts, age gates, cookies, and media-ID filenames follow distinct rules |
 | Web control plane | Passwords, sessions, Cross-Site Request Forgery tokens, proxy trust, cookie upload, and queue mutation have regression coverage |
 
 Cross-Site Request Forgery (CSRF) is an attack in which a browser is tricked into submitting an authenticated action. The web interface uses one-time login tokens and per-session tokens for state-changing forms, alongside a hashed password and restrictive browser headers. That is reasonable protection for a personal admin surface, but it does not turn the service into a general multi-user platform.
 
-The repository also contains a root-level live SponsorBlock smoke script. It imports the separately installed `yt-dlp` package and contacts external services. I did not count it as part of the 184-test offline result; collecting the whole repository without that optional package stops at import time. A real deployment should run that smoke check separately when `yt-dlp`, `ffmpeg`, cookies, and network access are available.
+The repository also contains a root-level live SponsorBlock smoke script. It imports the separately installed `yt-dlp` package only inside its entrypoint and contacts external services when run directly. The lazy import lets the full offline suite collect the repository without that optional package. I did not run the live download in this audit; a deployment should run it separately when `yt-dlp`, `ffmpeg`, cookies, and network access are available.
 
 ## Where this design stops
 
@@ -137,3 +167,11 @@ This project is built for a personal Audiobookshelf workflow. Its file-backed st
 External behavior remains the largest uncontrolled variable. YouTube changes extraction requirements, browser cookies expire, SponsorBlock coverage varies by video, and `yt-dlp` evolves quickly enough that this project installs a current release outside its lockfile. The Docker image includes Deno for current YouTube JavaScript challenges, but no packaging choice can make an external extractor permanently stable.
 
 Still, the local boundary is solid: do not mutate durable state because a command sounded confident. Observe the artifact, stamp its provenance, publish it, and only then mark the work complete.
+
+## References
+
+- [`yt-dlp` README: output templates, paths, retries, and SponsorBlock options](https://github.com/yt-dlp/yt-dlp)
+- [SponsorBlock segment categories](https://wiki.sponsor.ajay.app/w/Segment_Categories)
+- [FFmpeg documentation: streamcopy and metadata options](https://ffmpeg.org/ffmpeg.html)
+- [Python documentation: `fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock)
+- [Audiobookshelf documentation](https://www.audiobookshelf.org/docs/)

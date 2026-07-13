@@ -44,7 +44,8 @@ def test_download_video_treats_overwritten_mp3_as_success(
     urls_file.write_text("https://www.youtube.com/watch?v=abc123\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    existing_mp3 = downloads_dir / "channel - episode.mp3"
+    existing_mp3 = downloads_dir / "singles" / "channel - episode.mp3"
+    existing_mp3.parent.mkdir()
     existing_mp3.write_text("old audio", encoding="utf-8")
     original_mtime_ns = existing_mp3.stat().st_mtime_ns
 
@@ -244,7 +245,8 @@ def test_ytdlp_command_disables_source_mtime(
     )
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
     downloader = PodcastDownloader(
@@ -868,7 +870,8 @@ def test_download_video_writes_mp3_date_metadata_to_download_time(
     )
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     download_timestamp = 1_800_000_000.25
     commands: list[list[str]] = []
 
@@ -923,7 +926,7 @@ def test_download_video_writes_mp3_date_metadata_to_download_time(
     assert "-f" in ffmpeg_command
     assert "mp3" in ffmpeg_command
     assert Path(ffmpeg_command[-1]).suffix != ".mp3"
-    assert Path(ffmpeg_command[-1]).parent == downloads_dir
+    assert Path(ffmpeg_command[-1]).parent == output_mp3.parent
     assert output_mp3.read_text(encoding="utf-8") == "audio with date tag"
 
 
@@ -937,7 +940,8 @@ def test_download_video_writes_normalized_youtube_url_to_mp3_comment_metadata(
     urls_file.write_text("https://youtu.be/abc123\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
     downloader = PodcastDownloader(
@@ -987,7 +991,8 @@ def test_live_url_writes_watch_url_to_mp3_comment_metadata(
     urls_file.write_text(f"{live_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
     downloader = PodcastDownloader(
@@ -1203,6 +1208,7 @@ def test_ytdlp_command_prefers_channel_name_in_output_template(
 
     output_template = commands[0][commands[0].index("--output") + 1]
     assert "%(channel,uploader)s" in output_template
+    assert "[%(id)s]" in output_template
 
 
 def test_download_video_reports_failure_when_mp3_date_metadata_fails(
@@ -1215,7 +1221,8 @@ def test_download_video_reports_failure_when_mp3_date_metadata_fails(
     urls_file.write_text(f"{video_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
 
     downloader = PodcastDownloader(
         urls_file=urls_file,
@@ -1250,6 +1257,7 @@ def test_download_video_reports_failure_when_mp3_date_metadata_fails(
     )
 
     assert success is False
+    assert output_mp3.exists()
     assert urls_file.read_text(encoding="utf-8") == f"{video_url}\n"
 
 
@@ -1263,7 +1271,8 @@ def test_download_video_can_retry_after_metadata_stamp_failure_using_existing_mp
     urls_file.write_text(f"{video_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
 
     downloader = PodcastDownloader(
         urls_file=urls_file,
@@ -1349,6 +1358,53 @@ def test_download_video_reports_failure_when_no_mp3_changes(
     assert success is False
 
 
+def test_zero_delta_recovery_ignores_mp3_from_another_source(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Recovery must not stamp an unrelated MP3 from another work folder."""
+    video_url = "https://videos.example.com/watch/episode-2"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloads_dir = tmp_path / "downloads"
+    intermediate_dir = tmp_path / "download_work"
+    unrelated_mp3 = intermediate_dir / "another-source" / "episode-1.mp3"
+    unrelated_mp3.parent.mkdir(parents=True)
+    unrelated_mp3.write_text("unrelated audio", encoding="utf-8")
+
+    downloader = PodcastDownloader(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        intermediate_dir=intermediate_dir,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+    )
+
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        *args,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+
+    _, success = downloader._download_video(
+        video_url,
+        index=1,
+        total=1,
+        use_archive=False,
+    )
+
+    assert success is False
+    assert all(command[0] != "ffmpeg" for command in commands)
+    assert unrelated_mp3.read_text(encoding="utf-8") == "unrelated audio"
+    assert urls_file.read_text(encoding="utf-8") == f"{video_url}\n"
+
+
 def test_download_video_removes_direct_short_from_queue_when_skipped(
     tmp_path,
 ) -> None:
@@ -1388,7 +1444,8 @@ def test_non_youtube_download_does_not_use_sponsorblock(
     )
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
     downloader = PodcastDownloader(
@@ -1485,7 +1542,8 @@ def test_second_downloader_instance_reloads_archived_state_before_download(
     urls_file.write_text(f"{video_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
     downloader_one = PodcastDownloader(
@@ -1673,7 +1731,8 @@ def test_download_video_writes_concise_success_activity_event(
     urls_file.write_text(f"{video_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     log_file = tmp_path / "download.log"
     activity_log_file = tmp_path / "activity.log"
 
@@ -1720,7 +1779,8 @@ def test_download_all_removes_successful_direct_url_without_archiving_it(
     urls_file.write_text(f"{video_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
     downloader = PodcastDownloader(
@@ -1761,7 +1821,8 @@ def test_single_queue_url_removes_successful_direct_url_without_archiving_it(
     urls_file.write_text(f"{video_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "creator - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
+    output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
     downloader = PodcastDownloader(
@@ -1802,7 +1863,8 @@ def test_watch_url_success_removes_matching_live_url_from_queue_without_archivin
     urls_file.write_text(f"{live_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "PBD Podcast - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "PBD Podcast - episode.mp3"
+    output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
     downloader = PodcastDownloader(
