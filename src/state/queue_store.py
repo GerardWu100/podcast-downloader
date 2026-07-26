@@ -51,7 +51,7 @@ class QueueStore:
 #
 # Examples:
 # https://www.youtube.com/watch?v=dQw4w9WgXcQ
-# https://www.youtube.com/@lexfridman
+# https://www.youtube.com/@examplechannel
 # https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf
 # https://videos.example.com/watch/episode-1
 """

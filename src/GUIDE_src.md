@@ -95,7 +95,7 @@ Direct-video success removes the URL from `urls.txt` but does not write it to `d
 
 YouTube live URLs use the same normalized identity as ordinary watch URLs. For example, `https://www.youtube.com/live/VIDEO_ID` becomes `https://www.youtube.com/watch?v=VIDEO_ID`. This keeps completed livestreams from lingering in `urls.txt` or being accepted as separate queue entries just because YouTube exposed the same video through the live route.
 
-YouTube channel tab URLs choose the source mode before expansion. `https://www.youtube.com/@PBDPodcast/videos` monitors ordinary uploads only. `https://www.youtube.com/@PBDPodcast/streams` monitors livestream entries only. `https://www.youtube.com/@PBDPodcast/` is treated like the `/videos` tab.
+YouTube channel tab URLs choose the source mode before expansion. `https://www.youtube.com/@examplechannel/videos` monitors ordinary uploads only. `https://www.youtube.com/@examplechannel/streams` monitors livestream entries only. `https://www.youtube.com/@examplechannel/` is treated like the `/videos` tab.
 
 ### Why success is based on file changes
 

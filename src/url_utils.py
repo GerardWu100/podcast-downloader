@@ -493,7 +493,7 @@ def _channel_identity_part_count(path_parts: list[str]) -> int:
     """Return how many path parts identify a YouTube channel itself.
 
     YouTube supports several channel URL shapes. Handles use one path part, such
-    as ``/@PBDPodcast``. Legacy routes use a route marker plus a name or ID,
+    as ``/@examplechannel``. Legacy routes use a route marker plus a name or ID,
     such as ``/c/name``, ``/channel/UC...``, or ``/user/name``. Parts after that
     identity select a channel tab, for example ``videos`` or ``streams``.
     """

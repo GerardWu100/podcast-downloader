@@ -41,7 +41,7 @@ def test_bare_youtube_channel_expands_from_videos_tab(monkeypatch) -> None:
     monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
 
     url_utils.expand_channel_or_playlist(
-        "https://www.youtube.com/@PBDPodcast/",
+        "https://www.youtube.com/@examplechannel/",
         channel_count=1,
         min_channel_video_age_hours=0,
         logger=url_utils.logging.getLogger("test"),
@@ -49,7 +49,9 @@ def test_bare_youtube_channel_expands_from_videos_tab(monkeypatch) -> None:
 
     command = commands[0]
     separator_index = command.index("--")
-    assert command[separator_index + 1] == "https://www.youtube.com/@PBDPodcast/videos"
+    assert (
+        command[separator_index + 1] == "https://www.youtube.com/@examplechannel/videos"
+    )
 
 
 def test_youtube_channel_videos_tab_expands_from_videos_tab(monkeypatch) -> None:
@@ -63,7 +65,7 @@ def test_youtube_channel_videos_tab_expands_from_videos_tab(monkeypatch) -> None
     monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
 
     url_utils.expand_channel_or_playlist(
-        "https://www.youtube.com/@PBDPodcast/videos",
+        "https://www.youtube.com/@examplechannel/videos",
         channel_count=1,
         min_channel_video_age_hours=0,
         logger=url_utils.logging.getLogger("test"),
@@ -71,7 +73,9 @@ def test_youtube_channel_videos_tab_expands_from_videos_tab(monkeypatch) -> None
 
     command = commands[0]
     separator_index = command.index("--")
-    assert command[separator_index + 1] == "https://www.youtube.com/@PBDPodcast/videos"
+    assert (
+        command[separator_index + 1] == "https://www.youtube.com/@examplechannel/videos"
+    )
 
 
 def test_youtube_channel_streams_tab_expands_from_streams_tab(monkeypatch) -> None:
@@ -85,7 +89,7 @@ def test_youtube_channel_streams_tab_expands_from_streams_tab(monkeypatch) -> No
     monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
 
     url_utils.expand_channel_or_playlist(
-        "https://www.youtube.com/@PBDPodcast/streams",
+        "https://www.youtube.com/@examplechannel/streams",
         channel_count=1,
         min_channel_video_age_hours=0,
         logger=url_utils.logging.getLogger("test"),
@@ -93,7 +97,10 @@ def test_youtube_channel_streams_tab_expands_from_streams_tab(monkeypatch) -> No
 
     command = commands[0]
     separator_index = command.index("--")
-    assert command[separator_index + 1] == "https://www.youtube.com/@PBDPodcast/streams"
+    assert (
+        command[separator_index + 1]
+        == "https://www.youtube.com/@examplechannel/streams"
+    )
 
 
 def test_login_action_accepts_valid_password_and_rejects_invalid_password(

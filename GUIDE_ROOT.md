@@ -50,7 +50,7 @@ This matters because direct single-video URLs are intentionally removed from `ur
 
 YouTube livestream URLs such as `https://www.youtube.com/live/VIDEO_ID` are normalized to the same `https://www.youtube.com/watch?v=VIDEO_ID` identity used for ordinary videos. Completed livestreams can be submitted or rediscovered through either route, but queue cleanup and duplicate checks should treat them as one video.
 
-YouTube channel tab URLs control channel expansion. `https://www.youtube.com/@PBDPodcast/videos` monitors ordinary uploads, `https://www.youtube.com/@PBDPodcast/streams` monitors livestream entries, and `https://www.youtube.com/@PBDPodcast/` defaults to the uploads tab.
+YouTube channel tab URLs control channel expansion. `https://www.youtube.com/@examplechannel/videos` monitors ordinary uploads, `https://www.youtube.com/@examplechannel/streams` monitors livestream entries, and `https://www.youtube.com/@examplechannel/` defaults to the uploads tab.
 
 The queue file is now protected by an interprocess file lock during reads and writes. That lock is owned by the state-store layer in `src/state/`. It prevents the Docker scheduler and the web UI from overwriting each other's changes when one side removes a finished URL while the other appends a new one.
 
