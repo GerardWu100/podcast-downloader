@@ -21,8 +21,9 @@ and is intentionally separate from normal collection.
 
 - `test_api_behavior.py` and `test_security.py`: browser behavior, sessions,
   CSRF, CSP, proxy trust, upload safety, and URL command separators.
-- `test_web_app.py`: explicit factory collaborator wiring without patching
-  `src.api` globals.
+- `test_web_app.py`: explicit factory collaborator wiring plus a request-level
+  check that route writes and scheduler requests use the injected instances,
+  without patching `src.api` globals.
 - `test_auth_store.py`: expiry filtering and atomic authentication JSON updates.
 - `test_ytdlp_client.py`: typed results, command policy, changed files, and
   alternate-cookie retries.
@@ -45,3 +46,5 @@ uv run python -m pytest -q
 - 2026-07-26: Private service monkeypatches for cookie retry were replaced by
   focused `YtDlpClient` contract tests; tests no longer import compatibility
   modules.
+- 2026-07-26: Factory tests gained a request-level regression check for injected
+  queue, bypass, activity, authentication, and scheduler collaborators.

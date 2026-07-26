@@ -11,12 +11,47 @@ or playlists for the scheduled full-queue run.
 from __future__ import annotations
 
 import threading
+from typing import Protocol
 
 download_trigger: threading.Event = threading.Event()
 _single_url_lock = threading.Lock()
 _single_url_download_requests: list[str] = []
 _full_playlist_download_requests: list[str] = []
 _batch_download_requested = False
+
+
+class DownloadTrigger(Protocol):
+    """Interface used by the web application to request scheduler work."""
+
+    def queue_single_url_download(self, url: str) -> None:
+        """Queue one direct media URL for immediate processing."""
+
+    def queue_full_playlist_download(self, url: str) -> None:
+        """Queue one playlist URL for immediate full-playlist processing."""
+
+
+class InProcessDownloadTrigger:
+    """Adapter that submits work to this module's shared scheduler queues."""
+
+    def queue_single_url_download(self, url: str) -> None:
+        """Queue one direct media URL for immediate processing.
+
+        Parameters
+        ----------
+        url:
+            Normalized direct media URL.
+        """
+        queue_single_url_download(url)
+
+    def queue_full_playlist_download(self, url: str) -> None:
+        """Queue one playlist URL for immediate full-playlist processing.
+
+        Parameters
+        ----------
+        url:
+            Normalized YouTube playlist URL.
+        """
+        queue_full_playlist_download(url)
 
 
 def queue_single_url_download(url: str) -> None:
@@ -82,3 +117,6 @@ def pop_batch_download_request() -> bool:
         batch_requested = _batch_download_requested
         _batch_download_requested = False
     return batch_requested
+
+
+in_process_download_trigger = InProcessDownloadTrigger()

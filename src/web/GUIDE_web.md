@@ -14,8 +14,11 @@ src.api:app
 ```
 
 `create_app()` is the construction seam. Production calls it from `src/api.py`;
-tests can pass validated configuration and temporary store collaborators.
-`src/api.py` contains no route, authentication, or rendering implementation.
+tests can pass validated configuration, temporary store collaborators, and a
+scheduler trigger. Route handlers resolve those collaborators from the current
+request's application state, so an injected test store is also the store that
+the request actually uses. `src/api.py` contains no route, authentication, or
+rendering implementation.
 
 `auth.py` owns proxy-trust interpretation and browser security headers.
 `AuthStore` in `state/` owns session and login-failure persistence. Route code
@@ -41,3 +44,6 @@ only when `trust_x_forwarded_for` is enabled.
 - 2026-07-26: The deployment entrypoint became a factory call, request-security
   policy and rendering gained explicit owners, and authentication JSON moved to
   `AuthStore`.
+- 2026-07-26: Route handlers began resolving configuration, stores, and the
+  scheduler trigger through the application factory instead of reconstructing
+  production collaborators from module globals.

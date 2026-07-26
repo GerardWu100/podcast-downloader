@@ -163,6 +163,7 @@ def test_login_action_accepts_valid_password_and_rejects_invalid_password(
     assert api.SESSIONS
     assert (tmp_path / ".login_state.json").exists()
     assert session_state_file.exists()
+    assert api._load_login_state()["127.0.0.1"]["failed"] == 0
 
 
 def test_login_action_rejects_invalid_csrf_token(tmp_path: Path, monkeypatch) -> None:

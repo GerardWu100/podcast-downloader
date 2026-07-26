@@ -11,18 +11,19 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import TypeVar, cast
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from ..config import ConfigError, load_config
+from ..config import ConfigError, PodcastConfig, load_config
 from ..log_timezone import LOG_TIME_ZONE
 from ..passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
 from ..trigger import (
+    DownloadTrigger,
+    in_process_download_trigger,
     pop_full_playlist_download_requests,
     pop_single_url_download_requests,
-    queue_full_playlist_download,
-    queue_single_url_download,
 )
 from ..media.urls import is_supported_media_url
 from ..media.youtube import (
@@ -44,6 +45,7 @@ from .auth import client_ip, request_is_secure, security_headers
 from .templates import render_help_page, render_login_page, render_queue_page
 
 _logger = logging.getLogger("api")
+_Dependency = TypeVar("_Dependency")
 
 # Tests and older callers reset pending trigger state through this module.
 __all__ = [
@@ -77,20 +79,68 @@ COOKIE_FILE_PERMISSION_MODE = 0o600
 NETSCAPE_COOKIE_HEADER = "# Netscape HTTP Cookie File"
 
 
-def _get_urls_file() -> Path:
-    return CONFIG.urls_file
+def _app_state_value(
+    request: Request,
+    name: str,
+    fallback: _Dependency,
+) -> _Dependency:
+    """Return one injected application dependency or its direct-call fallback."""
+    request_app = getattr(request, "app", None)
+    app_state = getattr(request_app, "state", None)
+    if app_state is None:
+        return fallback
+    return cast(_Dependency, getattr(app_state, name, fallback))
 
 
-def _configured_cookie_file() -> Path:
+def _request_config(request: Request) -> PodcastConfig:
+    """Return configuration attached by ``create_app()``."""
+    return _app_state_value(request, "config", CONFIG)
+
+
+def _queue_store(request: Request) -> QueueStore:
+    """Return the injected queue store, falling back for direct helper tests."""
+    fallback = QueueStore(CONFIG.urls_file, _logger)
+    return _app_state_value(request, "queue_store", fallback)
+
+
+def _archive_store(request: Request) -> ArchiveStore:
+    """Return the injected archive store, falling back for direct helper tests."""
+    fallback = ArchiveStore(CONFIG.downloaded_urls_file, _logger)
+    return _app_state_value(request, "archive_store", fallback)
+
+
+def _bypass_store(request: Request) -> BypassStore:
+    """Return the injected bypass store, falling back for direct helper tests."""
+    fallback = BypassStore(CONFIG.bypass_age_check_file, _logger)
+    return _app_state_value(request, "bypass_store", fallback)
+
+
+def _activity_store(request: Request) -> ActivityLogStore:
+    """Return the injected concise activity-log store."""
+    fallback = ActivityLogStore(activity_log_file_for(CONFIG.log_file))
+    return _app_state_value(request, "activity_store", fallback)
+
+
+def _download_trigger(request: Request) -> DownloadTrigger:
+    """Return the injected scheduler wake-up collaborator."""
+    return _app_state_value(
+        request,
+        "download_trigger",
+        in_process_download_trigger,
+    )
+
+
+def _configured_cookie_file(request: Request) -> Path:
     """Return the writable cookie path used by yt-dlp.
 
     ``load_config`` only records ``cookies_file`` when the file exists at app
     startup. The browser upload is allowed to create the first runtime cookie
     file, so it falls back to the standard data-directory location.
     """
-    if CONFIG.cookies_file is not None:
-        return CONFIG.cookies_file
-    return DATA_DIR / "cookies.txt"
+    config = _request_config(request)
+    if config.cookies_file is not None:
+        return config.cookies_file
+    return config.urls_file.parent / "cookies.txt"
 
 
 def _normalize_uploaded_cookie_text(raw_cookie_file: bytes) -> str | None:
@@ -135,33 +185,40 @@ def _password_file() -> Path:
     return DATA_DIR / ".ui_password"
 
 
-def _auth_store() -> AuthStore:
-    """Build the authentication store from current configured state paths."""
-    return AuthStore(
+def _auth_store(request: Request | None = None) -> AuthStore:
+    """Return injected authentication state or the production-path fallback."""
+    fallback = AuthStore(
         session_file=SESSION_STATE_FILE,
         login_state_file=DATA_DIR / ".login_state.json",
     )
+    if request is None:
+        return fallback
+    return _app_state_value(request, "auth_store", fallback)
 
 
-def _load_login_state() -> dict:
+def _load_login_state(request: Request | None = None) -> dict:
     """Load client failure records through the locked authentication store."""
-    return _auth_store().load_login_state()
+    return _auth_store(request).load_login_state()
 
 
-def _save_login_state(state: dict) -> None:
+def _save_login_state(state: dict, request: Request | None = None) -> None:
     """Atomically replace client failure records."""
-    _auth_store().save_login_state(state)
+    _auth_store(request).save_login_state(state)
 
 
-def _load_and_save_login_state(update_fn: "Callable[[dict], None]") -> dict:
-    return _auth_store().update_login_state(update_fn)
+def _load_and_save_login_state(
+    update_fn: "Callable[[dict], None]",
+    request: Request | None = None,
+) -> dict:
+    """Apply one locked authentication-state read-modify-write transaction."""
+    return _auth_store(request).update_login_state(update_fn)
 
 
 def _security_headers(script_nonce: str | None = None) -> dict[str, str]:
     return security_headers(script_nonce)
 
 
-def _cleanup_expired_sessions() -> None:
+def _cleanup_expired_sessions(request: Request | None = None) -> None:
     """Drop expired sessions and their CSRF tokens from memory and disk."""
     with _SESSION_STATE_LOCK:
         expired = [
@@ -175,12 +232,14 @@ def _cleanup_expired_sessions() -> None:
         for sid in expired:
             SESSIONS.pop(sid, None)
             CSRF_TOKENS.pop(sid, None)
-        _save_session_state(SESSIONS)
+        _save_session_state(SESSIONS, request)
 
 
-def _cleanup_expired_login_csrf_tokens() -> None:
+def _cleanup_expired_login_csrf_tokens(
+    request: Request | None = None,
+) -> None:
     """Remove stale login CSRF tokens so the in-memory store stays small."""
-    _cleanup_expired_sessions()
+    _cleanup_expired_sessions(request)
     cutoff = time.time() - LOGIN_CSRF_TTL_SECONDS
     expired_session_ids = [
         session_id
@@ -192,9 +251,11 @@ def _cleanup_expired_login_csrf_tokens() -> None:
         CSRF_TOKENS.pop(session_id, None)
 
 
-def _store_login_csrf_token() -> tuple[str, str]:
+def _store_login_csrf_token(
+    request: Request | None = None,
+) -> tuple[str, str]:
     """Create and store a one-time login CSRF token."""
-    _cleanup_expired_login_csrf_tokens()
+    _cleanup_expired_login_csrf_tokens(request)
     csrf_session_id = secrets.token_urlsafe(16)
     csrf_token = secrets.token_urlsafe(32)
     CSRF_TOKENS[csrf_session_id] = {
@@ -214,20 +275,26 @@ def _password_is_configured(password_text: str) -> bool:
 
 
 def _client_ip(request: Request) -> str:
-    return client_ip(request, CONFIG.trust_x_forwarded_for)
+    return client_ip(request, _request_config(request).trust_x_forwarded_for)
 
 
 def _request_is_secure(request: Request) -> bool:
-    return request_is_secure(request, CONFIG.trust_x_forwarded_for)
+    return request_is_secure(
+        request,
+        _request_config(request).trust_x_forwarded_for,
+    )
 
 
-def _invalidate_session(session_id: str | None) -> None:
+def _invalidate_session(
+    session_id: str | None,
+    request: Request | None = None,
+) -> None:
     """Remove a session and its CSRF token."""
     if session_id:
         with _SESSION_STATE_LOCK:
             SESSIONS.pop(session_id, None)
             CSRF_TOKENS.pop(session_id, None)
-            _save_session_state(SESSIONS)
+            _save_session_state(SESSIONS, request)
 
 
 def _session_has_expired(created_at_raw: float | str | None) -> bool:
@@ -239,12 +306,17 @@ def _session_has_expired(created_at_raw: float | str | None) -> bool:
     return time.time() - created_at > SESSION_MAX_AGE_SECONDS
 
 
-def _load_session_state() -> dict[str, dict[str, float | str]]:
-    return _auth_store().load_sessions(SESSION_MAX_AGE_SECONDS)
+def _load_session_state(
+    request: Request | None = None,
+) -> dict[str, dict[str, float | str]]:
+    return _auth_store(request).load_sessions(SESSION_MAX_AGE_SECONDS)
 
 
-def _save_session_state(state: dict[str, dict[str, float | str]]) -> None:
-    _auth_store().save_sessions(state)
+def _save_session_state(
+    state: dict[str, dict[str, float | str]],
+    request: Request | None = None,
+) -> None:
+    _auth_store(request).save_sessions(state)
     return
 
 
@@ -259,7 +331,7 @@ def _require_login(request: Request) -> RedirectResponse | None:
         return RedirectResponse(url="/login", status_code=302)
 
     if _session_has_expired(session.get("created_at")):
-        _invalidate_session(session_id)
+        _invalidate_session(session_id, request)
         return RedirectResponse(url="/login", status_code=302)
 
     return None
@@ -408,7 +480,7 @@ def login_form(request: Request) -> Response:
 
     ip = _client_ip(request)
     with _LOGIN_STATE_LOCK:
-        state = _load_login_state()
+        state = _load_login_state(request)
         banned, banned_until = _is_banned(state, ip)
     if banned:
         remaining = int(banned_until - time.time())
@@ -417,7 +489,7 @@ def login_form(request: Request) -> Response:
             f"Too many failed attempts. Try again in {remaining} seconds."
         )
 
-    csrf_session_id, csrf_token = _store_login_csrf_token()
+    csrf_session_id, csrf_token = _store_login_csrf_token(request)
     safe_token = html.escape(csrf_token)
     safe_csrf_session = html.escape(csrf_session_id)
     script_nonce = secrets.token_urlsafe(16)
@@ -457,7 +529,7 @@ def login_action(
 
     # Fail fast if the IP is already banned.
     with _LOGIN_STATE_LOCK:
-        state = _load_login_state()
+        state = _load_login_state(request)
         banned, banned_until = _is_banned(state, ip)
     if banned:
         return RedirectResponse(url="/login?msg=banned", status_code=303)
@@ -479,19 +551,28 @@ def login_action(
 
     if not password_ok:
         with _LOGIN_STATE_LOCK:
-            state = _load_login_state()
-            _failed_count, banned_until = _record_failure(state, ip)
-            _save_login_state(state)
+            failure_result: dict[str, float] = {}
+
+            def record_failure(state: dict) -> None:
+                """Capture the ban deadline from one locked state transition."""
+                _failed_count, banned_until = _record_failure(state, ip)
+                failure_result["banned_until"] = banned_until
+
+            _load_and_save_login_state(record_failure, request)
+            banned_until = failure_result.get("banned_until", 0)
         if banned_until and time.time() < banned_until:
             return RedirectResponse(url="/login?msg=banned", status_code=303)
         return RedirectResponse(url="/login?msg=bad_password", status_code=303)
 
-    _load_and_save_login_state(lambda state: _clear_failures(state, ip))
+    _load_and_save_login_state(
+        lambda state: _clear_failures(state, ip),
+        request,
+    )
 
     session_id = secrets.token_urlsafe(32)
     with _SESSION_STATE_LOCK:
         SESSIONS[session_id] = {"created_at": time.time()}
-        _save_session_state(SESSIONS)
+        _save_session_state(SESSIONS, request)
     response = RedirectResponse(url="/ui", status_code=302)
     _set_session_cookie(response, request, session_id)
     return response
@@ -505,7 +586,7 @@ def logout(
     if not _verify_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
     session_id = request.cookies.get(SESSION_COOKIE)
-    _invalidate_session(session_id)
+    _invalidate_session(session_id, request)
     response = RedirectResponse(url="/login", status_code=302)
     _delete_session_cookie(response)
     return response
@@ -547,7 +628,8 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         msg_html = f'<div class="{css_class}">{html.escape(display_text)}</div>'
 
     bypass_row_html = ""
-    if CONFIG.min_channel_video_age_hours > 0:
+    config = _request_config(request)
+    if config.min_channel_video_age_hours > 0:
         bypass_label = html.escape("Download now (skip age wait or full playlist)")
     else:
         bypass_label = html.escape("Download now (full playlist)")
@@ -560,7 +642,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         </div>
         """
 
-    queue_urls = QueueStore(_get_urls_file(), _logger).load_normalized_urls()
+    queue_urls = _queue_store(request).load_normalized_urls()
     safe_queue_urls = [html.escape(url) for url in queue_urls]
 
     if safe_queue_urls:
@@ -580,7 +662,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 
     count = len(safe_queue_urls)
     last_activity = html.escape(
-        _last_activity_label(activity_log_file_for(CONFIG.log_file))
+        _last_activity_label(_activity_store(request).activity_log_file)
     )
 
     return render_queue_page(
@@ -615,7 +697,7 @@ async def upload_cookies_form(
         return RedirectResponse(url="/ui?msg=cookies_invalid", status_code=303)
 
     try:
-        _write_cookie_file(_configured_cookie_file(), normalized_cookie_text)
+        _write_cookie_file(_configured_cookie_file(request), normalized_cookie_text)
     except OSError:
         _logger.exception("Could not update cookies file")
         return RedirectResponse(url="/ui?msg=cookies_error", status_code=303)
@@ -642,12 +724,12 @@ def view_logs(request: Request, source: str = "activity") -> Response:
 
     try:
         if log_source == "download":
-            tail = ActivityLogStore(CONFIG.log_file).read_tail(
+            config = _request_config(request)
+            tail = ActivityLogStore(config.log_file).read_tail(
                 empty_message=NO_DOWNLOAD_LOG_MESSAGE
             )
         else:
-            activity_log_file = activity_log_file_for(CONFIG.log_file)
-            tail = ActivityLogStore(activity_log_file).read_tail()
+            tail = _activity_store(request).read_tail()
         return Response(
             content=tail, media_type="text/plain", headers=_security_headers()
         )
@@ -681,12 +763,11 @@ def add_url_form(
     normalized = normalize_youtube_url(url)
 
     # Avoid re-queuing anything already archived as downloaded.
-    downloaded = ArchiveStore(CONFIG.downloaded_urls_file, _logger).load()
+    downloaded = _archive_store(request).load()
     if normalized in downloaded:
         return RedirectResponse(url="/ui?msg=downloaded", status_code=303)
 
-    urls_file = _get_urls_file()
-    added = QueueStore(urls_file, _logger).append_urls([normalized])
+    added = _queue_store(request).append_urls([normalized])
 
     if not added:
         return RedirectResponse(url="/ui?msg=duplicate", status_code=303)
@@ -698,13 +779,13 @@ def add_url_form(
     skip_age_check_value = skip_age_check if isinstance(skip_age_check, str) else ""
     is_direct_video = not is_channel_or_playlist(normalized)
     if skip_age_check_value and is_youtube_playlist(normalized):
-        queue_full_playlist_download(normalized)
+        _download_trigger(request).queue_full_playlist_download(normalized)
     elif is_direct_video:
         # The bypass file only affects YouTube's minimum-age policy. Non-YouTube
         # direct videos are immediate already, so writing them there is noise.
         if skip_age_check_value and is_youtube_url(normalized):
-            BypassStore(CONFIG.bypass_age_check_file, _logger).add(normalized)
-        queue_single_url_download(normalized)
+            _bypass_store(request).add(normalized)
+        _download_trigger(request).queue_single_url_download(normalized)
 
     return RedirectResponse(url="/ui?msg=added", status_code=303)
 
@@ -726,7 +807,7 @@ def remove_url_form(
     if not is_supported_media_url(url):
         return RedirectResponse(url="/ui?msg=invalid", status_code=303)
 
-    removed = QueueStore(_get_urls_file(), _logger).remove_url(url)
+    removed = _queue_store(request).remove_url(url)
     if not removed:
         return RedirectResponse(url="/ui?msg=notfound", status_code=303)
 
