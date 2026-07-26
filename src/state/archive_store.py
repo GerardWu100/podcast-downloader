@@ -27,7 +27,7 @@ class LockedDownloadedUrlArchive:
 
     def _read_urls(self) -> set[str]:
         """Read normalized archive URLs from the locked handle."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         self.file_handle.seek(0)
         return {
@@ -38,14 +38,14 @@ class LockedDownloadedUrlArchive:
 
     def contains(self, url: str) -> bool:
         """Return whether a normalized URL is already archived."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         normalized = normalize_youtube_url(url.strip())
         return normalized in self._urls
 
     def append_success(self, url: str) -> bool:
         """Append a successful normalized URL once."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         normalized = normalize_youtube_url(url.strip())
         if normalized in self._urls:
@@ -59,7 +59,7 @@ class LockedDownloadedUrlArchive:
 
     def remove(self, url: str) -> bool:
         """Remove one normalized URL from the archive transaction."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         normalized = normalize_youtube_url(url.strip())
         if normalized not in self._urls:
@@ -94,7 +94,7 @@ class ArchiveStore:
 
     def load(self) -> set[str]:
         """Read normalized archived URLs while holding a shared lock."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         if not self.archive_file.exists():
             return set()

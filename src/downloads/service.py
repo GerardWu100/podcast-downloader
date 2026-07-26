@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from ..activity_log import activity_log_file_for, write_activity_event
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..config import DEFAULT_CHANNEL_VIDEO_COUNT
-from ..url_utils import (
+from ..media.youtube import (
     expand_channel_or_playlist,
     get_video_metadata,
     get_youtube_channel_display_name,
@@ -26,16 +26,12 @@ from ..url_utils import (
     is_youtube_playlist,
     is_youtube_short_url,
     is_youtube_url,
-    load_bypass_age_urls,
-    load_downloaded_url_archive,
-    locked_downloaded_url_archive,
     looks_like_youtube_channel_id,
     normalize_youtube_url,
-    read_urls_file,
-    remove_from_bypass_age_file,
-    remove_from_downloaded_url_archive,
-    remove_video_url_from_file,
 )
+from ..state.archive_store import ArchiveStore
+from ..state.bypass_store import BypassStore
+from ..state.queue_store import QueueStore
 from .audio_metadata import AudioMetadataWriter
 from .ytdlp_client import AudioSnapshot
 
@@ -142,6 +138,16 @@ class PodcastDownloadService:
         self.always_use_cookies = always_use_cookies
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
+        )
+        # Stores own all file-format and locking behavior; the service only
+        # coordinates their state transitions around a download attempt.
+        self.queue_store = QueueStore(self.urls_file, logging.getLogger("queue"))
+        self.archive_store = ArchiveStore(
+            self.downloaded_urls_file, logging.getLogger("archive")
+        )
+        self.bypass_store = BypassStore(
+            self.bypass_age_check_file,
+            logging.getLogger("bypass"),
         )
         self.audio_metadata_writer = AudioMetadataWriter(
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
@@ -518,7 +524,7 @@ class PodcastDownloadService:
 
     def _load_downloaded_urls(self) -> set[str]:
         """Load the archive of expanded URLs that already succeeded."""
-        return load_downloaded_url_archive(self.downloaded_urls_file, self.logger)
+        return self.archive_store.load()
 
     @property
     def downloaded_urls(self) -> set[str]:
@@ -683,11 +689,7 @@ class PodcastDownloadService:
                 continue
 
             deleted_files.append(audio_file)
-            archive_removed = remove_from_downloaded_url_archive(
-                self.downloaded_urls_file,
-                source_url,
-                self.logger,
-            )
+            archive_removed = self.archive_store.remove(source_url)
             if archive_removed:
                 self._downloaded_urls.discard(normalize_youtube_url(source_url))
             self.logger.info("Deleted expired MP3: %s", audio_file)
@@ -883,7 +885,7 @@ class PodcastDownloadService:
         self._downloaded_urls = self._load_downloaded_urls()
 
         if use_archive:
-            with locked_downloaded_url_archive(self.downloaded_urls_file) as archive:
+            with self.archive_store.locked_transaction() as archive:
                 if archive.contains(normalized_url):
                     self._downloaded_urls.add(normalized_url)
                     self.logger.info("Already downloaded: %s", normalized_url)
@@ -922,12 +924,8 @@ class PodcastDownloadService:
 
         if is_youtube_short_url(video_url):
             self.logger.info("Skipping YouTube Short: %s", video_url)
-            remove_video_url_from_file(self.urls_file, video_url, self.logger)
-            remove_from_bypass_age_file(
-                self.bypass_age_check_file,
-                video_url,
-                self.logger,
-            )
+            self.queue_store.remove_url(video_url)
+            self.bypass_store.remove(video_url)
             self._record_activity(f"Skipped Short: {video_url}")
             return video_url, True
 
@@ -1041,12 +1039,8 @@ class PodcastDownloadService:
 
         self._finalize_intermediate_cleanup(work_dir)
 
-        remove_video_url_from_file(self.urls_file, video_url, self.logger)
-        remove_from_bypass_age_file(
-            self.bypass_age_check_file,
-            video_url,
-            self.logger,
-        )
+        self.queue_store.remove_url(video_url)
+        self.bypass_store.remove(video_url)
 
         downloaded_name = published_audio_files[-1].name
         self.logger.info("Downloaded: %s", downloaded_name)
@@ -1130,7 +1124,7 @@ class PodcastDownloadService:
             ``(successful, failed)`` counts for concrete videos attempted or
             skipped as completed.
         """
-        urls = read_urls_file(self.urls_file, self.logger)
+        urls = self.queue_store.read_urls()
         if not urls:
             self.logger.info("No URLs to process.")
             return 0, 0
@@ -1143,7 +1137,7 @@ class PodcastDownloadService:
         # skip an archived item and only then make it eligible by deleting it.
         self._run_retention_cleanup(retention_dirs)
 
-        bypass_urls = load_bypass_age_urls(self.bypass_age_check_file, self.logger)
+        bypass_urls = self.bypass_store.load()
         download_targets: list[DownloadTarget] = []
 
         for url in urls:
@@ -1196,7 +1190,7 @@ class PodcastDownloadService:
             )
             return 0, 0
 
-        current_queue_urls = read_urls_file(self.urls_file, self.logger)
+        current_queue_urls = self.queue_store.read_urls()
         retention_dirs = self._retention_channel_output_dirs(current_queue_urls)
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
         self.intermediate_dir.mkdir(parents=True, exist_ok=True)
@@ -1255,13 +1249,13 @@ class PodcastDownloadService:
             )
             return 0, 0
 
-        bypass_urls = load_bypass_age_urls(self.bypass_age_check_file, self.logger)
+        bypass_urls = self.bypass_store.load()
         if is_youtube_url(normalized_url) and self._youtube_video_is_too_new(
             normalized_url, bypass_urls
         ):
             return 0, 0
 
-        current_queue_urls = read_urls_file(self.urls_file, self.logger)
+        current_queue_urls = self.queue_store.read_urls()
         retention_dirs = self._retention_channel_output_dirs(current_queue_urls)
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
         self.intermediate_dir.mkdir(parents=True, exist_ok=True)

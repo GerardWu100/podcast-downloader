@@ -61,7 +61,7 @@ class QueueStore:
 
     def read_urls(self) -> list[str]:
         """Read valid queue entries and ignore comments and blank lines."""
-        from ..url_utils import is_supported_media_url
+        from ..media.urls import is_supported_media_url
 
         if not self.urls_file.exists():
             self.logger.error("URLs file not found: %s", self.urls_file)
@@ -81,7 +81,8 @@ class QueueStore:
 
     def load_normalized_urls(self) -> list[str]:
         """Return normalized valid queue entries for UI rendering."""
-        from ..url_utils import is_supported_media_url, normalize_youtube_url
+        from ..media.urls import is_supported_media_url
+        from ..media.youtube import normalize_youtube_url
 
         if not self.urls_file.exists():
             return []
@@ -105,7 +106,7 @@ class QueueStore:
 
     def remove_video_url(self, video_url: str) -> None:
         """Remove one direct video URL while leaving channel entries alone."""
-        from ..url_utils import is_channel_or_playlist, normalize_youtube_url
+        from ..media.youtube import is_channel_or_playlist, normalize_youtube_url
 
         if not self.urls_file.exists():
             return
@@ -145,7 +146,7 @@ class QueueStore:
 
     def remove_url(self, url: str) -> bool:
         """Remove one normalized URL from the queue."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         if not self.urls_file.exists():
             return False
@@ -199,7 +200,8 @@ class QueueStore:
         int
             Number of new URLs written.
         """
-        from ..url_utils import is_supported_media_url, normalize_youtube_url
+        from ..media.urls import is_supported_media_url
+        from ..media.youtube import normalize_youtube_url
 
         if not urls:
             return 0

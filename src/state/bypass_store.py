@@ -19,7 +19,7 @@ class BypassStore:
 
     def load(self) -> set[str]:
         """Return normalized URLs that should bypass the next age check."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         if not self.bypass_file.exists():
             return set()
@@ -36,7 +36,7 @@ class BypassStore:
 
     def add(self, url: str) -> None:
         """Append a normalized URL if it is not already present."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         normalized = normalize_youtube_url(url.strip())
         self.bypass_file.parent.mkdir(parents=True, exist_ok=True)
@@ -62,7 +62,7 @@ class BypassStore:
 
     def remove(self, url: str) -> None:
         """Remove one normalized URL from the bypass file."""
-        from ..url_utils import normalize_youtube_url
+        from ..media.youtube import normalize_youtube_url
 
         if not self.bypass_file.exists():
             return

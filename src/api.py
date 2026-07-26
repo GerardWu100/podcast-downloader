@@ -30,18 +30,16 @@ from .trigger import (
     queue_full_playlist_download,
     queue_single_url_download,
 )
-from .url_utils import (
-    add_to_bypass_age_file,
-    append_urls,
+from .media.urls import is_supported_media_url
+from .media.youtube import (
     is_channel_or_playlist,
-    is_supported_media_url,
     is_youtube_playlist,
     is_youtube_url,
-    load_queue_urls,
-    load_downloaded_url_archive,
     normalize_youtube_url,
-    remove_url_from_queue,
 )
+from .state.archive_store import ArchiveStore
+from .state.bypass_store import BypassStore
+from .state.queue_store import QueueStore
 
 _logger = logging.getLogger("api")
 
@@ -954,7 +952,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         </div>
         """
 
-    queue_urls = load_queue_urls(_get_urls_file(), _logger)
+    queue_urls = QueueStore(_get_urls_file(), _logger).load_normalized_urls()
     safe_queue_urls = [html.escape(url) for url in queue_urls]
 
     if safe_queue_urls:
@@ -1483,12 +1481,12 @@ def add_url_form(
     normalized = normalize_youtube_url(url)
 
     # Avoid re-queuing anything already archived as downloaded.
-    downloaded = load_downloaded_url_archive(CONFIG.downloaded_urls_file, _logger)
+    downloaded = ArchiveStore(CONFIG.downloaded_urls_file, _logger).load()
     if normalized in downloaded:
         return RedirectResponse(url="/ui?msg=downloaded", status_code=303)
 
     urls_file = _get_urls_file()
-    added = append_urls(urls_file, [normalized])
+    added = QueueStore(urls_file, _logger).append_urls([normalized])
 
     if not added:
         return RedirectResponse(url="/ui?msg=duplicate", status_code=303)
@@ -1505,7 +1503,7 @@ def add_url_form(
         # The bypass file only affects YouTube's minimum-age policy. Non-YouTube
         # direct videos are immediate already, so writing them there is noise.
         if skip_age_check_value and is_youtube_url(normalized):
-            add_to_bypass_age_file(CONFIG.bypass_age_check_file, normalized, _logger)
+            BypassStore(CONFIG.bypass_age_check_file, _logger).add(normalized)
         queue_single_url_download(normalized)
 
     return RedirectResponse(url="/ui?msg=added", status_code=303)
@@ -1528,7 +1526,7 @@ def remove_url_form(
     if not is_supported_media_url(url):
         return RedirectResponse(url="/ui?msg=invalid", status_code=303)
 
-    removed = remove_url_from_queue(_get_urls_file(), url, _logger)
+    removed = QueueStore(_get_urls_file(), _logger).remove_url(url)
     if not removed:
         return RedirectResponse(url="/ui?msg=notfound", status_code=303)
 

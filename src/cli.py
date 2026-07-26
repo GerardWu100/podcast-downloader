@@ -10,16 +10,30 @@ from pathlib import Path
 
 from .config import ConfigError, DEFAULT_CHANNEL_VIDEO_COUNT, load_config
 from .downloader import Colors, PodcastDownloader
-from .url_utils import (
-    add_to_bypass_age_file,
-    append_urls,
+from .media.urls import is_supported_media_url
+from .media.youtube import (
     is_channel_or_playlist,
-    is_supported_media_url,
     is_youtube_url,
     normalize_youtube_url,
 )
+from .state.bypass_store import BypassStore
+from .state.queue_store import QueueStore
 
 _logger = logging.getLogger("cli")
+
+
+def append_urls(urls_file: Path, urls: list[str]) -> int:
+    """Append validated URLs through the queue store."""
+    return QueueStore(urls_file, _logger).append_urls(urls)
+
+
+def add_to_bypass_age_file(
+    bypass_file: Path,
+    url: str,
+    logger: logging.Logger,
+) -> None:
+    """Record one normalized URL in the one-shot bypass store."""
+    BypassStore(bypass_file, logger).add(url)
 
 
 def _mark_youtube_bypass_urls(
