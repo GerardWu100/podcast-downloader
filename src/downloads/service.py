@@ -33,7 +33,7 @@ from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
 from .audio_metadata import AudioMetadataWriter
-from .ytdlp_client import AudioSnapshot
+from .ytdlp_client import AudioSnapshot, YtDlpClient
 
 FALLBACK_SINGLE_DOWNLOAD_FOLDER = "singles"
 YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
@@ -86,6 +86,7 @@ class PodcastDownloadService:
         cookies_file: Path | None = None,
         always_use_cookies: bool = False,
         bypass_age_check_file: Path | None = None,
+        ytdlp_client: YtDlpClient | None = None,
     ) -> None:
         """Create a downloader service for one queue/archive location.
 
@@ -154,6 +155,12 @@ class PodcastDownloadService:
         )
 
         self._setup_logging()
+        self.ytdlp_client = ytdlp_client or YtDlpClient(
+            cookies_file=self.cookies_file,
+            always_use_cookies=self.always_use_cookies,
+            logger=self.logger,
+            run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
+        )
         self._downloaded_urls = self._load_downloaded_urls()
 
         if self.cookies_file:
@@ -752,6 +759,21 @@ class PodcastDownloadService:
         )
         target_work_dir.mkdir(parents=True, exist_ok=True)
         before_snapshot = self._snapshot_downloaded_audio(target_work_dir)
+        if self.ytdlp_client is not None:
+            # The client owns command construction and process limits. Keeping
+            # this method as a delegate avoids forcing callers to know client
+            # internals while tests migrate to injected fakes.
+            result = self.ytdlp_client._run_attempt(
+                url,
+                target_work_dir,
+                cookies_file,
+            )
+            after_snapshot = self._snapshot_downloaded_audio(target_work_dir)
+            return result, self._detect_changed_audio_files(
+                before_snapshot,
+                after_snapshot,
+            )
+
         command = [
             "yt-dlp",
             "--paths",

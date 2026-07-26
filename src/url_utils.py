@@ -13,4 +13,3 @@ from .media import youtube
 # Preserve monkeypatch behavior during the short migration: importing
 # ``src.url_utils`` returns the actual provider module, not copied attributes.
 sys.modules[__name__] = youtube
-

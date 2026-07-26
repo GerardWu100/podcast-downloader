@@ -1,26 +1,243 @@
-"""Small value objects for ``yt-dlp`` execution.
-
-The downloader tracks file state around each ``yt-dlp`` subprocess run because
-an exit code alone cannot prove that a usable MP3 was created or changed.
-"""
+"""Run ``yt-dlp`` audio downloads behind one explicit client boundary."""
 
 from __future__ import annotations
 
+import logging
+import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+
+from ..media.youtube import is_youtube_url
+
+DOWNLOAD_TIMEOUT_SECONDS = 300
+SPONSORBLOCK_CATEGORIES = "sponsor,selfpromo"
+YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
+
+RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 
 
 @dataclass(frozen=True)
 class AudioSnapshot:
-    """MP3 file state captured before or after one download attempt.
+    """MP3 file state captured around one download attempt.
 
     Attributes
     ----------
     files:
-        Mapping from each MP3 path to ``(mtime_ns, size_bytes)``. ``mtime_ns`` is
-        the filesystem modification time in nanoseconds, and ``size_bytes`` is
-        the file size. Both values are needed because a downloader can preserve
-        or reuse timestamps while changing bytes.
+        Mapping from MP3 path to ``(mtime_ns, size_bytes)``. ``mtime_ns`` is
+        the filesystem modification time in nanoseconds.
     """
 
     files: dict[Path, tuple[int, int]]
+
+
+@dataclass(frozen=True)
+class YtDlpResult:
+    """Observable result of a complete audio-download request.
+
+    Attributes
+    ----------
+    returncode:
+        Exit status from the final ``yt-dlp`` attempt.
+    stdout:
+        Standard output from the final attempt.
+    stderr:
+        Standard error from the final attempt.
+    changed_audio_files:
+        MP3 files created or changed across all attempts.
+    before_snapshot:
+        MP3 state before the first attempt.
+    after_snapshot:
+        MP3 state after the final attempt.
+    attempts:
+        Number of subprocess attempts, either one or two.
+    """
+
+    returncode: int
+    stdout: str
+    stderr: str
+    changed_audio_files: list[Path]
+    before_snapshot: AudioSnapshot
+    after_snapshot: AudioSnapshot
+    attempts: int
+
+
+class YtDlpClient:
+    """Construct and execute ``yt-dlp`` audio-download commands.
+
+    Parameters
+    ----------
+    cookies_file:
+        Optional Netscape-format cookie file used only for YouTube.
+    always_use_cookies:
+        When ``True``, try YouTube with cookies and retry without them. When
+        ``False``, try without cookies and retry with them.
+    logger:
+        Destination for retry messages.
+    run_command:
+        Subprocess-compatible callable; tests may inject a deterministic fake.
+    """
+
+    def __init__(
+        self,
+        *,
+        cookies_file: Path | None,
+        always_use_cookies: bool,
+        logger: logging.Logger,
+        run_command: RunCommand = subprocess.run,
+    ) -> None:
+        self.cookies_file = cookies_file
+        self.always_use_cookies = always_use_cookies
+        self.logger = logger
+        self.run_command = run_command
+
+    def snapshot_audio(self, work_dir: Path) -> AudioSnapshot:
+        """Capture recursive MP3 modification time and size state."""
+        captured_files: dict[Path, tuple[int, int]] = {}
+
+        # Recursive snapshots include extractor-created subfolders while
+        # remaining scoped to this source's isolated working directory.
+        for audio_file in work_dir.rglob("*.mp3"):
+            if not audio_file.is_file():
+                continue
+            file_stat = audio_file.stat()
+            captured_files[audio_file] = (
+                file_stat.st_mtime_ns,
+                file_stat.st_size,
+            )
+        return AudioSnapshot(files=captured_files)
+
+    @staticmethod
+    def changed_audio_files(
+        before_snapshot: AudioSnapshot,
+        after_snapshot: AudioSnapshot,
+    ) -> list[Path]:
+        """Return MP3 paths created or changed between two snapshots."""
+        return sorted(
+            audio_file
+            for audio_file, after_state in after_snapshot.files.items()
+            if before_snapshot.files.get(audio_file) != after_state
+        )
+
+    def build_download_command(
+        self,
+        url: str,
+        work_dir: Path,
+        cookies_file: Path | None,
+    ) -> list[str]:
+        """Build one audio-download command with a safe URL separator."""
+        command = [
+            "yt-dlp",
+            "--paths",
+            f"temp:{work_dir}",
+            "--extract-audio",
+            "--audio-format",
+            "mp3",
+            "--audio-quality",
+            "0",
+            "--no-mtime",
+            "--embed-thumbnail",
+            "--add-metadata",
+            "--output",
+            str(work_dir / YTDLP_OUTPUT_FILENAME_TEMPLATE),
+        ]
+        if is_youtube_url(url):
+            command.extend(["--sponsorblock-remove", SPONSORBLOCK_CATEGORIES])
+        else:
+            command.append("--no-playlist")
+        if cookies_file is not None:
+            command.extend(["--cookies", str(cookies_file)])
+
+        # ``--`` prevents a user-controlled URL beginning with a dash from
+        # being interpreted as another command-line option.
+        command.extend(["--", url])
+        return command
+
+    def _run_attempt(
+        self,
+        url: str,
+        work_dir: Path,
+        cookies_file: Path | None,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run one bounded ``yt-dlp`` subprocess attempt."""
+        command = self.build_download_command(url, work_dir, cookies_file)
+        return self.run_command(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=DOWNLOAD_TIMEOUT_SECONDS,
+            check=False,
+        )
+
+    def _first_attempt_cookies(self, url: str) -> Path | None:
+        """Choose cookies for the first attempt according to configured policy."""
+        if not is_youtube_url(url) or self.cookies_file is None:
+            return None
+        return self.cookies_file if self.always_use_cookies else None
+
+    def _retry_cookies(
+        self,
+        url: str,
+        first_attempt_cookies: Path | None,
+    ) -> Path | None | object:
+        """Choose alternate cookies, or a sentinel when no retry is allowed."""
+        no_retry = _NO_RETRY
+        if not is_youtube_url(url) or self.cookies_file is None:
+            return no_retry
+        if self.always_use_cookies and first_attempt_cookies is not None:
+            return None
+        if not self.always_use_cookies and first_attempt_cookies is None:
+            return self.cookies_file
+        return no_retry
+
+    def download(self, url: str, work_dir: Path) -> YtDlpResult:
+        """Run an audio download, including one alternate-cookie retry.
+
+        A zero exit status without a changed MP3 is treated as a failed
+        attempt for retry purposes. The service may still recover one existing
+        MP3 after this client returns when a prior metadata pass failed.
+        """
+        work_dir.mkdir(parents=True, exist_ok=True)
+        before_snapshot = self.snapshot_audio(work_dir)
+        first_attempt_cookies = self._first_attempt_cookies(url)
+        process = self._run_attempt(url, work_dir, first_attempt_cookies)
+        after_snapshot = self.snapshot_audio(work_dir)
+        changed_files = self.changed_audio_files(before_snapshot, after_snapshot)
+        attempts = 1
+
+        retry_cookies = self._retry_cookies(url, first_attempt_cookies)
+        if process.returncode != 0 or not changed_files:
+            if retry_cookies is not _NO_RETRY:
+                if first_attempt_cookies is not None:
+                    self.logger.info(
+                        "Cookie YouTube download failed; retrying without cookies"
+                    )
+                else:
+                    self.logger.info(
+                        "Plain YouTube download failed; retrying with cookies file: %s",
+                        self.cookies_file,
+                    )
+                process = self._run_attempt(
+                    url,
+                    work_dir,
+                    retry_cookies if isinstance(retry_cookies, Path) else None,
+                )
+                after_snapshot = self.snapshot_audio(work_dir)
+                changed_files = self.changed_audio_files(
+                    before_snapshot,
+                    after_snapshot,
+                )
+                attempts = 2
+
+        return YtDlpResult(
+            returncode=process.returncode,
+            stdout=process.stdout or "",
+            stderr=process.stderr or "",
+            changed_audio_files=changed_files,
+            before_snapshot=before_snapshot,
+            after_snapshot=after_snapshot,
+            attempts=attempts,
+        )
+
+
+_NO_RETRY = object()
