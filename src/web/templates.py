@@ -272,3 +272,511 @@ def render_help_page(
 </html>""",
         headers=header_factory(script_nonce),
     )
+
+
+def render_login_page(
+    *,
+    message_html: str,
+    safe_csrf_session: str,
+    safe_token: str,
+    script_nonce: str,
+    headers: dict[str, str],
+) -> HTMLResponse:
+    """Render the login page from already escaped values."""
+    return HTMLResponse(
+        content=f"""<!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" /><title>Podcast Downloader</title>
+      <meta name="viewport" content="width=device-width,initial-scale=1" />
+      <style>
+    {BASE_STYLES}
+    body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }}
+    .card {{ width:100%; max-width:360px; }}
+    .theme-toggle {{
+      position:fixed; top:16px; right:16px; padding:7px 10px; border:1px solid var(--border);
+      border-radius:7px; background:var(--surface); color:var(--muted); cursor:pointer;
+      font-size:.78rem; font-weight:600;
+    }}
+    .theme-toggle:hover {{ color:var(--text); border-color:var(--accent); }}
+    h1 {{ font-size:1.1rem; font-weight:700; margin-bottom:4px; }}
+    .sub {{ font-size:.82rem; color:var(--muted); margin-bottom:24px; }}
+    label {{ display:block; font-size:.72rem; font-weight:700; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--muted); margin-bottom:6px; }}
+    .btn {{ margin-top:14px; width:100%; padding:10px; }}
+    .help-link {{ display:block; margin-top:18px; text-align:center; font-size:.78rem; }}
+      </style>
+    </head>
+    <body>
+      <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
+      <div class="card">
+    <h1>Podcast Downloader</h1>
+    <p class="sub">Sign in to manage your queue.</p>
+    {message_html}
+    <form method="post" action="/login">
+      <input type="hidden" name="csrf_token" value="{safe_token}" />
+      <input type="hidden" name="csrf_session" value="{safe_csrf_session}" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password"
+        autocomplete="current-password" autocapitalize="none"
+        spellcheck="false" required autofocus />
+      <button type="submit" class="btn">Sign in</button>
+    </form>
+    <a class="help-link text-link" href="/help">How it works</a>
+      </div>
+      <script nonce="{script_nonce}">
+    const savedTheme = localStorage.getItem('podcast-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const themeButton = document.getElementById('theme-toggle');
+
+    function applyTheme(theme) {{
+      document.body.classList.toggle('theme-dark', theme === 'dark');
+      document.body.classList.toggle('theme-light', theme === 'light');
+      themeButton.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    }}
+
+    applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+    themeButton.addEventListener('click', () => {{
+      const nextTheme = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+      localStorage.setItem('podcast-theme', nextTheme);
+      applyTheme(nextTheme);
+    }});
+      </script>
+    </body>
+    </html>""",
+        headers=headers,
+    )
+
+
+def render_queue_page(
+    *,
+    bypass_row_html: str,
+    count: int,
+    last_activity: str,
+    msg_html: str,
+    queue_html: str,
+    safe_token: str,
+    script_nonce: str,
+    headers: dict[str, str],
+) -> HTMLResponse:
+    """Render the authenticated queue page from prepared values."""
+    return HTMLResponse(
+        content=f"""<!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <title>Podcast Downloader</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <style>
+    {BASE_STYLES}
+    body {{ padding:38px 18px 54px; }}
+    .page {{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }}
+    header {{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:2px; padding:0 2px;
+    }}
+    .header-actions {{ display:flex; align-items:center; gap:8px; }}
+    .brand h1 {{ font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }}
+    .brand p  {{ font-size:.78rem; color:var(--muted); }}
+    .theme-toggle {{
+      font-size:.78rem; color:var(--muted); background:var(--surface);
+      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+      cursor:pointer; transition:color .15s,border-color .15s;
+    }}
+    .theme-toggle:hover {{ color:var(--text); border-color:var(--accent); }}
+    .logout-btn {{
+      font-size:.78rem; color:var(--muted); background:var(--surface); text-decoration:none;
+      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+      cursor:pointer; transition:color .15s,border-color .15s;
+    }}
+    .logout-btn:hover {{ color:#dc2626; border-color:#dc2626; }}
+    .card-row {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }}
+    .badge {{
+      background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-border);
+      font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:999px;
+    }}
+    .input-row {{ display:flex; gap:8px; }}
+    .input-row input {{ flex:1; }}
+    .file-row {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }}
+    .q-list {{ list-style:none; }}
+    .q-item {{ display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); }}
+    .q-item:last-child {{ border-bottom:none; }}
+    .q-dot {{ width:6px; height:6px; background:var(--accent); border-radius:50%; margin-top:5px; flex-shrink:0; opacity:.5; }}
+    .q-url {{ flex:1; font-size:.8rem; color:var(--muted); word-break:break-all; }}
+    .remove-form {{ flex-shrink:0; }}
+    .btn-remove {{
+      padding:5px 10px; font-size:.75rem; font-weight:600; background:var(--surface);
+      color:var(--danger); border:1px solid var(--danger-border); border-radius:6px; cursor:pointer;
+      transition:background .15s,border-color .15s,color .15s;
+    }}
+    .btn-remove:hover {{ background:var(--danger-bg); border-color:var(--danger-border); color:var(--danger-hov); }}
+    .empty {{ font-size:.85rem; color:var(--muted); font-style:italic; }}
+    .log-bar {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; flex-wrap:wrap; }}
+    .log-controls {{ display:flex; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); }}
+    .log-controls label {{ display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; }}
+    #log-ts {{
+      font-variant-numeric:tabular-nums; font-size:.72rem; color:var(--muted);
+      background:var(--input-bg); border:1px solid var(--border); border-radius:999px;
+      padding:2px 10px;
+    }}
+    .log-source {{
+      font-size:.75rem; font-weight:600; color:var(--text); background:var(--input-bg);
+      border:1px solid var(--border); border-radius:999px; padding:5px 12px; cursor:pointer;
+      transition:border-color .15s,box-shadow .15s;
+    }}
+    .log-source:focus {{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }}
+    .btn-ghost {{
+      padding:5px 12px; font-size:.75rem; font-weight:600; background:transparent;
+      color:var(--accent); border:1px solid var(--accent-border); border-radius:999px;
+      cursor:pointer; transition:all .15s;
+    }}
+    .btn-ghost:hover {{ background:var(--accent-soft); }}
+    #log-box {{
+      background:var(--log-bg); color:var(--log-text); border:1px solid var(--log-border);
+      font-family:"SF Mono","Fira Code","Consolas",monospace;
+      font-size:.74rem; line-height:1.45; border-radius:10px; padding:6px 0;
+      height:340px; overflow-y:auto; word-break:break-word;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    }}
+    #log-box::-webkit-scrollbar {{ width:6px; }}
+    #log-box::-webkit-scrollbar-thumb {{ background:var(--scrollbar); border-radius:999px; }}
+    .log-empty {{
+      display:flex; align-items:center; justify-content:center; min-height:280px;
+      padding:24px; color:var(--log-dim); font-style:italic; text-align:center;
+    }}
+    .log-line {{
+      display:flex; align-items:flex-start; gap:10px; padding:7px 14px;
+      border-left:3px solid transparent; transition:background .12s;
+    }}
+    .log-line + .log-line {{ border-top:1px solid rgba(255,255,255,.04); }}
+    .log-line:hover {{ background:var(--log-hover); }}
+    .log-line--ok {{ border-left-color:var(--log-ok); }}
+    .log-line--warn {{ border-left-color:var(--log-warn); }}
+    .log-line--err {{ border-left-color:var(--log-err); }}
+    .log-line--info {{ border-left-color:var(--log-info); }}
+    .log-line--dim {{ border-left-color:var(--log-dim); }}
+    .log-line--neutral {{ border-left-color:rgba(255,255,255,.12); }}
+    .log-time {{
+      flex-shrink:0; min-width:64px; font-size:.68rem; color:var(--log-time);
+      font-variant-numeric:tabular-nums; padding-top:1px;
+    }}
+    .log-badge,.log-level {{
+      flex-shrink:0; min-width:42px; text-align:center;
+      font-size:.58rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+      padding:2px 6px; border-radius:999px; margin-top:1px;
+    }}
+    .log-badge--ok,.log-level--ok {{ color:var(--log-ok); background:var(--log-ok-soft); }}
+    .log-badge--warn,.log-level--warn {{ color:var(--log-warn); background:var(--log-warn-soft); }}
+    .log-badge--err,.log-level--err {{ color:var(--log-err); background:var(--log-err-soft); }}
+    .log-badge--info,.log-level--info {{ color:var(--log-info); background:var(--log-info-soft); }}
+    .log-badge--dim,.log-level--dim {{ color:var(--log-dim); background:var(--log-dim-soft); }}
+    .log-badge--neutral,.log-level--neutral {{ color:var(--log-neutral); background:var(--log-dim-soft); }}
+    .log-msg {{ flex:1; color:var(--log-text); white-space:pre-wrap; }}
+    .log-line--ok .log-msg {{ color:var(--log-ok); }}
+    .log-line--warn .log-msg {{ color:var(--log-warn); }}
+    .log-line--err .log-msg {{ color:var(--log-err); }}
+    .log-line--info .log-msg {{ color:var(--log-info); }}
+    .log-line--dim .log-msg {{ color:var(--log-dim); }}
+    .brand p {{ margin-top:3px; font-size:.8rem; }}
+    .theme-toggle,.nav-link {{
+      font-size:.78rem; color:var(--muted); background:var(--surface);
+      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+      cursor:pointer; transition:color .15s,border-color .15s;
+      text-decoration:none; line-height:1.5;
+    }}
+    .theme-toggle:hover,.nav-link:hover {{ color:var(--text); border-color:var(--accent); }}
+    .status-strip {{
+      display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:hidden;
+      background:var(--surface-raised); border:1px solid var(--border);
+      border-radius:var(--r); box-shadow:var(--shadow);
+    }}
+    .status-item {{ min-width:0; padding:15px 18px; }}
+    .status-item + .status-item {{ border-left:1px solid var(--border); }}
+    .status-label {{
+      display:block; margin-bottom:4px; color:var(--muted); font-size:.67rem;
+      font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+    }}
+    .status-value {{
+      display:flex; align-items:center; gap:7px; min-width:0;
+      color:var(--text); font-size:.83rem; font-weight:650;
+      font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden;
+      text-overflow:ellipsis;
+    }}
+    .status-dot {{
+      width:8px; height:8px; flex:0 0 auto; border-radius:50%;
+      background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.13);
+    }}
+    .card {{ transition:border-color .15s,box-shadow .15s; }}
+    .card:hover {{ border-color:var(--border-strong); }}
+    @media (max-width:640px) {{
+      body {{ padding:22px 12px 36px; }}
+      .page {{ gap:14px; }}
+      header {{ align-items:flex-start; gap:14px; }}
+      .header-actions {{ flex-wrap:wrap; justify-content:flex-end; }}
+      .status-strip {{ grid-template-columns:1fr; }}
+      .status-item {{ padding:12px 16px; }}
+      .status-item + .status-item {{
+        border-left:0; border-top:1px solid var(--border);
+      }}
+      .input-row,.file-row {{ display:flex; flex-direction:column; }}
+      .input-row .btn,.file-row .btn {{ width:100%; }}
+      .q-item {{ display:grid; grid-template-columns:auto minmax(0,1fr); }}
+      .remove-form {{ grid-column:2; }}
+      .log-bar {{ align-items:flex-start; }}
+      .log-controls {{ flex-wrap:wrap; }}
+      .log-line {{ gap:7px; padding:8px 10px; }}
+      .log-time {{ min-width:56px; }}
+    }}
+    @media (max-width:440px) {{
+      header {{ flex-direction:column; }}
+      .header-actions {{ width:100%; justify-content:flex-start; }}
+      .card {{ padding:18px; }}
+      .log-time {{ display:none; }}
+    }}
+      </style>
+    </head>
+    <body>
+      <div class="page">
+    <header>
+      <div class="brand">
+        <h1>Podcast Downloader</h1>
+        <p>YouTube to MP3</p>
+      </div>
+      <div class="header-actions">
+        <a class="nav-link" href="/help">Help</a>
+        <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
+        <form method="post" action="/logout" style="margin:0">
+          <input type="hidden" name="csrf_token" value="{safe_token}" />
+          <button type="submit" class="logout-btn">Logout</button>
+        </form>
+      </div>
+    </header>
+
+    <section class="status-strip" aria-label="System status">
+      <div class="status-item">
+        <span class="status-label">Service</span>
+        <span class="status-value"><span class="status-dot"></span>Online</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Monitored URLs</span>
+        <span class="status-value">{count}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Last activity</span>
+        <span class="status-value">{last_activity}</span>
+      </div>
+    </section>
+
+    <div class="card">
+      <span class="card-label">Add to queue</span>
+      {msg_html}
+      <form method="post" action="/add-url">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <div class="input-row">
+          <input id="url" name="url" type="text"
+            placeholder="https://www.youtube.com/watch?v=...  or  /@channel"
+            autocomplete="off" autocapitalize="none" spellcheck="false" required />
+          <button type="submit" class="btn">Add</button>
+        </div>
+        {bypass_row_html}
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-row">
+        <span class="card-label" style="margin:0">Monitored URLs (<code>urls.txt</code>)</span>
+        <span class="badge">{count}</span>
+      </div>
+      {queue_html}
+    </div>
+
+    <div class="card">
+      <div class="log-bar">
+        <div class="log-controls">
+          <span class="card-label" style="margin:0">Logs</span>
+          <select id="log-source" class="log-source" aria-label="Log source">
+            <option value="activity" selected>Activity</option>
+            <option value="download">Download log</option>
+          </select>
+        </div>
+        <div class="log-controls">
+          <span id="log-ts"></span>
+          <label><input type="checkbox" id="auto-cb" checked> Auto</label>
+          <button class="btn-ghost" id="refresh-logs" type="button">Refresh</button>
+        </div>
+      </div>
+      <div id="log-box"><div class="log-empty">Loading logs…</div></div>
+    </div>
+
+    <div class="card">
+      <span class="card-label">YouTube cookies</span>
+      <form method="post" action="/upload-cookies" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <div class="file-row">
+          <input id="cookie-file" name="cookie_file" type="file"
+            accept=".txt,text/plain" required />
+          <button type="submit" class="btn">Upload</button>
+        </div>
+      </form>
+    </div>
+      </div>
+
+      <script nonce="{script_nonce}">
+    let timer = null;
+    const savedTheme = localStorage.getItem('podcast-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const themeButton = document.getElementById('theme-toggle');
+
+    function applyTheme(theme) {{
+      document.body.classList.toggle('theme-dark', theme === 'dark');
+      document.body.classList.toggle('theme-light', theme === 'light');
+      themeButton.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    }}
+
+    applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+    themeButton.addEventListener('click', () => {{
+      const nextTheme = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+      localStorage.setItem('podcast-theme', nextTheme);
+      applyTheme(nextTheme);
+    }});
+
+    function esc(s) {{
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }}
+
+    function classifyActivity(message) {{
+      if (/^Downloaded:/i.test(message)) return 'ok';
+      if (/^Failed:/i.test(message)) return 'err';
+      if (/^Waiting for age gate:/i.test(message)) return 'warn';
+      if (/^Skipped Short:/i.test(message)) return 'warn';
+      if (/^Run finished:/i.test(message) || /^Playlist run finished:/i.test(message)) return 'info';
+      if (/^Retention cleanup|^Deleted expired/i.test(message)) return 'dim';
+      if (/^No activity yet\\./i.test(message)) return 'empty';
+      return 'neutral';
+    }}
+
+    function classifyDownload(level, message) {{
+      const upper = level.toUpperCase();
+      if (upper === 'ERROR' || upper === 'CRITICAL') return 'err';
+      if (upper === 'WARNING') return 'warn';
+      if (upper === 'DEBUG') return 'dim';
+      if (/failed|error|timed out/i.test(message)) return 'err';
+      if (/waiting|skipped/i.test(message)) return 'warn';
+      if (/downloaded|finished|success/i.test(message)) return 'ok';
+      return 'info';
+    }}
+
+    function activityBadge(kind) {{
+      const labels = {{ ok: 'Done', err: 'Fail', warn: 'Wait', info: 'Run', dim: 'Keep', neutral: 'Log' }};
+      return labels[kind] || 'Log';
+    }}
+
+    function renderLogLine(kind, timeLabel, badge, message, fullTimestamp) {{
+      const safeTime = esc(timeLabel);
+      const safeBadge = esc(badge);
+      const safeMessage = esc(message);
+      const safeTitle = fullTimestamp ? ' title="' + esc(fullTimestamp) + '"' : '';
+      return (
+        '<div class="log-line log-line--' + kind + '"' + safeTitle + '>' +
+          '<span class="log-time">' + safeTime + '</span>' +
+          '<span class="log-badge log-badge--' + kind + '">' + safeBadge + '</span>' +
+          '<span class="log-msg">' + safeMessage + '</span>' +
+        '</div>'
+      );
+    }}
+
+    function renderDownloadLine(kind, timeLabel, level, message, fullTimestamp) {{
+      const safeTime = esc(timeLabel);
+      const safeLevel = esc(level);
+      const safeMessage = esc(message);
+      const safeTitle = fullTimestamp ? ' title="' + esc(fullTimestamp) + '"' : '';
+      return (
+        '<div class="log-line log-line--' + kind + '"' + safeTitle + '>' +
+          '<span class="log-time">' + safeTime + '</span>' +
+          '<span class="log-level log-level--' + kind + '">' + safeLevel + '</span>' +
+          '<span class="log-msg">' + safeMessage + '</span>' +
+        '</div>'
+      );
+    }}
+
+    function renderLogLines(raw, source) {{
+      const lines = raw.split('\\n');
+      if (!lines.length || (lines.length === 1 && !lines[0].trim())) {{
+        return '<div class="log-empty">No entries yet.</div>';
+      }}
+
+      const rendered = lines.map(line => {{
+        if (!line.trim()) return '';
+
+        if (source === 'download') {{
+          if (/^No log entries yet\\./i.test(line)) {{
+            return '<div class="log-empty">' + esc(line) + '</div>';
+          }}
+
+          const downloadMatch = line.match(/^\\[([^\\]]+)\\]\\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL):\\s*(.*)$/);
+          if (downloadMatch) {{
+            const timestamp = downloadMatch[1];
+            const level = downloadMatch[2];
+            const message = downloadMatch[3];
+            const kind = classifyDownload(level, message);
+            const timeLabel = timestamp.includes(' ') ? timestamp.split(' ')[1] : timestamp;
+            return renderDownloadLine(kind, timeLabel, level, message, timestamp);
+          }}
+        }} else {{
+          if (/^No activity yet\\./i.test(line)) {{
+            return '<div class="log-empty">' + esc(line) + '</div>';
+          }}
+
+          const activityMatch = line.match(/^\\[([^\\]]+)\\]\\s*(.*)$/);
+          if (activityMatch) {{
+            const timestamp = activityMatch[1];
+            const message = activityMatch[2];
+            const kind = classifyActivity(message);
+            const timeLabel = timestamp.includes(' ') ? timestamp.split(' ')[1] : timestamp;
+            return renderLogLine(kind, timeLabel, activityBadge(kind), message, timestamp);
+          }}
+        }}
+
+        const fallbackKind =
+          /Failed|Error|Timed out/i.test(line) ? 'err' :
+          /Waiting|Skipped/i.test(line) ? 'warn' :
+          /Downloaded|finished/i.test(line) ? 'ok' :
+          'neutral';
+        return renderLogLine(fallbackKind, '—', activityBadge(fallbackKind), line, '');
+      }}).filter(Boolean);
+
+      return rendered.join('') || '<div class="log-empty">No entries yet.</div>';
+    }}
+
+    const logSourceSelect = document.getElementById('log-source');
+
+    async function loadLogs() {{
+      try {{
+        const source = logSourceSelect.value;
+        const r = await fetch('/logs?source=' + encodeURIComponent(source));
+        if (!r.ok) return;
+        const text = await r.text();
+        const box = document.getElementById('log-box');
+        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+        box.innerHTML = renderLogLines(text, source);
+        if (atBottom) box.scrollTop = box.scrollHeight;
+        document.getElementById('log-ts').textContent = new Date().toLocaleTimeString();
+      }} catch (_) {{}}
+    }}
+
+    function setAuto(on) {{
+      clearInterval(timer);
+      if (on) timer = setInterval(loadLogs, 15000);
+    }}
+
+    document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));
+    document.getElementById('refresh-logs').addEventListener('click', loadLogs);
+    logSourceSelect.addEventListener('change', loadLogs);
+    loadLogs();
+    setAuto(true);
+      </script>
+    </body>
+    </html>
+    """,
+        headers=headers,
+    )

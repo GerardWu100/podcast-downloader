@@ -20,6 +20,7 @@ The web UI is intentionally simple:
 - Failed attempts are recorded in `.login_state.json`.
 - After too many failures from the same IP, the client is temporarily banned.
 - Successful login creates a persistent session cookie stored in `.ui_sessions.json`.
+- Both JSON files use interprocess locks and sibling temporary files followed by atomic replacement.
 
 ## Manual password setup
 

@@ -19,16 +19,6 @@ YTDLP_METADATA_TIMEOUT_SECONDS = 30
 FULL_PLAYLIST_EXPANSION_TIMEOUT_SECONDS = 300
 
 
-def _normalized_hostname(url: str) -> str:
-    """Return the lower-case hostname with any port removed."""
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return ""
-
-    return (parsed.hostname or "").lower()
-
-
 def is_youtube_url(url: str) -> bool:
     """Return ``True`` when the URL points at a supported YouTube host."""
     hostname = normalized_hostname(url)
@@ -38,25 +28,6 @@ def is_youtube_url(url: str) -> bool:
         "m.youtube.com",
         "youtu.be",
     }
-
-
-def is_supported_media_url(url: str) -> bool:
-    """Return ``True`` for web URLs that ``yt-dlp`` can attempt to download.
-
-    The downloader still treats YouTube specially for channel/playlist
-    expansion, URL normalization, age checks, and SponsorBlock. Non-YouTube
-    URLs are accepted only as direct media URLs and are passed to ``yt-dlp``
-    with ``--no-playlist`` during the download step.
-    """
-    try:
-        parsed = urlparse(url.strip())
-    except Exception:
-        return False
-
-    if parsed.scheme not in {"http", "https"}:
-        return False
-
-    return bool(parsed.netloc)
 
 
 def normalize_youtube_url(url: str) -> str:

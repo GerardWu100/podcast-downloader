@@ -5,6 +5,25 @@ sidebar_position: 2
 
 # Architecture
 
+## Component boundaries
+
+```mermaid
+flowchart LR
+    API["src/api.py"] --> Web["src/web/"]
+    CLI["src/cli.py"] --> Downloads["src/downloads/"]
+    CLI --> Media["src/media/"]
+    Web --> Media
+    Web --> State["src/state/"]
+    Downloads --> Media
+    Downloads --> State
+```
+
+`src/media/` interprets URLs without changing durable state. `src/state/` owns
+plain-file formats and locking. `src/downloads/` turns concrete URLs into
+published MP3 files, using `YtDlpClient` for command execution. `src/web/` owns
+application construction, request-security policy, routes, and HTML.
+`src/api.py` only exports the production application created by `create_app()`.
+
 ## End-to-end flow
 
 1. The downloader reads `urls.txt`.
@@ -104,7 +123,7 @@ The lock and file-mutation rules are owned by `src/state/` stores:
 - `BypassStore` owns one-shot age-bypass entries.
 - `ActivityLogStore` owns `activity.log` appends and tail reads.
 
-`src/url_utils.py` and `src/activity_log.py` still expose the older function names, but those functions now delegate to the stores. That keeps existing callers stable while making the state boundary explicit.
+Callers use these stores directly. The former `src/url_utils.py` and `src/activity_log.py` adapters were removed so media policy cannot accidentally become another persistence boundary.
 
 `activity.log` and `download.log` timestamps both use `America/Toronto` through a shared `LOG_TIME_ZONE` setting and omit seconds for easier browser scanning. Docker Compose also sets `TZ=America/Toronto` so other process timestamps stay aligned.
 

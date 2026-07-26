@@ -23,9 +23,11 @@ Podcast Downloader is a small personal-use system for turning web videos into MP
 ## Main components
 
 - `src/cli.py`: command-line entrypoint.
-- `src/downloader.py`: download orchestration and success detection.
-- `src/url_utils.py`: URL normalization, queue-file mutation, and channel expansion.
-- `src/api.py`: web login flow, queue UI, and concise activity viewer.
+- `src/downloads/`: download orchestration, `yt-dlp`, and audio metadata.
+- `src/media/`: generic URL validation and YouTube-specific policy.
+- `src/state/`: locked queue, archive, bypass, activity, and authentication state.
+- `src/web/`: FastAPI construction, routes, authentication policy, and rendering.
+- `src/api.py`: small Uvicorn deployment entrypoint.
 - `start.py`: Docker-oriented process supervisor for the API plus scheduler.
 
 ## Project shape

@@ -7,7 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.129.0",
     "python-multipart>=0.0.20",
-    "ruff>=0.15.12",
     "uvicorn>=0.34.0",
 ]
 
@@ -15,6 +14,7 @@ dependencies = [
 dev = [
     "matplotlib>=3.11.0",
     "pytest>=9.0.2",
+    "ruff>=0.15.12",
 ]
 
 [tool.pytest.ini_options]

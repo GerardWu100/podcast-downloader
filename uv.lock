@@ -434,7 +434,6 @@ source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "python-multipart" },
-    { name = "ruff" },
     { name = "uvicorn" },
 ]
 
@@ -442,13 +441,13 @@ dependencies = [
 dev = [
     { name = "matplotlib" },
     { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.129.0" },
     { name = "python-multipart", specifier = ">=0.0.20" },
-    { name = "ruff", specifier = ">=0.15.12" },
     { name = "uvicorn", specifier = ">=0.34.0" },
 ]
 
@@ -456,6 +455,7 @@ requires-dist = [
 dev = [
     { name = "matplotlib", specifier = ">=3.11.0" },
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "ruff", specifier = ">=0.15.12" },
 ]
 
 [[package]]
