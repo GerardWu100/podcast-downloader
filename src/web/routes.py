@@ -41,6 +41,7 @@ from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
+from .auth import client_ip, request_is_secure, security_headers
 from .templates import BASE_STYLES as _BASE_STYLES
 from .templates import render_help_page
 
@@ -168,6 +169,8 @@ def _load_and_save_login_state(update_fn: "Callable[[dict], None]") -> dict:
 
 
 def _security_headers(script_nonce: str | None = None) -> dict[str, str]:
+    return security_headers(script_nonce)
+
     """Return defensive headers for browser-facing responses."""
     csp_parts = [
         "default-src 'none'",
@@ -244,6 +247,8 @@ def _password_is_configured(password_text: str) -> bool:
 
 
 def _client_ip(request: Request) -> str:
+    return client_ip(request, CONFIG.trust_x_forwarded_for)
+
     headers = getattr(request, "headers", {})
     if CONFIG.trust_x_forwarded_for:
         # Cloudflare Tunnel sets CF-Connecting-IP to the real client address.
@@ -261,6 +266,8 @@ def _client_ip(request: Request) -> str:
 
 
 def _request_is_secure(request: Request) -> bool:
+    return request_is_secure(request, CONFIG.trust_x_forwarded_for)
+
     """Best-effort detection for HTTPS when sitting behind Cloudflare or a proxy."""
     if request.url.scheme == "https":
         return True
