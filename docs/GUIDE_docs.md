@@ -19,7 +19,9 @@ The folder is organized by topic rather than by source file:
 4. `web-ui-security.md` explains login, sessions, CSRF, headers, and proxy trust.
 5. `operations.md` explains local usage, Docker behavior, the scheduler, and operational files.
 6. `review-and-safety.md` captures the findings and fixes from the latest project review.
-7. `superpowers/plans/` holds agent-executable architecture and implementation plans that are not publishable user documentation.
+7. `superpowers/plans/` holds implementation plans that are not publishable user
+   documentation. The current plan favors small, behavior-preserving refactors over
+   a package-wide rewrite.
 
 These pages are plain Markdown with light frontmatter so they can be adopted by Docusaurus later with minimal cleanup.
 
@@ -45,7 +47,9 @@ docs/
 - `web-ui-security.md`: authentication, CSRF, session, CSP, and proxy guidance.
 - `operations.md`: setup, Docker bootstrap, scheduler, and runtime files.
 - `review-and-safety.md`: summary of the safety review and remaining risks.
-- `superpowers/plans/2026-05-05-architecture-hardening.md`: architecture critique, likely bug list, and staged refactor plan for future implementation.
+- `superpowers/plans/2026-05-05-architecture-hardening.md`: current conservative
+  refactoring plan, including scope boundaries, phased acceptance checks, stop
+  conditions, and deferred improvements.
 
 ## Code Reference
 

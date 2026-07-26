@@ -1,354 +1,409 @@
-# Architecture Hardening Implementation Plan
+# Conservative Refactoring Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+## Purpose
 
-**Goal:** Find likely bugs, reduce accidental coupling, and make the project easier to reason about without turning a small personal downloader into an overbuilt platform.
+This plan improves structure and extensibility without rewriting the application or
+changing its user-visible behavior. The project remains one Python application with:
 
-**Architecture:** Keep plain files as the durable state store for now, but put all file-backed state behind explicit store objects. Split URL policy, download execution, web authentication, and scheduler dispatch so each boundary has one owner and one set of tests.
+- a command-line interface (CLI);
+- a FastAPI web interface;
+- `yt-dlp` and `ffmpeg` subprocesses;
+- plain files for queue, archive, activity, and authentication state; and
+- one Docker container running one web worker and one scheduler thread.
 
-**Tech Stack:** Python 3.13, FastAPI, `yt-dlp`, `ffmpeg`, `uv`, pytest, locked text files using `fcntl`.
+The refactor should make it easier to add another media source, web page, state file,
+or download policy without editing one very large module.
 
----
+## Current Baseline
 
-## Current Architecture Criticism
+The repository already completed much of its original architecture-hardening work:
 
-The project works, and the test suite currently passes, but the design is brittle in the exact places where download tools usually fail: state mutation, subprocess calls, and web entrypoints.
+- Queue, archive, bypass, and activity state are owned by classes in `src/state/`.
+- Queue and archive mutations use file locks.
+- Configuration values are validated by `src/config.py`.
+- Download metadata recovery and archive-backed concurrency have regression tests.
+- Audio metadata writing lives in `src/downloads/audio_metadata.py`.
+- The scheduler invokes `python -m src.cli` from a resolved project root.
+- The complete offline suite currently has 187 passing tests.
 
-| Area | Current shape | Criticism | Risk |
-|---|---|---|---|
-| Web UI | `src/api.py` is 972 lines of routing, authentication, state persistence, HTML, CSS, and JavaScript | This is a "god module": one file owns too many reasons to change | Security bugs and UI bugs become hard to isolate |
-| URL layer | `src/url_utils.py` validates URLs, normalizes YouTube links, expands channels, edits queue files, edits archive files, and edits bypass files | URL policy and file storage are mixed together | A URL parsing change can accidentally affect persistence behavior |
-| Downloader | `src/downloader.py` builds commands, runs subprocesses, detects file changes, stamps MP3 metadata, updates queues, updates archives, and writes activity logs | Orchestration and side effects are fused | Retry bugs and partial-success bugs are likely |
-| State | Queue, archive, bypass, activity log, login state, and session state are handled by scattered functions | There is no explicit state boundary | Concurrency rules are inconsistent |
-| Scheduler | `start.py` shells out to `main.py` by relative path and uses an in-memory trigger queue | Runtime behavior depends on current working directory and process lifetime | UI-triggered downloads can be delayed or lost after restart |
-| Config | `load_config()` silently falls back on malformed numeric values | Bad config can look like a successful startup | Operational mistakes are hidden |
-| Tests | Good regression coverage exists, but many tests inspect implementation source or patch private methods | Tests protect symptoms more than contracts | Refactors will be noisy unless public seams are introduced |
+The remaining structural pressure is concentrated in three modules:
 
-## Potential Bugs To Hunt First
+| Module | Approximate size | Mixed responsibilities |
+|---|---:|---|
+| `src/api.py` | 1,535 lines | app creation, authentication, state, routes, HTML, CSS, and JavaScript |
+| `src/downloads/service.py` | 1,287 lines | orchestration, subprocess execution, file publication, recovery, and retention |
+| `src/url_utils.py` | 887 lines | generic URLs, YouTube policy, metadata subprocesses, expansion, and state adapters |
 
-1. **Partial MP3 success can poison retries.** If `yt-dlp` creates an MP3 but the metadata stamping step fails, the URL stays queued. On the next run, `yt-dlp` may skip or reuse the existing MP3, the file snapshot may show no change, and the downloader can fail forever even though the audio file exists.
-2. **Concurrent downloader processes can duplicate work.** `PodcastDownloader` loads `downloaded_urls.txt` once at construction. If two processes start close together, both can see the same URL as not archived and both can download it before either writes the archive.
-3. **Activity log reads and writes are not locked.** `activity.log` can be read by the web UI while the downloader is appending. The usual result is harmless, but partial lines or platform-dependent read behavior are possible.
-4. **Session and login state are not safe across multiple web workers.** The code uses process-local globals plus JSON files without file locks for all paths. One Uvicorn worker is fine; two workers are not.
-5. **Configuration mistakes are hidden.** Invalid `channel_count`, `delay_seconds`, or `min_channel_video_age_hours` values silently default or clamp. A negative channel count can flow into `yt-dlp --playlist-end` in surprising ways.
-6. **Logger handler lifecycle is leaky.** `_setup_logging()` clears handlers on a named logger but does not close old file handlers. It is low impact in the current subprocess-heavy scheduler, but it is a real bug if the downloader is reused in-process.
-7. **YouTube host parsing is too exact.** `is_youtube_url()` does not normalize host case or strip ports. Valid URLs such as uppercase hosts may skip YouTube-specific policy.
-8. **The scheduler update flag is misleading.** `update_ytdlp()` returns `True` even when the package update fails, which still triggers the post-update delay.
+Line count is not itself a defect. These files should be split because they contain
+independent responsibilities that change for different reasons.
 
-## Target File Structure
+## Constraints
 
-Create focused subpackages and keep compatibility shims so the refactor can be staged safely.
+Every phase must follow these rules:
+
+1. Preserve observable CLI, web, scheduler, download, and file-format behavior.
+2. Keep the application deployable after every commit.
+3. Move one responsibility at a time; do not reorganize the entire tree at once.
+4. Add or adjust contract tests before removing an old boundary.
+5. Use explicit constructor or function parameters for collaborators instead of
+   adding new module-level mutable state.
+6. Remove an obsolete adapter once all project callers use the new interface. The
+   project does not promise backward compatibility for internal Python imports.
+7. Keep plain-file state. Do not introduce a database as part of this refactor.
+8. Keep subprocess isolation between the scheduler and CLI.
+
+## Explicitly Out Of Scope
+
+The following changes may be useful one day, but would add risk without helping the
+current refactor:
+
+- renaming the importable `src` package to `podcast_downloader`;
+- introducing SQLite, PostgreSQL, Redis, or a message broker;
+- splitting the application into multiple services or containers;
+- adopting a template framework or a JavaScript build system;
+- changing CLI options, configuration keys, state-file formats, or URL semantics;
+- redesigning the web interface;
+- making immediate scheduler requests durable across container restarts; and
+- broad performance optimization without a measured problem.
+
+## Target Structure
+
+This is a direction, not a requirement to create every file immediately:
 
 ```text
 src/
-├── api.py                         # compatibility shim: exports app
-├── cli.py                         # command-line parsing only
-├── config.py                      # validated runtime config
-├── state/
-│   ├── __init__.py
-│   ├── file_locks.py              # shared locked text-file helpers
-│   ├── queue_store.py             # urls.txt read, append, remove
-│   ├── archive_store.py           # downloaded_urls.txt read, append, claim
-│   ├── bypass_store.py            # one-shot age bypass state
-│   ├── activity_store.py          # activity.log write and tail
-│   └── auth_store.py              # login/session JSON persistence
-├── media/
-│   ├── __init__.py
-│   ├── urls.py                    # generic URL validation and normalization
-│   └── youtube.py                 # YouTube classification, expansion, age metadata
-├── downloads/
-│   ├── __init__.py
-│   ├── ytdlp_client.py            # command building and subprocess execution
-│   ├── audio_metadata.py          # ffmpeg metadata stamping
-│   └── service.py                 # download orchestration
+├── api.py                     # small Uvicorn entrypoint exporting app
+├── cli.py                     # CLI parsing and dispatch
+├── config.py                  # validated configuration
+├── passwords.py               # password hashing and verification
+├── trigger.py                 # in-process immediate-run requests
 ├── web/
-│   ├── __init__.py
-│   ├── app.py                     # create_app()
-│   ├── auth.py                    # login, logout, session, CSRF
-│   ├── routes.py                  # queue and log endpoints
-│   └── templates.py               # HTML rendering strings
-└── runtime.py                     # shared run_downloader() entrypoint
+│   ├── app.py                 # create_app() and dependency wiring
+│   ├── auth.py                # authentication and request-security policy
+│   ├── routes.py              # FastAPI route handlers
+│   └── templates.py           # HTML, CSS, and JavaScript rendering
+├── media/
+│   ├── urls.py                # generic URL validation
+│   └── youtube.py             # YouTube normalization, metadata, and expansion
+├── downloads/
+│   ├── service.py             # use-case orchestration
+│   ├── ytdlp_client.py        # yt-dlp commands and subprocess execution
+│   └── audio_metadata.py      # ffmpeg metadata reading and writing
+└── state/
+    ├── file_locks.py
+    ├── queue_store.py
+    ├── archive_store.py
+    ├── bypass_store.py
+    ├── activity_store.py
+    └── auth_store.py          # login and session JSON persistence
 ```
 
-Do not move everything at once. Each task below creates one stable seam first, then migrates callers.
+The service layer may remain relatively large. Its job is to describe the download
+workflow. Low-level command construction, persistence, and rendering should not live
+there.
 
-## Task 1: Baseline Bug Tests
+## Phase 1: Establish Stable Construction Seams
 
-**Files:**
-- Modify: `tests/test_downloader.py`
-- Modify: `tests/test_url_utils_behavior.py`
-- Modify: `tests/test_activity_log.py`
-- Modify: `tests/test_api_behavior.py`
-- Modify: `tests/test_start.py`
+**Goal:** Make dependencies explicit before moving substantial behavior.
 
-- [ ] Add a regression test showing that metadata-stamp failure after MP3 creation does not make a retry impossible. The expected final behavior is: if a prior run created an MP3 but failed while stamping metadata, the next run can stamp the existing file and remove the URL from the queue.
-- [ ] Add a regression test showing two downloader instances do not both download the same archived expanded URL. Use two `PodcastDownloader` objects with the same archive file and assert the second object reloads or claims archive state before download.
-- [ ] Add a regression test for locked `activity.log` reads during writes. The expected behavior is: the UI receives whole lines only.
-- [ ] Add tests for YouTube URL host normalization: uppercase host, trailing default port, and `m.youtube.com`.
-- [ ] Add config tests for invalid numeric values. The expected behavior is a clear `ValueError` naming the bad key, not a silent fallback.
-- [ ] Add a scheduler test showing a failed `yt-dlp` package update does not trigger the post-update wait.
+### Work
 
-Run:
+- Add `create_app(config, ...) -> FastAPI` in `src/web/app.py`.
+- Keep `src/api.py` as the Uvicorn entrypoint that loads configuration and calls
+  `create_app()`.
+- Pass queue, archive, activity, trigger, and authentication collaborators into the
+  app factory, with production defaults constructed in one place.
+- Add a small test fixture that creates an application using temporary paths without
+  patching `src.api` globals.
+- Leave existing routes and rendered pages unchanged during this phase.
 
-```bash
-uv run python -m pytest tests/test_downloader.py tests/test_url_utils_behavior.py tests/test_activity_log.py tests/test_api_behavior.py tests/test_start.py -q
-```
+### Why first
 
-Expected before implementation: the new tests fail for the reasons listed above.
+An application factory is a function that builds and configures the FastAPI
+application. It gives tests and future entrypoints a clean place to supply their own
+configuration and state objects. Without it, later file movement would merely spread
+the existing globals across more modules.
 
-## Task 2: Centralize File-Backed State
-
-**Files:**
-- Create: `src/state/__init__.py`
-- Create: `src/state/file_locks.py`
-- Create: `src/state/queue_store.py`
-- Create: `src/state/archive_store.py`
-- Create: `src/state/bypass_store.py`
-- Create: `src/state/activity_store.py`
-- Modify: `src/url_utils.py`
-- Modify: `src/activity_log.py`
-- Modify: `tests/test_url_utils_behavior.py`
-- Modify: `tests/test_archive_locking.py`
-- Modify: `tests/test_activity_log.py`
-
-- [ ] Move `_locked_file()` into `src/state/file_locks.py` and make it the only low-level advisory lock helper.
-- [ ] Move queue mutation functions into `QueueStore`: read valid entries, append normalized entries, remove direct video entries, and remove monitored entries.
-- [ ] Move archive functions into `ArchiveStore`: load, append, and `claim(url)` under an exclusive lock. `claim(url)` should return `True` exactly once for a URL.
-- [ ] Move bypass functions into `BypassStore`: load, add, and remove.
-- [ ] Move activity log helpers into `ActivityLogStore`, using the same lock helper for append and tail reads.
-- [ ] Leave thin wrappers in `url_utils.py` and `activity_log.py` for existing imports during the transition. Mark those wrappers as compatibility only in docstrings.
-
-Run:
-
-```bash
-uv run python -m pytest tests/test_url_utils_behavior.py tests/test_archive_locking.py tests/test_activity_log.py -q
-```
-
-Expected after implementation: queue, archive, bypass, and activity tests pass with storage behavior owned by `src/state/`.
-
-## Task 3: Split URL Policy From Persistence
-
-**Files:**
-- Create: `src/media/__init__.py`
-- Create: `src/media/urls.py`
-- Create: `src/media/youtube.py`
-- Modify: `src/url_utils.py`
-- Modify: `tests/test_url_utils_behavior.py`
-- Modify: `tests/test_security.py`
-
-- [ ] Move generic URL validation into `src/media/urls.py`.
-- [ ] Move YouTube host detection, video normalization, Shorts detection, channel/playlist detection, age checks, metadata fetching, and expansion into `src/media/youtube.py`.
-- [ ] Normalize host names with `parsed.hostname.lower()` instead of raw `parsed.netloc`.
-- [ ] Preserve the `--` separator in every `yt-dlp` call.
-- [ ] Keep `url_utils.py` as a narrow compatibility facade that imports from `state` and `media`.
-
-Run:
-
-```bash
-uv run python -m pytest tests/test_url_utils_behavior.py tests/test_security.py -q
-```
-
-Expected after implementation: URL behavior is unchanged except the new host-normalization tests pass.
-
-## Task 4: Make Download Execution Recoverable
-
-**Files:**
-- Create: `src/downloads/__init__.py`
-- Create: `src/downloads/ytdlp_client.py`
-- Create: `src/downloads/audio_metadata.py`
-- Create: `src/downloads/service.py`
-- Modify: `src/downloader.py`
-- Modify: `tests/test_downloader.py`
-
-- [ ] Move `yt-dlp` command construction and subprocess execution into `YtDlpClient`.
-- [ ] Move MP3 snapshot and changed-file detection into a small download result helper.
-- [ ] Move `ffmpeg` date metadata stamping into `AudioMetadataWriter`.
-- [ ] Add recovery behavior for partial MP3 success: when `yt-dlp` reports "already downloaded" or produces no changed MP3, inspect the expected output folder for the target MP3 and stamp it if it lacks the project date metadata.
-- [ ] Replace the constructor-level archive cache with per-URL archive claiming for expanded items. For expanded URLs, call `ArchiveStore.claim(url)` immediately before downloading. If it returns `False`, skip the download.
-- [ ] Keep `src/downloader.py` as the public `PodcastDownloader` adapter until all callers use `src/downloads/service.py` directly.
-- [ ] Close replaced logger handlers before clearing them.
-
-Run:
-
-```bash
-uv run python -m pytest tests/test_downloader.py tests/test_archive_locking.py -q
-```
-
-Expected after implementation: metadata retry, archive claim, and existing downloader behavior all pass.
-
-## Task 5: Validate Runtime Configuration Explicitly
-
-**Files:**
-- Modify: `src/config.py`
-- Modify: `src/cli.py`
-- Modify: `start.py`
-- Create or modify: `tests/test_config.py`
-- Modify: `tests/test_start.py`
-
-- [ ] Add a `ConfigError(ValueError)` exception with the config key in its message.
-- [ ] Validate `channel_count >= 1`.
-- [ ] Validate `min_channel_video_age_hours >= 0`.
-- [ ] Validate `delay_seconds >= 0`.
-- [ ] Validate configured path strings are non-empty after stripping whitespace.
-- [ ] Make CLI startup print one clear error and exit with code `1` on `ConfigError`.
-- [ ] Keep `DOWNLOAD_INTERVAL_HOURS` validation in `start.py`, but align its error style with `ConfigError`.
-- [ ] Update `config.ini` comments to state accepted ranges.
-
-Run:
-
-```bash
-uv run python -m pytest tests/test_config.py tests/test_cli_behavior.py tests/test_start.py -q
-```
-
-Expected after implementation: malformed config fails early and no numeric config silently defaults.
-
-## Task 6: Split The Web UI Into Auth, Routes, And Templates
-
-**Files:**
-- Create: `src/web/__init__.py`
-- Create: `src/web/app.py`
-- Create: `src/web/auth.py`
-- Create: `src/web/routes.py`
-- Create: `src/web/templates.py`
-- Modify: `src/api.py`
-- Modify: `tests/test_api_behavior.py`
-- Modify: `tests/test_security.py`
-
-- [ ] Create `create_app(config, stores, trigger)` in `src/web/app.py`.
-- [ ] Move password verification, login state, sessions, CSRF tokens, cookies, and security headers into `src/web/auth.py`.
-- [ ] Store login and session state through `AuthStore` from `src/state/auth_store.py`, with file locks for JSON reads and writes.
-- [ ] Move route handlers for `/ui`, `/logs`, `/add-url`, and `/remove-url` into `src/web/routes.py`.
-- [ ] Move HTML rendering into `src/web/templates.py`.
-- [ ] Keep `src/api.py` as a small compatibility shim:
-
-```python
-"""FastAPI compatibility entrypoint for uvicorn."""
-
-from __future__ import annotations
-
-import os
-from pathlib import Path
-
-from .config import load_config
-from .web.app import create_app
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path(os.environ.get("PODCAST_DATA_DIR", str(PROJECT_ROOT)))
-CONFIG = load_config(DATA_DIR / "config.ini", DATA_DIR)
-app = create_app(CONFIG)
-```
-
-- [ ] Adjust tests to call the smaller auth helpers and app factory instead of mutating module globals directly.
-
-Run:
+### Acceptance checks
 
 ```bash
 uv run python -m pytest tests/test_api_behavior.py tests/test_security.py -q
+uv run ruff check src/api.py src/web tests/test_api_behavior.py tests/test_security.py
 ```
 
-Expected after implementation: web behavior is unchanged, but `src/api.py` is no longer the main implementation file.
+- `uvicorn src.api:app` remains the deployment command.
+- Importing the web implementation does not require patching production paths.
+- Existing web behavior and security headers remain unchanged.
 
-## Task 7: Harden Scheduler Dispatch
+## Phase 2: Extract Web Rendering And Authentication
 
-**Files:**
-- Create: `src/runtime.py`
-- Modify: `src/cli.py`
-- Modify: `start.py`
-- Modify: `tests/test_start.py`
-- Modify: `tests/test_cli_behavior.py`
+**Goal:** Reduce `src/api.py` without redesigning the web interface.
 
-- [ ] Create `run_downloader(config, urls_file, output_dir, channel_count, single_url)` so CLI and scheduler share one runtime entrypoint.
-- [ ] Keep subprocess isolation in `start.py`, but launch with `python -m src.cli` and set `cwd` to the project root resolved from `start.py`.
-- [ ] Make `update_ytdlp()` return `True` only when the package update command succeeds.
-- [ ] Log the current `yt-dlp` version separately from whether an update happened.
-- [ ] Preserve current UI trigger behavior: direct video submissions run only the submitted URL; channel and playlist submissions wait for the next full scheduled run.
+### Step 2A: Rendering
 
-Run:
+- Move page-rendering functions and the existing HTML, Cascading Style Sheets (CSS),
+  and JavaScript strings into `src/web/templates.py`.
+- Pass already-escaped values into narrowly named rendering functions.
+- Keep nonce-based Content Security Policy behavior and escaping tests.
+- Do not introduce Jinja2 or another templating dependency.
+
+Rendering is the lowest-risk extraction because it does not mutate state.
+
+### Step 2B: Authentication state
+
+- Add `AuthStore` in `src/state/auth_store.py`.
+- Give it explicit methods for login-failure state and remembered sessions.
+- Use the existing file-lock helper so read-modify-write operations are interprocess
+  safe.
+- Write JSON through a temporary sibling file followed by `Path.replace()` so a
+  process interruption cannot leave a partially written state file.
+- Keep Cross-Site Request Forgery (CSRF) token policy and cookie policy in
+  `src/web/auth.py`.
+
+CSRF is protection against another site causing a logged-in browser to submit an
+unwanted request.
+
+### Step 2C: Routes
+
+- Move route handlers into `src/web/routes.py`.
+- Register the routes from `create_app()`.
+- Group authentication routes separately from queue, cookie, and log routes inside
+  the module, but do not create multiple router files unless the module remains hard
+  to navigate after extraction.
+
+### Acceptance checks
 
 ```bash
-uv run python -m pytest tests/test_start.py tests/test_cli_behavior.py -q
+uv run python -m pytest tests/test_api_behavior.py tests/test_security.py -q
+uv run python -m pytest -q
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-Expected after implementation: scheduler behavior no longer depends on the shell current working directory, and failed package updates do not cause the post-update wait.
+- Login, logout, session restoration, rate limiting, queue editing, cookie upload,
+  and log viewing behave exactly as before.
+- `src/api.py` contains only production configuration and application construction.
+- Tests no longer mutate `SESSIONS`, `CONFIG`, or state-file path globals in
+  `src.api.py`.
 
-## Task 8: Replace Source-Inspection Tests With Contract Tests
+## Phase 3: Separate Media Policy From State Adapters
 
-**Files:**
-- Modify: `tests/test_security.py`
-- Modify: `tests/test_downloader.py`
-- Modify: `tests/test_url_utils_behavior.py`
+**Goal:** Make support for another media source possible without growing
+`src/url_utils.py`.
 
-- [ ] Replace tests that inspect source text with tests that capture subprocess command lists and assert `--` appears before the URL.
-- [ ] Replace broad monkeypatching of private downloader methods with tests against `YtDlpClient`, `AudioMetadataWriter`, stores, and the download service.
-- [ ] Keep one high-level integration test for the full direct-video success path.
-- [ ] Keep one high-level integration test for the full expanded-channel archive path.
+### Work
 
-Run:
+- Create `src/media/urls.py` for generic `http` and `https` validation.
+- Create `src/media/youtube.py` for:
+  - host detection;
+  - video URL normalization;
+  - Shorts, playlist, and channel classification;
+  - channel and playlist expansion;
+  - display-name and folder-name metadata; and
+  - upload-age checks.
+- Move YouTube metadata and expansion command construction with the YouTube policy.
+- Update production callers and tests to import from `src.media`.
+- Delete the queue, archive, and bypass wrapper functions from `src/url_utils.py`
+  after callers use the corresponding stores directly.
+- Delete `src/url_utils.py` when it no longer owns behavior.
+
+### Design boundary
+
+`src/media/` decides what a URL means and which concrete media URLs it represents.
+`src/state/` decides how URLs are stored. `src/downloads/` decides how a concrete URL
+becomes an MP3. These dependencies should flow in one direction:
+
+```text
+web / CLI
+    |
+    +----> state
+    |
+    +----> media ----> yt-dlp metadata commands
+                 |
+                 v
+             downloads ----> state
+```
+
+### Acceptance checks
 
 ```bash
-uv run python -m pytest tests/test_security.py tests/test_downloader.py tests/test_url_utils_behavior.py -q
+uv run python -m pytest tests/test_url_utils_behavior.py tests/test_security.py -q
+uv run python -m pytest tests/test_downloader.py tests/test_cli_behavior.py -q
+uv run python -m pytest -q
 ```
 
-Expected after implementation: tests describe public contracts and tolerate internal file movement.
+- URL normalization and expansion results are unchanged.
+- Every `yt-dlp` command still places `--` before a user-provided URL.
+- Queue and archive behavior is tested through store classes, not URL modules.
+- No circular imports exist between `media`, `downloads`, and `state`.
 
-## Task 9: Update Documentation And Guides
+## Phase 4: Complete The `yt-dlp` Client Boundary
 
-**Files:**
-- Modify: `README.md`
-- Modify: `docs/architecture.md`
-- Modify: `docs/cli-and-config.md`
-- Modify: `docs/operations.md`
-- Modify: `docs/review-and-safety.md`
-- Modify: `GUIDE_ROOT.md`
-- Modify: `src/GUIDE_src.md`
-- Modify: `tests/GUIDE_tests.md`
-- Modify: `docs/GUIDE_docs.md`
+**Goal:** Let the download service express workflow while a dedicated client owns
+external command execution.
 
-- [ ] Update the architecture docs to show the new `state`, `media`, `downloads`, and `web` boundaries.
-- [ ] Update the CLI and config docs to explain config validation and accepted numeric ranges.
-- [ ] Update operations docs to explain scheduler subprocess invocation and `yt-dlp` update behavior.
-- [ ] Update review and safety notes with fixed bugs and remaining risks.
-- [ ] Update guide files so future agents know where state, URL policy, download execution, and web logic live.
+### Work
 
-Run:
+- Expand `src/downloads/ytdlp_client.py` to own:
+  - audio snapshots and changed-file detection;
+  - download command construction;
+  - subprocess execution and timeout handling;
+  - SponsorBlock flags;
+  - cookie-first and cookie-fallback retry order; and
+  - a typed result describing exit status, output, and changed MP3 files.
+- Inject `YtDlpClient` into `PodcastDownloadService`.
+- Keep queue expansion metadata calls in `src/media/youtube.py`; they are a different
+  use case from downloading audio.
+- Keep publication, retry recovery, and retention orchestration in
+  `PodcastDownloadService` initially.
+- Extract a separate publisher or retention class only if the service remains
+  difficult to test after the client extraction. Do not create classes solely to
+  reduce line count.
+
+A typed result is a small data class with named fields rather than an unstructured
+tuple or subprocess object.
+
+### Acceptance checks
+
+```bash
+uv run python -m pytest tests/test_downloader.py tests/test_archive_locking.py -q
+uv run python -m pytest -q
+uv run ruff check .
+```
+
+- Direct, channel, playlist, retry, recovery, and retention behavior is unchanged.
+- Service tests can substitute a fake `YtDlpClient` instead of patching
+  `subprocess.run` or private service methods.
+- Live-network tests remain outside the normal offline suite.
+
+## Phase 5: Simplify Tests Around Public Contracts
+
+**Goal:** Preserve strong coverage while making implementation movement affordable.
+
+### Work
+
+- Replace private-method monkeypatches when the same behavior can be exercised
+  through `create_app()`, `YtDlpClient`, media functions, or store classes.
+- Keep focused unit tests for command construction and file-state transitions.
+- Keep a small number of higher-level tests for:
+  - a successful direct-video workflow;
+  - an expanded channel or playlist workflow;
+  - metadata-stamp recovery;
+  - concurrent archive protection; and
+  - authenticated queue submission.
+- Split a test file only when its tests align with a new production boundary. Avoid
+  mechanically creating one test file per implementation file.
+- Preserve all security regression cases.
+
+### Acceptance checks
 
 ```bash
 uv run python -m pytest -q
-uv run python -m compileall src tests start.py main.py
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-Expected after implementation: all automated tests pass and docs match the new architecture.
+- Tests describe observable results or collaborator contracts.
+- Routine internal method renaming does not require widespread test changes.
+- Test runtime remains suitable for frequent offline execution.
 
-## Execution Order
+## Phase 6: Remove Transitional Clutter
 
-1. Baseline bug tests.
-2. State stores.
-3. URL policy split.
-4. Download recovery and archive claiming.
-5. Config validation.
-6. Web split.
-7. Scheduler hardening.
-8. Test cleanup.
-9. Documentation.
+**Goal:** Finish the refactor instead of leaving permanent compatibility layers.
 
-This order matters because state stores are the foundation for the URL, downloader, and web refactors. The web split should happen after state is explicit, otherwise it will just move globals into smaller files without fixing the real coupling.
+### Work
+
+- Remove `src/downloader.py` after CLI and tests import
+  `PodcastDownloadService` directly.
+- Remove `src/activity_log.py` if all callers use `ActivityLogStore`.
+- Remove `src/url_utils.py` after Phase 3.
+- Move `ruff` from runtime dependencies into the development dependency group.
+- Consolidate duplicated root documentation:
+  - keep `README.md` for users;
+  - keep `GUIDE_ROOT.md` for code navigation;
+  - keep `docs/architecture.md` for detailed design; and
+  - merge useful unique content from `PROJECT_OVERVIEW.md` and
+    `FILE_STRUCTURE.md`, then remove them.
+- Replace machine-specific `/Users/gwh/...` documentation links with portable
+  relative links.
+- Update all `GUIDE_*` files in the same commit as the structural changes they
+  describe.
+
+### Acceptance checks
+
+```bash
+uv sync --dev
+uv run python -m pytest -q
+uv run python -m compileall -q src tests main.py start.py
+uv run ruff check .
+uv run ruff format --check .
+```
+
+- No internal compatibility module remains without a current caller.
+- Documentation points to the actual final module boundaries.
+- A clean environment can install and run the project using documented commands.
+
+## Commit Strategy
+
+Each step should be a small, reviewable commit. A reasonable sequence is:
+
+1. `refactor: add FastAPI application factory`
+2. `refactor: extract web page rendering`
+3. `refactor: add locked authentication store`
+4. `refactor: separate web routes and authentication`
+5. `refactor: separate media URL policy`
+6. `refactor: isolate yt-dlp download execution`
+7. `test: use public architecture seams`
+8. `chore: remove transitional modules and stale docs`
+
+Do not combine all phases into one branch-sized commit. If a phase reveals a behavior
+ambiguity, add a regression test and resolve that ambiguity before continuing.
+
+## Stop Conditions
+
+Pause the refactor and reassess if any of these occur:
+
+- a phase requires changing persisted file formats;
+- the same behavior must be implemented in both old and new modules for more than
+  one phase;
+- test runtime or flakiness materially worsens;
+- the application factory requires a large dependency-injection framework;
+- a proposed class has no meaningful invariant or independent test contract; or
+- a file move starts changing user-visible behavior.
+
+These are signs that the step is too broad or the proposed boundary is artificial.
 
 ## Definition Of Done
 
-- `uv run python -m pytest -q` passes.
-- `uv run python -m compileall src tests start.py main.py` passes.
-- Every touched module has been executed directly or through tests.
-- The plan's known potential bugs either have passing regression tests or are documented as residual risks.
-- `README.md`, `docs/`, `GUIDE_ROOT.md`, `src/GUIDE_src.md`, and `tests/GUIDE_tests.md` match the final code.
-- Work is committed with a message such as `refactor: harden downloader architecture`.
+The refactor is complete when:
 
-## What Else?
+- `src/api.py` is a small deployment entrypoint;
+- web authentication, routes, and rendering have explicit owners;
+- generic and YouTube-specific URL policy no longer share a catch-all module;
+- `YtDlpClient` owns audio-download subprocess execution;
+- state mutations go through store classes;
+- the download service coordinates policy rather than implementing every low-level
+  operation;
+- obsolete compatibility modules are removed;
+- the complete offline suite, Ruff linting, Ruff formatting, and bytecode compilation
+  pass; and
+- README, architecture documentation, and `GUIDE_*` files match the code.
 
-- The tempting but wrong move is to add a database immediately. A database would solve some locking problems, but it would also introduce migrations, backup concerns, and deployment complexity. The better next step is explicit file stores with clear invariants.
-- If this project grows beyond one operator, replace file-backed auth and queue state with SQLite. SQLite is a local relational database stored in one file; it would give atomic transactions without needing a server.
-- Consider adding a `--dry-run` mode after the architecture split. It would print which URLs would download, skip, archive, or remain queued without touching MP3 files.
-- Consider a small command-builder snapshot test for `yt-dlp` flags. That is cheaper and more stable than live network tests.
+## Deferred Improvements
+
+Consider these only in response to an actual requirement:
+
+- Use SQLite if multiple web workers or richer transactional state become necessary.
+- Persist immediate scheduler requests if “download now” must survive restarts.
+- Adopt `src/podcast_downloader/` if the project becomes an installed library or is
+  published as a package.
+- Add a media-provider interface after a second non-YouTube provider needs custom
+  expansion or metadata policy. Do not design that interface before a concrete
+  second implementation exists.
 
 ## TL;DR
 
-The main architectural problem is not that the app is small. The problem is that state, policy, process execution, and HTML are tangled in large modules. First add failing tests for the likely bugs, then introduce explicit state stores, split URL policy and download execution, break up the web module, harden config and scheduler behavior, and update docs.
+Refactor through small seams: first construct the web app explicitly, then extract
+web rendering and authentication, separate media policy, isolate `yt-dlp` execution,
+improve tests around those public boundaries, and finally delete transitional
+clutter. Keep the current deployment model and plain-file state throughout.
