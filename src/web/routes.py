@@ -38,6 +38,7 @@ from ..media.youtube import (
     normalize_youtube_url,
 )
 from ..state.archive_store import ArchiveStore
+from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
 
@@ -65,7 +66,7 @@ CSRF_TOKENS: dict[str, dict[str, float | str]] = {}  # session_id -> token metad
 _LOGIN_STATE_LOCK = threading.Lock()
 _SESSION_STATE_LOCK = threading.Lock()
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # In Docker, PODCAST_DATA_DIR=/data (set in docker-compose.yml). Locally, falls back to PROJECT_ROOT.
 DATA_DIR = Path(os.environ.get("PODCAST_DATA_DIR", str(PROJECT_ROOT)))
 try:
@@ -135,22 +136,27 @@ def _password_file() -> Path:
     return DATA_DIR / ".ui_password"
 
 
+def _auth_store() -> AuthStore:
+    """Build the authentication store from current configured state paths."""
+    return AuthStore(
+        session_file=SESSION_STATE_FILE,
+        login_state_file=DATA_DIR / ".login_state.json",
+    )
+
+
 def _load_login_state() -> dict:
-    state_path = DATA_DIR / ".login_state.json"
-    if not state_path.exists():
-        return {}
-    try:
-        return json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    """Load client failure records through the locked authentication store."""
+    return _auth_store().load_login_state()
 
 
 def _save_login_state(state: dict) -> None:
-    state_path = DATA_DIR / ".login_state.json"
-    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    """Atomically replace client failure records."""
+    _auth_store().save_login_state(state)
 
 
 def _load_and_save_login_state(update_fn: "Callable[[dict], None]") -> dict:
+    return _auth_store().update_login_state(update_fn)
+
     """Load login state, apply an update, then save it back under one lock."""
     with _LOGIN_STATE_LOCK:
         state = _load_login_state()
@@ -294,6 +300,8 @@ def _session_has_expired(created_at_raw: float | str | None) -> bool:
 
 
 def _load_session_state() -> dict[str, dict[str, float | str]]:
+    return _auth_store().load_sessions(SESSION_MAX_AGE_SECONDS)
+
     """Load remembered login sessions from disk."""
     if not SESSION_STATE_FILE.exists():
         return {}
@@ -320,6 +328,9 @@ def _load_session_state() -> dict[str, dict[str, float | str]]:
 
 
 def _save_session_state(state: dict[str, dict[str, float | str]]) -> None:
+    _auth_store().save_sessions(state)
+    return
+
     """Persist remembered login sessions to disk."""
     SESSION_STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
 

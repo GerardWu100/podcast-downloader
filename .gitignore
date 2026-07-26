@@ -21,7 +21,9 @@ coverage.xml
 # Secrets and auth state
 .ui_password
 .ui_sessions.json
+.ui_sessions.json.lock
 .login_state.json
+.login_state.json.lock
 cookies.txt
 www.youtube.com_cookies.txt
 *.cookies
