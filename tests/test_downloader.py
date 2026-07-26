@@ -1165,13 +1165,13 @@ def test_source_folder_name_uses_youtube_playlist_title(
     monkeypatch.setattr(
         downloads_service_module,
         "get_youtube_playlist_folder_name",
-        lambda *args, **kwargs: "Example Podcast",
+        lambda *args, **kwargs: "Top Traders Unplugged",
         raising=False,
     )
 
     folder_name = downloader._source_folder_name(playlist_url)
 
-    assert folder_name == "Example-Podcast"
+    assert folder_name == "Top-Traders-Unplugged"
 
 
 def test_ytdlp_command_prefers_channel_name_in_output_template(
@@ -1863,7 +1863,7 @@ def test_watch_url_success_removes_matching_live_url_from_queue_without_archivin
     urls_file.write_text(f"{live_url}\n", encoding="utf-8")
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
-    output_mp3 = downloads_dir / "singles" / "Example Podcast - episode.mp3"
+    output_mp3 = downloads_dir / "singles" / "Top Traders Unplugged - episode.mp3"
     output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
