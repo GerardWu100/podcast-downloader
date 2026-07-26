@@ -15,10 +15,11 @@ src.api:app
 
 `create_app()` is the construction seam. Production calls it from `src/api.py`;
 tests can pass validated configuration, temporary store collaborators, and a
-scheduler trigger. Route handlers resolve those collaborators from the current
-request's application state, so an injected test store is also the store that
-the request actually uses. `src/api.py` contains no route, authentication, or
-rendering implementation.
+scheduler trigger. The factory resolves any omitted collaborators to production
+defaults, then attaches the complete set to application state. Route handlers
+resolve those collaborators from the current request's application state, so an
+injected test store is also the store that the request actually uses.
+`src/api.py` contains no route, authentication, or rendering implementation.
 
 `auth.py` owns proxy-trust interpretation and browser security headers.
 `AuthStore` in `state/` owns session and login-failure persistence. Route code

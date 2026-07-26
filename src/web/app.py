@@ -55,6 +55,32 @@ def create_app(
     # Construct every production collaborator in one place. Tests may replace
     # any member with a store rooted in a temporary directory.
     resolved_config = config if config is not None else routes.CONFIG
+    if queue_store is None:
+        queue_store = QueueStore(resolved_config.urls_file, _logger)
+    if archive_store is None:
+        archive_store = ArchiveStore(
+            resolved_config.downloaded_urls_file,
+            _logger,
+        )
+    if bypass_store is None:
+        bypass_store = BypassStore(
+            resolved_config.bypass_age_check_file,
+            _logger,
+        )
+    if activity_store is None:
+        activity_store = ActivityLogStore(
+            activity_log_file_for(resolved_config.log_file)
+        )
+    if auth_store is None:
+        auth_store = AuthStore(
+            session_file=routes.SESSION_STATE_FILE,
+            login_state_file=routes.DATA_DIR / ".login_state.json",
+        )
+    if trigger is None:
+        trigger = in_process_download_trigger
+
+    # Keep route dependencies together on app.state so every request resolves
+    # the same collaborators created or injected above.
     app = FastAPI(
         title="Podcast URL Ingest",
         docs_url=None,
@@ -62,45 +88,11 @@ def create_app(
         openapi_url=None,
     )
     app.state.config = resolved_config
-    app.state.queue_store = (
-        queue_store
-        if queue_store is not None
-        else QueueStore(
-            resolved_config.urls_file,
-            _logger,
-        )
-    )
-    app.state.archive_store = (
-        archive_store
-        if archive_store is not None
-        else ArchiveStore(
-            resolved_config.downloaded_urls_file,
-            _logger,
-        )
-    )
-    app.state.bypass_store = (
-        bypass_store
-        if bypass_store is not None
-        else BypassStore(
-            resolved_config.bypass_age_check_file,
-            _logger,
-        )
-    )
-    app.state.activity_store = (
-        activity_store
-        if activity_store is not None
-        else ActivityLogStore(activity_log_file_for(resolved_config.log_file))
-    )
-    app.state.auth_store = (
-        auth_store
-        if auth_store is not None
-        else AuthStore(
-            session_file=routes.SESSION_STATE_FILE,
-            login_state_file=routes.DATA_DIR / ".login_state.json",
-        )
-    )
-    app.state.download_trigger = (
-        trigger if trigger is not None else in_process_download_trigger
-    )
+    app.state.queue_store = queue_store
+    app.state.archive_store = archive_store
+    app.state.bypass_store = bypass_store
+    app.state.activity_store = activity_store
+    app.state.auth_store = auth_store
+    app.state.download_trigger = trigger
     app.include_router(routes.router)
     return app

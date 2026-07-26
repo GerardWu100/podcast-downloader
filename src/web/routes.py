@@ -396,24 +396,33 @@ def _is_banned(state: dict, ip: str) -> tuple[bool, float]:
     return time.time() < banned_until, banned_until
 
 
-def _record_failure(state: dict, ip: str) -> tuple[int, float]:
-    """Update the failure counters for one IP address."""
+def _record_failure(state: dict, ip: str) -> None:
+    """Update the failure counters and ban deadline for one IP address.
+
+    Parameters
+    ----------
+    state:
+        Mutable mapping of client IP addresses to login-failure metadata.
+    ip:
+        Client IP address whose failed attempt should be recorded.
+    """
     now = time.time()
     record = state.get(ip, {})
     last_failed = float(record.get("last_failed", 0))
     failed = int(record.get("failed", 0))
 
+    # A failure outside the rolling window starts a fresh count.
     if now - last_failed > FAIL_WINDOW_SECONDS:
         failed = 0
 
     failed += 1
     record.update({"failed": failed, "last_failed": now})
 
+    # Reaching the threshold sets a deadline checked by later login attempts.
     if failed >= MAX_FAILED_ATTEMPTS:
         record["banned_until"] = now + BAN_SECONDS
 
     state[ip] = record
-    return failed, float(record.get("banned_until", 0))
 
 
 def _clear_failures(state: dict, ip: str) -> None:
@@ -513,6 +522,25 @@ def login_action(
     csrf_token: str = Form(...),
     csrf_session: str = Form(...),
 ) -> RedirectResponse:
+    """Validate a login attempt and start a remembered browser session.
+
+    Parameters
+    ----------
+    request:
+        Current FastAPI request carrying application dependencies and client
+        network information.
+    password:
+        Plain-text password submitted by the browser.
+    csrf_token:
+        One-time Cross-Site Request Forgery token submitted by the login form.
+    csrf_session:
+        Identifier used to find the server-side login token.
+
+    Returns
+    -------
+    RedirectResponse
+        Redirect to the queue after success or to a login status after failure.
+    """
     # Validate the CSRF token before reading password state or updating bans.
     token_data = CSRF_TOKENS.pop(csrf_session, {})
     expected_csrf = str(token_data.get("token", ""))
@@ -551,16 +579,12 @@ def login_action(
 
     if not password_ok:
         with _LOGIN_STATE_LOCK:
-            failure_result: dict[str, float] = {}
-
-            def record_failure(state: dict) -> None:
-                """Capture the ban deadline from one locked state transition."""
-                _failed_count, banned_until = _record_failure(state, ip)
-                failure_result["banned_until"] = banned_until
-
-            _load_and_save_login_state(record_failure, request)
-            banned_until = failure_result.get("banned_until", 0)
-        if banned_until and time.time() < banned_until:
+            updated_state = _load_and_save_login_state(
+                lambda state: _record_failure(state, ip),
+                request,
+            )
+            is_now_banned, _ban_deadline = _is_banned(updated_state, ip)
+        if is_now_banned:
             return RedirectResponse(url="/login?msg=banned", status_code=303)
         return RedirectResponse(url="/login?msg=bad_password", status_code=303)
 
