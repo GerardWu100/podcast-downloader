@@ -123,10 +123,6 @@ class ArchiveStore:
             self.logger.error("Could not save downloaded URL: %s", exc)
             return False
 
-    def claim(self, url: str) -> bool:
-        """Atomically append a URL if absent and report whether this caller won."""
-        return self.append(url)
-
     def remove(self, url: str) -> bool:
         """Remove one normalized URL from the archive under an exclusive lock."""
         try:

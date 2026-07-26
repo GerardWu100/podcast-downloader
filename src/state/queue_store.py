@@ -26,8 +26,19 @@ class QueueStore:
         self.urls_file = urls_file
         self.logger = logger
 
-    def _iter_locked_lines(self, lock_type: int) -> list[tuple[int, str]]:
-        """Return ``(line_number, stripped_text)`` pairs from the locked queue file."""
+    def _read_locked_lines(self, lock_type: int) -> list[tuple[int, str]]:
+        """Read non-empty queue lines while holding the requested file lock.
+
+        Parameters
+        ----------
+        lock_type:
+            Shared or exclusive ``fcntl`` lock constant.
+
+        Returns
+        -------
+        list[tuple[int, str]]
+            One-based line number and stripped text for every non-empty line.
+        """
         lines: list[tuple[int, str]] = []
         with locked_text_file(self.urls_file, "r", lock_type) as file_handle:
             for line_number, line in enumerate(file_handle, 1):
@@ -69,7 +80,7 @@ class QueueStore:
             return []
 
         urls: list[str] = []
-        for line_num, stripped in self._iter_locked_lines(fcntl.LOCK_SH):
+        for line_num, stripped in self._read_locked_lines(fcntl.LOCK_SH):
             if stripped.startswith("#"):
                 continue
             if is_supported_media_url(stripped):
@@ -89,7 +100,7 @@ class QueueStore:
 
         try:
             queue_urls: list[str] = []
-            for _line_num, stripped in self._iter_locked_lines(fcntl.LOCK_SH):
+            for _line_num, stripped in self._read_locked_lines(fcntl.LOCK_SH):
                 if stripped.startswith("#"):
                     continue
                 if not is_supported_media_url(stripped):
@@ -103,46 +114,6 @@ class QueueStore:
         except Exception as exc:  # pragma: no cover - logging error path
             self.logger.warning("Could not read queue URLs: %s", exc)
             return []
-
-    def remove_video_url(self, video_url: str) -> None:
-        """Remove one direct video URL while leaving channel entries alone."""
-        from ..media.youtube import is_channel_or_playlist, normalize_youtube_url
-
-        if not self.urls_file.exists():
-            return
-
-        try:
-            with locked_text_file(self.urls_file, "r+", fcntl.LOCK_EX) as file_handle:
-                lines = file_handle.readlines()
-
-                normalized_video_url = normalize_youtube_url(video_url).strip()
-                new_lines: list[str] = []
-                removed = False
-
-                for line in lines:
-                    stripped = line.strip()
-                    if (
-                        not stripped
-                        or stripped.startswith("#")
-                        or is_channel_or_playlist(stripped)
-                    ):
-                        new_lines.append(line)
-                        continue
-
-                    normalized_line = normalize_youtube_url(stripped).strip()
-                    if normalized_line != normalized_video_url:
-                        new_lines.append(line)
-                    else:
-                        removed = True
-
-                if removed:
-                    file_handle.seek(0)
-                    file_handle.writelines(new_lines)
-                    file_handle.truncate()
-                    self.logger.debug("Removed from urls.txt: %s", video_url)
-
-        except Exception as exc:  # pragma: no cover - logging error path
-            self.logger.warning("Could not remove URL from file: %s", exc)
 
     def remove_url(self, url: str) -> bool:
         """Remove one normalized URL from the queue."""

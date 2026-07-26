@@ -8,7 +8,6 @@ import os
 import secrets
 import threading
 import time
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TypeVar, cast
@@ -199,19 +198,6 @@ def _auth_store(request: Request | None = None) -> AuthStore:
 def _load_login_state(request: Request | None = None) -> dict:
     """Load client failure records through the locked authentication store."""
     return _auth_store(request).load_login_state()
-
-
-def _save_login_state(state: dict, request: Request | None = None) -> None:
-    """Atomically replace client failure records."""
-    _auth_store(request).save_login_state(state)
-
-
-def _load_and_save_login_state(
-    update_fn: "Callable[[dict], None]",
-    request: Request | None = None,
-) -> dict:
-    """Apply one locked authentication-state read-modify-write transaction."""
-    return _auth_store(request).update_login_state(update_fn)
 
 
 def _security_headers(script_nonce: str | None = None) -> dict[str, str]:
@@ -579,18 +565,16 @@ def login_action(
 
     if not password_ok:
         with _LOGIN_STATE_LOCK:
-            updated_state = _load_and_save_login_state(
+            updated_state = _auth_store(request).update_login_state(
                 lambda state: _record_failure(state, ip),
-                request,
             )
             is_now_banned, _ban_deadline = _is_banned(updated_state, ip)
         if is_now_banned:
             return RedirectResponse(url="/login?msg=banned", status_code=303)
         return RedirectResponse(url="/login?msg=bad_password", status_code=303)
 
-    _load_and_save_login_state(
+    _auth_store(request).update_login_state(
         lambda state: _clear_failures(state, ip),
-        request,
     )
 
     session_id = secrets.token_urlsafe(32)
@@ -635,7 +619,20 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
 
 @router.get("/ui", response_class=HTMLResponse)
 def ui(request: Request, msg: str = "") -> HTMLResponse:
-    """HTML form for submitting a URL plus monitored URLs and activity viewer."""
+    """Render the authenticated queue, controls, and activity status.
+
+    Parameters
+    ----------
+    request:
+        Current FastAPI request with session and application dependencies.
+    msg:
+        Optional known status key displayed above the queue.
+
+    Returns
+    -------
+    HTMLResponse
+        Queue page, or a login redirect when the session is invalid.
+    """
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -651,7 +648,6 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         css_class, display_text = _MSG_DISPLAY[msg]
         msg_html = f'<div class="{css_class}">{html.escape(display_text)}</div>'
 
-    bypass_row_html = ""
     config = _request_config(request)
     if config.min_channel_video_age_hours > 0:
         bypass_label = html.escape("Download now (skip age wait or full playlist)")
@@ -772,7 +768,25 @@ def add_url_form(
     csrf_token: str = Form(...),
     skip_age_check: str = Form(default=""),
 ) -> RedirectResponse:
-    """Add a URL to the queue, then wake the scheduler."""
+    """Add one validated URL and request its applicable scheduler workflow.
+
+    Parameters
+    ----------
+    request:
+        Current FastAPI request with session and application dependencies.
+    url:
+        Candidate direct video, YouTube channel, or YouTube playlist URL.
+    csrf_token:
+        Cross-Site Request Forgery token tied to the remembered session.
+    skip_age_check:
+        Non-empty when the browser requests immediate direct-video or full
+        playlist processing.
+
+    Returns
+    -------
+    RedirectResponse
+        Queue-page redirect with the mutation outcome in its message key.
+    """
     redirect = _require_login(request)
     if redirect:
         return redirect
@@ -800,14 +814,13 @@ def add_url_form(
     # immediate UI run cannot expand channels or process older urls.txt entries.
     # Checked playlist additions wake a full-playlist immediate run. Channel URLs
     # ignore the checkbox and stay queued for the scheduled channel_count run.
-    skip_age_check_value = skip_age_check if isinstance(skip_age_check, str) else ""
     is_direct_video = not is_channel_or_playlist(normalized)
-    if skip_age_check_value and is_youtube_playlist(normalized):
+    if skip_age_check and is_youtube_playlist(normalized):
         _download_trigger(request).queue_full_playlist_download(normalized)
     elif is_direct_video:
         # The bypass file only affects YouTube's minimum-age policy. Non-YouTube
         # direct videos are immediate already, so writing them there is noise.
-        if skip_age_check_value and is_youtube_url(normalized):
+        if skip_age_check and is_youtube_url(normalized):
             _bypass_store(request).add(normalized)
         _download_trigger(request).queue_single_url_download(normalized)
 

@@ -11,7 +11,8 @@ from pathlib import Path
 
 import src.downloads.service as downloads_service_module
 from src.downloads.audio_metadata import AudioMetadataWriter
-from src.downloads.service import PodcastDownloadService as PodcastDownloader
+from src.downloads.service import PodcastDownloadService
+from src.downloads.ytdlp_client import AudioSnapshot, YtDlpResult
 
 
 def write_fake_ffmpeg_output(command: list[str], audio_text: str) -> None:
@@ -21,7 +22,7 @@ def write_fake_ffmpeg_output(command: list[str], audio_text: str) -> None:
 
 
 def disable_youtube_channel_display_name_lookup(monkeypatch) -> None:
-    """Keep legacy downloader tests from issuing extra yt-dlp metadata lookups."""
+    """Keep service tests from issuing unrelated yt-dlp metadata lookups."""
     monkeypatch.setattr(
         downloads_service_module,
         "get_youtube_channel_display_name",
@@ -32,6 +33,49 @@ def disable_youtube_channel_display_name_lookup(monkeypatch) -> None:
 def ffmpeg_command_from(commands: list[list[str]]) -> list[str]:
     """Return the ffmpeg command captured by a downloader subprocess monkeypatch."""
     return next(command for command in commands if command[0] == "ffmpeg")
+
+
+def ytdlp_result(
+    *,
+    returncode: int,
+    changed_audio_files: list[Path],
+    stdout: str = "",
+    stderr: str = "",
+) -> YtDlpResult:
+    """Build a typed client result for service-level workflow tests.
+
+    Parameters
+    ----------
+    returncode:
+        Final simulated ``yt-dlp`` exit status.
+    changed_audio_files:
+        MP3 paths created or changed by the simulated attempt.
+    stdout:
+        Simulated standard output.
+    stderr:
+        Simulated standard error.
+
+    Returns
+    -------
+    YtDlpResult
+        Result with an empty before snapshot and current file states after the
+        attempt.
+    """
+    # Capture the files written by the test fake so recovery and publication
+    # consume the same result shape as the production client.
+    after_files: dict[Path, tuple[int, int]] = {}
+    for audio_file in changed_audio_files:
+        file_stat = audio_file.stat()
+        after_files[audio_file] = (file_stat.st_mtime_ns, file_stat.st_size)
+    return YtDlpResult(
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+        changed_audio_files=changed_audio_files,
+        before_snapshot=AudioSnapshot(files={}),
+        after_snapshot=AudioSnapshot(files=after_files),
+        attempts=1,
+    )
 
 
 def test_download_video_treats_overwritten_mp3_as_success(
@@ -48,7 +92,7 @@ def test_download_video_treats_overwritten_mp3_as_success(
     existing_mp3.write_text("old audio", encoding="utf-8")
     original_mtime_ns = existing_mp3.stat().st_mtime_ns
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -93,7 +137,7 @@ def test_write_audio_download_date_metadata_updates_mp3_date_tag(
     downloads_dir.mkdir()
     audio_file = downloads_dir / "episode.mp3"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -161,7 +205,7 @@ def test_write_audio_download_date_metadata_avoids_scannable_temp_mp3(
     audio_file = downloads_dir / "episode.mp3"
     audio_file.write_text("audio before metadata", encoding="utf-8")
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -243,7 +287,7 @@ def test_ytdlp_command_disables_source_mtime(
     output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -265,13 +309,10 @@ def test_ytdlp_command_disables_source_mtime(
 
     monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
 
-    result, changed = downloader._run_ytdlp(
-        "https://videos.example.com/watch/episode-1",
-        cookies_file=None,
-    )
+    execution = downloader._run_ytdlp("https://videos.example.com/watch/episode-1")
 
-    assert result.returncode == 0
-    assert changed == [output_mp3]
+    assert execution.returncode == 0
+    assert execution.changed_audio_files == [output_mp3]
     assert "--no-mtime" in commands[0]
 
 
@@ -288,7 +329,7 @@ def test_finished_mp3_is_published_from_intermediate_dir_to_library_dir(
     work_mp3 = intermediate_dir / "singles" / "creator - episode.mp3"
     library_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -297,23 +338,20 @@ def test_finished_mp3_is_published_from_intermediate_dir_to_library_dir(
     )
 
     def fake_run_ytdlp(
-        self: PodcastDownloader,
+        self: PodcastDownloadService,
         url: str,
-        cookies_file: Path | None,
         work_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
+    ) -> YtDlpResult:
         target_dir = work_dir or intermediate_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         work_mp3.parent.mkdir(parents=True, exist_ok=True)
         work_mp3.write_text("audio", encoding="utf-8")
         (target_dir / "cover.webp").write_text("thumb", encoding="utf-8")
-        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
-            work_mp3
-        ]
+        return ytdlp_result(returncode=0, changed_audio_files=[work_mp3])
 
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
+    monkeypatch.setattr(PodcastDownloadService, "_run_ytdlp", fake_run_ytdlp)
     monkeypatch.setattr(
-        PodcastDownloader,
+        PodcastDownloadService,
         "_stamp_audio_files_with_download_time",
         lambda *args, **kwargs: None,
     )
@@ -342,7 +380,7 @@ def test_ytdlp_uses_work_dir_for_temp_path(tmp_path, monkeypatch) -> None:
     intermediate_dir = tmp_path / "download_work"
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -366,7 +404,6 @@ def test_ytdlp_uses_work_dir_for_temp_path(tmp_path, monkeypatch) -> None:
 
     downloader._run_ytdlp(
         "https://videos.example.com/watch/episode-1",
-        cookies_file=None,
         work_dir=work_dir,
     )
 
@@ -389,7 +426,7 @@ def test_failed_download_removes_intermediate_work_dir(
     intermediate_dir = tmp_path / "download_work"
     work_dir = intermediate_dir / "singles"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -398,18 +435,21 @@ def test_failed_download_removes_intermediate_work_dir(
     )
 
     def fake_run_ytdlp(
-        self: PodcastDownloader,
+        self: PodcastDownloadService,
         url: str,
-        cookies_file: Path | None,
         work_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
+    ) -> YtDlpResult:
         target_dir = work_dir or intermediate_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         (target_dir / "partial.part").write_text("partial", encoding="utf-8")
         (target_dir / "cover.webp").write_text("thumb", encoding="utf-8")
-        return subprocess.CompletedProcess(["yt-dlp"], 1, stdout="", stderr="fail"), []
+        return ytdlp_result(
+            returncode=1,
+            changed_audio_files=[],
+            stderr="fail",
+        )
 
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
+    monkeypatch.setattr(PodcastDownloadService, "_run_ytdlp", fake_run_ytdlp)
 
     _, success = downloader._download_video(
         video_url,
@@ -434,7 +474,7 @@ def test_metadata_stamp_failure_preserves_mp3_but_removes_artifacts(
     intermediate_dir = tmp_path / "download_work"
     work_mp3 = intermediate_dir / "singles" / "creator - episode.mp3"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -443,26 +483,23 @@ def test_metadata_stamp_failure_preserves_mp3_but_removes_artifacts(
     )
 
     def fake_run_ytdlp(
-        self: PodcastDownloader,
+        self: PodcastDownloadService,
         url: str,
-        cookies_file: Path | None,
         work_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
+    ) -> YtDlpResult:
         target_dir = work_dir or intermediate_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         work_mp3.parent.mkdir(parents=True, exist_ok=True)
         work_mp3.write_text("audio", encoding="utf-8")
         (target_dir / "cover.webp").write_text("thumb", encoding="utf-8")
-        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
-            work_mp3
-        ]
+        return ytdlp_result(returncode=0, changed_audio_files=[work_mp3])
 
     def fail_stamp(*args, **kwargs) -> None:
         raise RuntimeError("ffmpeg failed")
 
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
+    monkeypatch.setattr(PodcastDownloadService, "_run_ytdlp", fake_run_ytdlp)
     monkeypatch.setattr(
-        PodcastDownloader,
+        PodcastDownloadService,
         "_stamp_audio_files_with_download_time",
         fail_stamp,
     )
@@ -493,7 +530,7 @@ def test_publish_failure_still_cleans_intermediate_work_dir(
     work_mp3 = intermediate_dir / "singles" / "creator - episode.mp3"
     work_dir = work_mp3.parent
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -502,30 +539,27 @@ def test_publish_failure_still_cleans_intermediate_work_dir(
     )
 
     def fake_run_ytdlp(
-        self: PodcastDownloader,
+        self: PodcastDownloadService,
         url: str,
-        cookies_file: Path | None,
         work_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
+    ) -> YtDlpResult:
         target_dir = work_dir or intermediate_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         work_mp3.write_text("audio", encoding="utf-8")
         (target_dir / "cover.webp").write_text("thumb", encoding="utf-8")
-        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
-            work_mp3
-        ]
+        return ytdlp_result(returncode=0, changed_audio_files=[work_mp3])
 
     def fail_publish(*args, **kwargs) -> list[Path]:
         raise OSError("move failed")
 
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
+    monkeypatch.setattr(PodcastDownloadService, "_run_ytdlp", fake_run_ytdlp)
     monkeypatch.setattr(
-        PodcastDownloader,
+        PodcastDownloadService,
         "_stamp_audio_files_with_download_time",
         lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(
-        PodcastDownloader,
+        PodcastDownloadService,
         "_publish_audio_files_to_output_dir",
         fail_publish,
     )
@@ -553,7 +587,7 @@ def test_intermediate_root_temp_files_are_removed(tmp_path) -> None:
     preserved_mp3 = work_dir / "creator - episode.mp3"
     preserved_mp3.write_text("audio", encoding="utf-8")
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=tmp_path / "urls.txt",
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -568,165 +602,6 @@ def test_intermediate_root_temp_files_are_removed(tmp_path) -> None:
 
     assert preserved_mp3.is_file()
     assert not stale_part.exists()
-
-
-def test_youtube_download_does_not_use_cookie_file_when_plain_attempt_succeeds(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    """A working normal YouTube request should not spend the cookie file."""
-    video_url = "https://www.youtube.com/watch?v=abc123"
-    urls_file = tmp_path / "urls.txt"
-    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
-    downloads_dir = tmp_path / "downloads"
-    downloads_dir.mkdir()
-    cookies_file = tmp_path / "cookies.txt"
-    cookies_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
-    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
-    cookie_attempts: list[Path | None] = []
-
-    downloader = PodcastDownloader(
-        urls_file=urls_file,
-        downloads_dir=downloads_dir,
-        log_file=tmp_path / "download.log",
-        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
-        cookies_file=cookies_file,
-    )
-
-    def fake_run_ytdlp(
-        self: PodcastDownloader,
-        url: str,
-        cookies_file: Path | None,
-        output_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
-        cookie_attempts.append(cookies_file)
-        target_dir = output_dir or downloads_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-        output_mp3.write_text("audio", encoding="utf-8")
-        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
-            output_mp3
-        ]
-
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
-    monkeypatch.setattr(
-        PodcastDownloader,
-        "_stamp_audio_files_with_download_time",
-        lambda *args, **kwargs: None,
-    )
-
-    _, success = downloader._download_video(
-        video_url,
-        index=1,
-        total=1,
-        use_archive=False,
-    )
-
-    assert success is True
-    assert cookie_attempts == [None]
-
-
-def test_youtube_download_uses_cookies_on_first_attempt_when_always_use_cookies(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    """Always-on cookie mode should skip the plain unauthenticated attempt."""
-    video_url = "https://www.youtube.com/watch?v=abc123"
-    urls_file = tmp_path / "urls.txt"
-    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
-    downloads_dir = tmp_path / "downloads"
-    downloads_dir.mkdir()
-    cookies_file = tmp_path / "cookies.txt"
-    cookies_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
-    output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
-    cookie_attempts: list[Path | None] = []
-
-    downloader = PodcastDownloader(
-        urls_file=urls_file,
-        downloads_dir=downloads_dir,
-        log_file=tmp_path / "download.log",
-        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
-        cookies_file=cookies_file,
-        always_use_cookies=True,
-    )
-
-    def fake_run_ytdlp(
-        self: PodcastDownloader,
-        url: str,
-        cookies_file: Path | None,
-        output_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
-        cookie_attempts.append(cookies_file)
-        target_dir = output_dir or downloads_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-        output_mp3.write_text("audio", encoding="utf-8")
-        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
-            output_mp3
-        ]
-
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
-    monkeypatch.setattr(
-        PodcastDownloader,
-        "_stamp_audio_files_with_download_time",
-        lambda *args, **kwargs: None,
-    )
-
-    _, success = downloader._download_video(
-        video_url,
-        index=1,
-        total=1,
-        use_archive=False,
-    )
-
-    assert success is True
-    assert cookie_attempts == [cookies_file]
-
-
-def test_non_youtube_download_does_not_retry_with_youtube_cookie_file(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    """The cookie fallback is a YouTube-specific escape hatch."""
-    video_url = "https://videos.example.com/watch/missing-episode"
-    urls_file = tmp_path / "urls.txt"
-    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
-    downloads_dir = tmp_path / "downloads"
-    downloads_dir.mkdir()
-    cookies_file = tmp_path / "cookies.txt"
-    cookies_file.write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
-    cookie_attempts: list[Path | None] = []
-
-    downloader = PodcastDownloader(
-        urls_file=urls_file,
-        downloads_dir=downloads_dir,
-        log_file=tmp_path / "download.log",
-        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
-        cookies_file=cookies_file,
-    )
-
-    def fake_run_ytdlp(
-        self: PodcastDownloader,
-        url: str,
-        cookies_file: Path | None,
-        output_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
-        cookie_attempts.append(cookies_file)
-        return (
-            subprocess.CompletedProcess(["yt-dlp"], 1, stdout="", stderr="missing"),
-            [],
-        )
-
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
-
-    _, success = downloader._download_video(
-        video_url,
-        index=1,
-        total=1,
-        use_archive=False,
-    )
-
-    assert success is False
-    assert cookie_attempts == [None]
-    assert urls_file.read_text(encoding="utf-8") == f"{video_url}\n"
 
 
 def test_download_video_writes_mp3_date_metadata_to_download_time(
@@ -745,7 +620,7 @@ def test_download_video_writes_mp3_date_metadata_to_download_time(
     download_timestamp = 1_800_000_000.25
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -809,7 +684,7 @@ def test_download_video_writes_normalized_youtube_url_to_mp3_comment_metadata(
     output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -860,7 +735,7 @@ def test_live_url_writes_watch_url_to_mp3_comment_metadata(
     output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -908,7 +783,7 @@ def test_stamp_audio_files_updates_metadata_without_restamping_filesystem_times(
     output_mp3.write_text("audio", encoding="utf-8")
     metadata_values: list[str] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -953,7 +828,7 @@ def test_stamp_audio_files_writes_channel_name_to_mp3_artist(
     output_mp3.write_text("audio", encoding="utf-8")
     captured_commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=tmp_path / "urls.txt",
         downloads_dir=tmp_path / "downloads",
         log_file=tmp_path / "download.log",
@@ -994,7 +869,7 @@ def test_source_folder_name_resolves_opaque_youtube_channel_id(
     opaque_channel_url = (
         "https://www.youtube.com/channel/UCBRpqrzuuqE8TZcWw75JSdw/videos"
     )
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=tmp_path / "urls.txt",
         downloads_dir=tmp_path / "downloads",
         log_file=tmp_path / "download.log",
@@ -1020,7 +895,7 @@ def test_source_folder_name_uses_youtube_playlist_title(
     playlist_url = (
         "https://www.youtube.com/playlist?list=PLZgCX3KJ3XGAq-6Ewy4ClI88EIYDxJsaS"
     )
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=tmp_path / "urls.txt",
         downloads_dir=tmp_path / "downloads",
         log_file=tmp_path / "download.log",
@@ -1049,7 +924,7 @@ def test_ytdlp_command_prefers_channel_name_in_output_template(
     downloads_dir.mkdir()
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1068,7 +943,6 @@ def test_ytdlp_command_prefers_channel_name_in_output_template(
 
     downloader._run_ytdlp(
         "https://www.youtube.com/watch?v=abc123",
-        cookies_file=None,
     )
 
     output_template = commands[0][commands[0].index("--output") + 1]
@@ -1089,7 +963,7 @@ def test_download_video_reports_failure_when_mp3_date_metadata_fails(
     output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
     output_mp3.parent.mkdir()
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1139,7 +1013,7 @@ def test_download_video_can_retry_after_metadata_stamp_failure_using_existing_mp
     output_mp3 = downloads_dir / "singles" / "creator - episode.mp3"
     output_mp3.parent.mkdir()
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1201,7 +1075,7 @@ def test_download_video_reports_failure_when_no_mp3_changes(
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1237,7 +1111,7 @@ def test_zero_delta_recovery_ignores_mp3_from_another_source(
     unrelated_mp3.parent.mkdir(parents=True)
     unrelated_mp3.write_text("unrelated audio", encoding="utf-8")
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         intermediate_dir=intermediate_dir,
@@ -1280,7 +1154,7 @@ def test_download_video_removes_direct_short_from_queue_when_skipped(
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1313,7 +1187,7 @@ def test_non_youtube_download_does_not_use_sponsorblock(
     output_mp3.parent.mkdir()
     commands: list[list[str]] = []
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1358,7 +1232,7 @@ def test_non_youtube_download_failure_is_logged_and_left_in_queue(
     downloads_dir.mkdir()
     log_file = tmp_path / "download.log"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=log_file,
@@ -1406,13 +1280,13 @@ def test_second_downloader_instance_reloads_archived_state_before_download(
     output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
-    downloader_one = PodcastDownloader(
+    downloader_one = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download-one.log",
         downloaded_urls_file=archive_file,
     )
-    downloader_two = PodcastDownloader(
+    downloader_two = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download-two.log",
@@ -1477,25 +1351,22 @@ def test_concurrent_archive_backed_downloads_do_not_duplicate_work(
     errors: list[BaseException] = []
 
     def fake_run_ytdlp(
-        self: PodcastDownloader,
+        self: PodcastDownloadService,
         url: str,
-        cookies_file: Path | None,
-        output_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
+        work_dir: Path | None = None,
+    ) -> YtDlpResult:
         """Simulate a slow download so a concurrent duplicate has time to start."""
         threading.Event().wait(timeout=0.1)
-        target_dir = output_dir or downloads_dir
+        target_dir = work_dir or downloads_dir
         target_dir.mkdir(parents=True, exist_ok=True)
         output_mp3 = target_dir / f"creator - episode-{len(yt_dlp_calls)}.mp3"
         output_mp3.write_text("audio", encoding="utf-8")
         yt_dlp_calls.append(url)
-        return subprocess.CompletedProcess(["yt-dlp"], 0, stdout="", stderr=""), [
-            output_mp3
-        ]
+        return ytdlp_result(returncode=0, changed_audio_files=[output_mp3])
 
     def run_one(name: str) -> None:
         try:
-            downloader = PodcastDownloader(
+            downloader = PodcastDownloadService(
                 urls_file=urls_file,
                 downloads_dir=downloads_dir,
                 log_file=tmp_path / f"download-{name}.log",
@@ -1505,9 +1376,9 @@ def test_concurrent_archive_backed_downloads_do_not_duplicate_work(
         except BaseException as exc:
             errors.append(exc)
 
-    monkeypatch.setattr(PodcastDownloader, "_run_ytdlp", fake_run_ytdlp)
+    monkeypatch.setattr(PodcastDownloadService, "_run_ytdlp", fake_run_ytdlp)
     monkeypatch.setattr(
-        PodcastDownloader,
+        PodcastDownloadService,
         "_stamp_audio_files_with_download_time",
         lambda *args, **kwargs: None,
     )
@@ -1540,7 +1411,7 @@ def test_download_video_writes_concise_failure_activity_event(
     log_file = tmp_path / "download.log"
     activity_log_file = tmp_path / "activity.log"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=log_file,
@@ -1586,7 +1457,7 @@ def test_download_video_writes_concise_success_activity_event(
     log_file = tmp_path / "download.log"
     activity_log_file = tmp_path / "activity.log"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=log_file,
@@ -1633,7 +1504,7 @@ def test_download_all_removes_successful_direct_url_without_archiving_it(
     output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1675,7 +1546,7 @@ def test_single_queue_url_removes_successful_direct_url_without_archiving_it(
     output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1717,7 +1588,7 @@ def test_watch_url_success_removes_matching_live_url_from_queue_without_archivin
     output_mp3.parent.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1762,7 +1633,7 @@ def test_single_queue_url_skips_too_new_youtube_video_without_bypass(
     downloads_dir.mkdir()
     bypass_file = tmp_path / "bypass_age_check_urls.txt"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1804,7 +1675,7 @@ def test_single_queue_url_downloads_old_enough_youtube_video_without_bypass(
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1847,7 +1718,7 @@ def test_single_queue_url_bypass_downloads_too_new_youtube_video(
     bypass_file = tmp_path / "bypass_age_check_urls.txt"
     bypass_file.write_text(f"{video_url}\n", encoding="utf-8")
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1891,7 +1762,7 @@ def test_download_full_playlist_now_downloads_every_expanded_video(
     downloads_dir.mkdir()
     archive_file = tmp_path / "downloaded_urls.txt"
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -1958,7 +1829,7 @@ def test_download_all_routes_mp3s_to_source_folders_without_moving_queue(
     downloads_dir = tmp_path / "downloads"
     downloads_dir.mkdir()
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -2041,7 +1912,7 @@ def test_delete_expired_channel_audio_removes_archive_url_and_preserves_other_so
         encoding="utf-8",
     )
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",
@@ -2108,7 +1979,7 @@ def test_download_all_retries_channel_item_after_retention_removes_archive_entry
     archive_file = tmp_path / "downloaded_urls.txt"
     archive_file.write_text(f"{channel_video_url}\n", encoding="utf-8")
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=urls_file,
         downloads_dir=downloads_dir,
         log_file=tmp_path / "download.log",

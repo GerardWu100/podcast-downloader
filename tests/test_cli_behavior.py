@@ -7,6 +7,8 @@ import sys
 
 import src.cli as cli_module
 from src.config import PodcastConfig
+from src.state.bypass_store import BypassStore
+from src.state.queue_store import QueueStore
 
 
 def test_cli_skip_age_check_help_names_direct_youtube_urls(tmp_path) -> None:
@@ -47,15 +49,7 @@ def test_cli_skip_age_check_marks_added_url_for_bypass(
         bypass_age_check_file=bypass_file,
     )
 
-    recorded_bypass_urls: list[str] = []
-
     monkeypatch.setattr(cli_module, "load_config", lambda *args, **kwargs: config)
-    monkeypatch.setattr(cli_module, "append_urls", lambda *args, **kwargs: 1)
-    monkeypatch.setattr(
-        cli_module,
-        "add_to_bypass_age_file",
-        lambda _path, url, _logger: recorded_bypass_urls.append(url),
-    )
     monkeypatch.setattr(
         cli_module.sys,
         "argv",
@@ -70,7 +64,12 @@ def test_cli_skip_age_check_marks_added_url_for_bypass(
     result = cli_module.main()
 
     assert result == 0
-    assert recorded_bypass_urls == ["https://www.youtube.com/watch?v=abc123"]
+    assert QueueStore(queue_file, cli_module._logger).read_urls() == [
+        "https://www.youtube.com/watch?v=abc123"
+    ]
+    assert BypassStore(bypass_file, cli_module._logger).load() == {
+        "https://www.youtube.com/watch?v=abc123"
+    }
     assert "Added 1 URL(s)" in capsys.readouterr().out
 
 
@@ -98,15 +97,7 @@ def test_cli_skip_age_check_does_not_mark_non_youtube_url_for_bypass(
         bypass_age_check_file=bypass_file,
     )
 
-    recorded_bypass_urls: list[str] = []
-
     monkeypatch.setattr(cli_module, "load_config", lambda *args, **kwargs: config)
-    monkeypatch.setattr(cli_module, "append_urls", lambda *args, **kwargs: 1)
-    monkeypatch.setattr(
-        cli_module,
-        "add_to_bypass_age_file",
-        lambda _path, url, _logger: recorded_bypass_urls.append(url),
-    )
     monkeypatch.setattr(
         cli_module.sys,
         "argv",
@@ -121,7 +112,10 @@ def test_cli_skip_age_check_does_not_mark_non_youtube_url_for_bypass(
     result = cli_module.main()
 
     assert result == 0
-    assert recorded_bypass_urls == []
+    assert QueueStore(queue_file, cli_module._logger).read_urls() == [
+        "https://videos.example.com/watch/episode-1"
+    ]
+    assert BypassStore(bypass_file, cli_module._logger).load() == set()
     assert "Added 1 URL(s)" in capsys.readouterr().out
 
 

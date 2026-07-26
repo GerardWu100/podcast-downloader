@@ -13,13 +13,12 @@ from zoneinfo import ZoneInfo
 import logging
 
 from src.state.activity_store import (
+    NO_DOWNLOAD_LOG_MESSAGE,
+    ActivityLogStore,
     activity_log_file_for,
-    read_activity_log_tail,
-    read_download_log_tail,
 )
 from src.downloads.service import PodcastDownloadService
 import src.state.activity_store as activity_store_module
-from src.state.activity_store import ActivityLogStore
 
 
 def test_activity_log_file_uses_download_log_directory(tmp_path: Path) -> None:
@@ -31,7 +30,7 @@ def test_activity_log_file_uses_download_log_directory(tmp_path: Path) -> None:
     assert activity_log_file == tmp_path / "nested" / "activity.log"
 
 
-def test_read_activity_log_tail_returns_last_lines(tmp_path: Path) -> None:
+def test_activity_store_read_tail_returns_last_lines(tmp_path: Path) -> None:
     """The web UI should receive the most recent concise activity entries."""
     activity_log_file = tmp_path / "activity.log"
     activity_log_file.write_text(
@@ -39,21 +38,21 @@ def test_read_activity_log_tail_returns_last_lines(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    tail = read_activity_log_tail(activity_log_file, line_count=2)
+    tail = ActivityLogStore(activity_log_file).read_tail(line_count=2)
 
     assert tail == "middle event\nnew event"
 
 
-def test_read_activity_log_tail_handles_missing_file(tmp_path: Path) -> None:
+def test_activity_store_read_tail_handles_missing_file(tmp_path: Path) -> None:
     """A fresh deployment should show an empty-state message instead of an error."""
     activity_log_file = tmp_path / "activity.log"
 
-    tail = read_activity_log_tail(activity_log_file, line_count=100)
+    tail = ActivityLogStore(activity_log_file).read_tail(line_count=100)
 
     assert tail == "No activity yet."
 
 
-def test_read_download_log_tail_returns_last_lines(tmp_path: Path) -> None:
+def test_download_log_store_read_tail_returns_last_lines(tmp_path: Path) -> None:
     """The full diagnostic log tail should return the newest lines."""
     download_log_file = tmp_path / "download.log"
     download_log_file.write_text(
@@ -61,16 +60,22 @@ def test_read_download_log_tail_returns_last_lines(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    tail = read_download_log_tail(download_log_file, line_count=2)
+    tail = ActivityLogStore(download_log_file).read_tail(
+        line_count=2,
+        empty_message=NO_DOWNLOAD_LOG_MESSAGE,
+    )
 
     assert tail == "line two\nline three"
 
 
-def test_read_download_log_tail_handles_missing_file(tmp_path: Path) -> None:
+def test_download_log_store_read_tail_handles_missing_file(tmp_path: Path) -> None:
     """A missing download log should show a download-specific empty state."""
     download_log_file = tmp_path / "download.log"
 
-    tail = read_download_log_tail(download_log_file, line_count=100)
+    tail = ActivityLogStore(download_log_file).read_tail(
+        line_count=100,
+        empty_message=NO_DOWNLOAD_LOG_MESSAGE,
+    )
 
     assert tail == "No log entries yet."
 
@@ -170,7 +175,7 @@ def _write_partial_activity_log(
         fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
 
 
-def test_read_activity_log_tail_returns_whole_lines_during_write(
+def test_activity_store_read_tail_returns_whole_lines_during_write(
     tmp_path: Path,
 ) -> None:
     """The browser log should not surface a half-written line."""
@@ -196,7 +201,7 @@ def test_read_activity_log_tail_returns_whole_lines_during_write(
         result: dict[str, str] = {}
 
         def read_tail() -> None:
-            result["tail"] = read_activity_log_tail(activity_log_file, line_count=2)
+            result["tail"] = ActivityLogStore(activity_log_file).read_tail(line_count=2)
 
         reader = threading.Thread(target=read_tail)
         reader.start()
@@ -207,7 +212,7 @@ def test_read_activity_log_tail_returns_whole_lines_during_write(
         reader.join(timeout=5)
         writer.join(timeout=5)
 
-        assert not reader.is_alive(), "read_activity_log_tail did not finish"
+        assert not reader.is_alive(), "ActivityLogStore.read_tail did not finish"
         assert writer.exitcode == 0
         assert result["tail"] == (
             "[2026-05-05 12:00:00] first line\n"

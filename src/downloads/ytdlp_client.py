@@ -179,16 +179,32 @@ class YtDlpClient:
         self,
         url: str,
         first_attempt_cookies: Path | None,
-    ) -> Path | None | object:
-        """Choose alternate cookies, or a sentinel when no retry is allowed."""
-        no_retry = _NO_RETRY
+    ) -> tuple[bool, Path | None]:
+        """Return whether to retry and which alternate cookie mode to use.
+
+        Parameters
+        ----------
+        url:
+            Media URL from the failed first attempt.
+        first_attempt_cookies:
+            Cookie file used by the first attempt, or ``None`` for a plain
+            request.
+
+        Returns
+        -------
+        tuple[bool, Path | None]
+            ``(should_retry, cookies_file)``. A true decision with ``None``
+            means retry without cookies.
+        """
         if not is_youtube_url(url) or self.cookies_file is None:
-            return no_retry
+            return False, None
+
+        # YouTube gets one retry with the opposite cookie policy.
         if self.always_use_cookies and first_attempt_cookies is not None:
-            return None
+            return True, None
         if not self.always_use_cookies and first_attempt_cookies is None:
-            return self.cookies_file
-        return no_retry
+            return True, self.cookies_file
+        return False, None
 
     def download(self, url: str, work_dir: Path) -> YtDlpResult:
         """Run an audio download, including one alternate-cookie retry.
@@ -196,6 +212,18 @@ class YtDlpClient:
         A zero exit status without a changed MP3 is treated as a failed
         attempt for retry purposes. The service may still recover one existing
         MP3 after this client returns when a prior metadata pass failed.
+
+        Parameters
+        ----------
+        url:
+            Direct media URL passed to ``yt-dlp``.
+        work_dir:
+            Source-scoped scratch folder for downloads and snapshots.
+
+        Returns
+        -------
+        YtDlpResult
+            Final process output and MP3 state across one or two attempts.
         """
         work_dir.mkdir(parents=True, exist_ok=True)
         before_snapshot = self.snapshot_audio(work_dir)
@@ -205,29 +233,28 @@ class YtDlpClient:
         changed_files = self.changed_audio_files(before_snapshot, after_snapshot)
         attempts = 1
 
-        retry_cookies = self._retry_cookies(url, first_attempt_cookies)
-        if process.returncode != 0 or not changed_files:
-            if retry_cookies is not _NO_RETRY:
-                if first_attempt_cookies is not None:
-                    self.logger.info(
-                        "Cookie YouTube download failed; retrying without cookies"
-                    )
-                else:
-                    self.logger.info(
-                        "Plain YouTube download failed; retrying with cookies file: %s",
-                        self.cookies_file,
-                    )
-                process = self._run_attempt(
-                    url,
-                    work_dir,
-                    retry_cookies if isinstance(retry_cookies, Path) else None,
+        first_attempt_failed = process.returncode != 0 or not changed_files
+        should_retry, retry_cookies = self._retry_cookies(
+            url,
+            first_attempt_cookies,
+        )
+        if first_attempt_failed and should_retry:
+            if first_attempt_cookies is not None:
+                self.logger.info(
+                    "Cookie YouTube download failed; retrying without cookies"
                 )
-                after_snapshot = self.snapshot_audio(work_dir)
-                changed_files = self.changed_audio_files(
-                    before_snapshot,
-                    after_snapshot,
+            else:
+                self.logger.info(
+                    "Plain YouTube download failed; retrying with cookies file: %s",
+                    self.cookies_file,
                 )
-                attempts = 2
+            process = self._run_attempt(url, work_dir, retry_cookies)
+            after_snapshot = self.snapshot_audio(work_dir)
+            changed_files = self.changed_audio_files(
+                before_snapshot,
+                after_snapshot,
+            )
+            attempts = 2
 
         return YtDlpResult(
             returncode=process.returncode,
@@ -238,6 +265,3 @@ class YtDlpClient:
             after_snapshot=after_snapshot,
             attempts=attempts,
         )
-
-
-_NO_RETRY = object()

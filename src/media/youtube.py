@@ -96,66 +96,35 @@ def looks_like_youtube_channel_id(name: str) -> bool:
     return bool(YOUTUBE_CHANNEL_ID_PATTERN.match(name.strip()))
 
 
-def _youtube_cookies_for_first_attempt(
+def _youtube_cookie_attempts(
     url: str,
     cookies_file: Path | None,
     always_use_cookies: bool,
-) -> Path | None:
-    """Return the cookie file to pass on the first ``yt-dlp`` attempt for one URL.
+) -> tuple[Path | None, ...]:
+    """Return the ordered cookie modes for one YouTube operation.
 
-    Cookies are YouTube-only. When ``always_use_cookies`` is false, the first
-    attempt runs without cookies so browser credentials are spent only on retry.
+    Parameters
+    ----------
+    url:
+        Media URL being queried.
+    cookies_file:
+        Optional Netscape-format cookie file.
+    always_use_cookies:
+        Whether YouTube should try cookies before a plain request.
+
+    Returns
+    -------
+    tuple[Path | None, ...]
+        One mode for non-YouTube or cookieless requests, otherwise the first
+        mode followed by its alternate. ``None`` means no cookies.
     """
-    if cookies_file is None:
-        return None
-    if not is_youtube_url(url):
-        return None
+    if not is_youtube_url(url) or cookies_file is None:
+        return (None,)
+
+    # YouTube retries once using the opposite cookie policy.
     if always_use_cookies:
-        return cookies_file
-    return None
-
-
-def _youtube_cookies_for_retry_attempt(
-    url: str,
-    cookies_file: Path | None,
-    always_use_cookies: bool,
-    first_attempt_cookies: Path | None,
-) -> Path | None:
-    """Return cookies for the alternate retry after a failed first YouTube attempt.
-
-    When ``always_use_cookies`` is true, the first attempt used cookies and the
-    retry runs plain. When false, the first attempt was plain and the retry uses
-    the configured cookie file.
-    """
-    if cookies_file is None:
-        return None
-    if not is_youtube_url(url):
-        return None
-    if always_use_cookies:
-        return None
-    if first_attempt_cookies is None:
-        return cookies_file
-    return None
-
-
-def _should_retry_youtube_with_alternate_cookies(
-    url: str,
-    cookies_file: Path | None,
-    always_use_cookies: bool,
-    *,
-    first_attempt_cookies: Path | None,
-    succeeded: bool,
-) -> bool:
-    """Return whether a failed YouTube attempt should try the alternate cookie mode."""
-    if succeeded:
-        return False
-    if not is_youtube_url(url):
-        return False
-    if cookies_file is None:
-        return False
-    if always_use_cookies:
-        return first_attempt_cookies is not None
-    return first_attempt_cookies is None
+        return cookies_file, None
+    return None, cookies_file
 
 
 def _fetch_ytdlp_print_line(
@@ -165,7 +134,26 @@ def _fetch_ytdlp_print_line(
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
 ) -> str | None:
-    """Return the first ``yt-dlp --print`` line for one URL without downloading."""
+    """Return the first ``yt-dlp --print`` line without downloading media.
+
+    Parameters
+    ----------
+    url:
+        YouTube URL whose metadata should be printed.
+    print_template:
+        ``yt-dlp`` field template used to format the output line.
+    logger:
+        Destination for failed-attempt and retry messages.
+    cookies_file:
+        Optional Netscape-format cookie file.
+    always_use_cookies:
+        Whether to try authenticated metadata before a plain request.
+
+    Returns
+    -------
+    str | None
+        First non-empty output line, or ``None`` when every attempt fails.
+    """
 
     def run_once(cookies_for_attempt: Path | None) -> str | None:
         command = [
@@ -207,28 +195,18 @@ def _fetch_ytdlp_print_line(
             logger.warning("yt-dlp metadata print error for %s: %s", url, exc)
             return None
 
-    first_attempt_cookies = _youtube_cookies_for_first_attempt(
+    cookie_attempts = _youtube_cookie_attempts(
         url,
         cookies_file,
         always_use_cookies,
     )
+    first_attempt_cookies = cookie_attempts[0]
     metadata_line = run_once(first_attempt_cookies)
     if metadata_line is not None:
         return metadata_line
 
-    if _should_retry_youtube_with_alternate_cookies(
-        url,
-        cookies_file,
-        always_use_cookies,
-        first_attempt_cookies=first_attempt_cookies,
-        succeeded=False,
-    ):
-        retry_cookies = _youtube_cookies_for_retry_attempt(
-            url,
-            cookies_file,
-            always_use_cookies,
-            first_attempt_cookies,
-        )
+    if len(cookie_attempts) == 2:
+        retry_cookies = cookie_attempts[1]
         if always_use_cookies:
             logger.info(
                 "Cookie YouTube metadata request failed; retrying without cookies",
@@ -611,16 +589,40 @@ def expand_channel_or_playlist(
     *,
     full_playlist: bool = False,
 ) -> list[str]:
-    """Expand a channel or playlist into individual video URLs."""
+    """Expand one YouTube source into ordered direct video URLs.
+
+    Parameters
+    ----------
+    url:
+        YouTube channel or playlist URL.
+    channel_count:
+        Maximum accepted entries unless ``full_playlist`` is true.
+    min_channel_video_age_hours:
+        Minimum known age for channel uploads.
+    logger:
+        Destination for filtering, retry, and failure messages.
+    cookies_file:
+        Optional Netscape-format cookie file.
+    always_use_cookies:
+        Whether to try authenticated metadata before a plain request.
+    full_playlist:
+        Whether a playlist should be expanded without the configured cap.
+
+    Returns
+    -------
+    list[str]
+        Ordered direct video URLs, or an empty list after failed attempts.
+    """
     url_clean = url.rstrip("/")
     logger.info(f"Expanding: {url_clean}")
 
     try:
-        first_attempt_cookies = _youtube_cookies_for_first_attempt(
+        cookie_attempts = _youtube_cookie_attempts(
             url_clean,
             cookies_file,
             always_use_cookies,
         )
+        first_attempt_cookies = cookie_attempts[0]
         video_urls = _expand_channel_or_playlist_once(
             url_clean,
             channel_count,
@@ -632,19 +634,8 @@ def expand_channel_or_playlist(
         if video_urls is not None:
             return video_urls
 
-        if _should_retry_youtube_with_alternate_cookies(
-            url_clean,
-            cookies_file,
-            always_use_cookies,
-            first_attempt_cookies=first_attempt_cookies,
-            succeeded=False,
-        ):
-            retry_cookies = _youtube_cookies_for_retry_attempt(
-                url_clean,
-                cookies_file,
-                always_use_cookies,
-                first_attempt_cookies,
-            )
+        if len(cookie_attempts) == 2:
+            retry_cookies = cookie_attempts[1]
             if always_use_cookies:
                 logger.info(
                     "Cookie YouTube expansion failed; retrying without cookies",
@@ -718,32 +709,36 @@ def get_video_metadata(
 ) -> tuple[str, str] | None:
     """Fetch ``(timestamp_raw, upload_date)`` for one video via ``yt-dlp``.
 
-    Uses --flat-playlist to avoid a full download; same approach as expand_channel_or_playlist.
-    Returns None if the call fails or times out, so callers can treat unknown age as "allow".
+    Parameters
+    ----------
+    url:
+        Direct YouTube video URL.
+    logger:
+        Destination for retry and failure messages.
+    cookies_file:
+        Optional Netscape-format cookie file.
+    always_use_cookies:
+        Whether to try authenticated metadata before a plain request.
+
+    Returns
+    -------
+    tuple[str, str] | None
+        Raw Unix timestamp and ``YYYYMMDD`` upload date, or ``None`` when both
+        metadata attempts fail so callers can treat age as unknown.
     """
     try:
-        first_attempt_cookies = _youtube_cookies_for_first_attempt(
+        cookie_attempts = _youtube_cookie_attempts(
             url,
             cookies_file,
             always_use_cookies,
         )
+        first_attempt_cookies = cookie_attempts[0]
         metadata = _get_video_metadata_once(url, logger, first_attempt_cookies)
         if metadata is not None:
             return metadata
 
-        if _should_retry_youtube_with_alternate_cookies(
-            url,
-            cookies_file,
-            always_use_cookies,
-            first_attempt_cookies=first_attempt_cookies,
-            succeeded=False,
-        ):
-            retry_cookies = _youtube_cookies_for_retry_attempt(
-                url,
-                cookies_file,
-                always_use_cookies,
-                first_attempt_cookies,
-            )
+        if len(cookie_attempts) == 2:
+            retry_cookies = cookie_attempts[1]
             if always_use_cookies:
                 logger.info(
                     "Cookie YouTube metadata request failed; retrying without cookies",

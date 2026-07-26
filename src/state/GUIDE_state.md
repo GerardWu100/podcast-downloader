@@ -33,4 +33,5 @@ is replaced atomically.
 ## Part 3: Journal
 
 - 2026-07-26: Authentication persistence joined the state layer; obsolete
-  state-function adapters were removed after callers adopted stores.
+  state-function adapters, aliases, and dead mutation paths were removed after
+  callers adopted stores directly.

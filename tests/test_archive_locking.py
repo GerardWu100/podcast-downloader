@@ -12,23 +12,6 @@ import time
 from src.state.archive_store import ArchiveStore
 
 
-def append_to_downloaded_url_archive(
-    archive_file: Path,
-    url: str,
-    logger: logging.Logger,
-) -> bool:
-    """Append one URL through the archive store contract."""
-    return ArchiveStore(archive_file, logger).append(url)
-
-
-def load_downloaded_url_archive(
-    archive_file: Path,
-    logger: logging.Logger,
-) -> set[str]:
-    """Load normalized URLs through the archive store contract."""
-    return ArchiveStore(archive_file, logger).load()
-
-
 def _lock_then_rewrite_archive(
     archive_file: str,
     ready_file: str,
@@ -54,7 +37,7 @@ def _lock_then_rewrite_archive(
         fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
 
 
-def test_load_downloaded_url_archive_waits_for_lock_and_reads_latest_content(
+def test_archive_store_load_waits_for_lock_and_reads_latest_content(
     tmp_path,
 ) -> None:
     """Archive reads should block behind writers instead of racing stale state."""
@@ -81,12 +64,10 @@ def test_load_downloaded_url_archive_waits_for_lock_and_reads_latest_content(
         )
 
         result: dict[str, set[str]] = {}
+        store = ArchiveStore(archive_file, logging.getLogger("test"))
 
         def load_in_thread() -> None:
-            result["urls"] = load_downloaded_url_archive(
-                archive_file,
-                logging.getLogger("test"),
-            )
+            result["urls"] = store.load()
 
         thread = threading.Thread(target=load_in_thread)
         thread.start()
@@ -97,7 +78,7 @@ def test_load_downloaded_url_archive_waits_for_lock_and_reads_latest_content(
         thread.join(timeout=5)
         process.join(timeout=5)
 
-        assert not thread.is_alive(), "load_downloaded_url_archive did not finish"
+        assert not thread.is_alive(), "ArchiveStore.load did not finish"
         assert process.exitcode == 0
         assert result["urls"] == {"https://www.youtube.com/watch?v=new456"}
     finally:
@@ -106,7 +87,7 @@ def test_load_downloaded_url_archive_waits_for_lock_and_reads_latest_content(
             process.join(timeout=5)
 
 
-def test_append_to_downloaded_url_archive_waits_for_lock_and_preserves_new_entry(
+def test_archive_store_append_waits_for_lock_and_preserves_new_entry(
     tmp_path,
 ) -> None:
     """Archive appends should serialize with concurrent rewrites instead of being lost."""
@@ -133,13 +114,10 @@ def test_append_to_downloaded_url_archive_waits_for_lock_and_preserves_new_entry
         )
 
         result: dict[str, bool] = {}
+        store = ArchiveStore(archive_file, logging.getLogger("test"))
 
         def append_in_thread() -> None:
-            result["added"] = append_to_downloaded_url_archive(
-                archive_file,
-                "https://www.youtube.com/watch?v=late789",
-                logging.getLogger("test"),
-            )
+            result["added"] = store.append("https://www.youtube.com/watch?v=late789")
 
         thread = threading.Thread(target=append_in_thread)
         thread.start()
@@ -150,7 +128,7 @@ def test_append_to_downloaded_url_archive_waits_for_lock_and_preserves_new_entry
         thread.join(timeout=5)
         process.join(timeout=5)
 
-        assert not thread.is_alive(), "append_to_downloaded_url_archive did not finish"
+        assert not thread.is_alive(), "ArchiveStore.append did not finish"
         assert process.exitcode == 0
         assert result["added"] is True
         assert archive_file.read_text(encoding="utf-8") == (

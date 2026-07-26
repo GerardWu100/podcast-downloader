@@ -15,6 +15,9 @@ a second provider needs its own expansion or metadata policy.
 
 Every `yt-dlp` metadata command places `--` immediately before the
 user-controlled URL, preventing it from being parsed as an option.
+YouTube metadata operations derive one ordered cookie-attempt sequence: plain
+then authenticated in fallback mode, or authenticated then plain in always-use
+mode.
 
 ## Part 2: Code Reference
 

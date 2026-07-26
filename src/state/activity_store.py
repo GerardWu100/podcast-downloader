@@ -21,25 +21,6 @@ def activity_log_file_for(full_log_file: Path) -> Path:
     return full_log_file.parent / ACTIVITY_LOG_NAME
 
 
-def read_activity_log_tail(
-    activity_log_file: Path,
-    line_count: int = DEFAULT_ACTIVITY_LINE_COUNT,
-) -> str:
-    """Return recent concise activity entries through ``ActivityLogStore``."""
-    return ActivityLogStore(activity_log_file).read_tail(line_count)
-
-
-def read_download_log_tail(
-    download_log_file: Path,
-    line_count: int = DEFAULT_ACTIVITY_LINE_COUNT,
-) -> str:
-    """Return recent diagnostic entries through ``ActivityLogStore``."""
-    return ActivityLogStore(download_log_file).read_tail(
-        line_count,
-        empty_message=NO_DOWNLOAD_LOG_MESSAGE,
-    )
-
-
 class ActivityLogStore:
     """Append and tail-read concise activity events under file locks."""
 

@@ -1149,6 +1149,7 @@ def test_add_url_without_bypass_enqueues_single_payload_only(
         request,
         url="https://youtu.be/abc123",
         csrf_token="csrf-token",
+        skip_age_check="",
     )
 
     assert response.headers["location"] == "/ui?msg=added"
@@ -1200,6 +1201,7 @@ def test_add_url_accepts_non_youtube_video_url(
         request,
         url="https://videos.example.com/watch/episode-1",
         csrf_token="csrf-token",
+        skip_age_check="",
     )
 
     assert response.headers["location"] == "/ui?msg=added"

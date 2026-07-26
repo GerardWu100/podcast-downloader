@@ -33,7 +33,7 @@ from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
 from .audio_metadata import AudioMetadataWriter
-from .ytdlp_client import AudioSnapshot, YtDlpClient
+from .ytdlp_client import AudioSnapshot, YtDlpClient, YtDlpResult
 
 FALLBACK_SINGLE_DOWNLOAD_FOLDER = "singles"
 INTERMEDIATE_ROOT_TEMP_SUFFIXES = (
@@ -171,37 +171,6 @@ class PodcastDownloadService:
                 self.cookies_file,
             )
 
-    def _snapshot_downloaded_audio(
-        self,
-        work_dir: Path | None = None,
-    ) -> AudioSnapshot:
-        """Capture MP3 state for one source work directory.
-
-        Parameters
-        ----------
-        work_dir:
-            Root of the active download attempt. When omitted, use the full
-            intermediate tree for compatibility with callers that only inspect
-            snapshots. Download recovery always passes the active source folder
-            so an unrelated MP3 cannot be mistaken for the current URL's output.
-
-        Returns
-        -------
-        AudioSnapshot
-            Mapping of MP3 paths below ``work_dir`` to modification time and
-            file size.
-        """
-        snapshot_root = work_dir or self.intermediate_dir
-        snapshot: dict[Path, tuple[int, int]] = {}
-        for mp3_path in snapshot_root.rglob("*.mp3"):
-            if not mp3_path.is_file():
-                continue
-
-            file_stat = mp3_path.stat()
-            snapshot[mp3_path] = (file_stat.st_mtime_ns, file_stat.st_size)
-
-        return AudioSnapshot(files=snapshot)
-
     def _sanitize_download_folder_name(self, raw_name: str) -> str:
         """Return a filesystem-safe folder name derived from a source URL."""
         decoded_name = unquote(raw_name).strip()
@@ -260,11 +229,6 @@ class PodcastDownloadService:
         """Return the direct child folder for finished MP3s from one queue source."""
         folder_name = self._source_folder_name(source_url)
         return self.downloads_dir / folder_name
-
-    def _intermediate_output_dir_for_source(self, source_url: str) -> Path:
-        """Return the scratch folder where one queue source is downloaded first."""
-        folder_name = self._source_folder_name(source_url)
-        return self.intermediate_dir / folder_name
 
     def _uses_separate_intermediate_dir(self) -> bool:
         """Return whether finished MP3s are published into a different tree."""
@@ -427,20 +391,6 @@ class PodcastDownloadService:
                 retention_dirs.add(self._download_output_dir_for_source(url))
 
         return retention_dirs
-
-    def _detect_changed_audio_files(
-        self,
-        before_snapshot: AudioSnapshot,
-        after_snapshot: AudioSnapshot,
-    ) -> list[Path]:
-        """Return MP3 files created or changed during one command."""
-        changed_files: list[Path] = []
-        for file_path, updated_state in after_snapshot.files.items():
-            previous_state = before_snapshot.files.get(file_path)
-            if previous_state is None or updated_state != previous_state:
-                changed_files.append(file_path)
-
-        return sorted(changed_files)
 
     def _format_download_date_metadata(self, download_timestamp: float) -> str:
         """Format a POSIX timestamp as a Toronto timezone-aware ISO string."""
@@ -750,25 +700,32 @@ class PodcastDownloadService:
     def _run_ytdlp(
         self,
         url: str,
-        cookies_file: Path | None,
         work_dir: Path | None = None,
-    ) -> tuple[subprocess.CompletedProcess[str], list[Path]]:
-        """Run ``yt-dlp`` for one URL and return changed MP3 files in the work tree."""
+    ) -> YtDlpResult:
+        """Run the injected client and return its complete typed result.
+
+        Parameters
+        ----------
+        url:
+            Direct media URL to download.
+        work_dir:
+            Source-scoped scratch directory. When omitted, use the fallback
+            folder for direct one-off downloads.
+
+        Returns
+        -------
+        YtDlpResult
+            Final process output, snapshots, changed MP3 files, and attempt
+            count from the client.
+        """
         target_work_dir = work_dir or (
             self.intermediate_dir / FALLBACK_SINGLE_DOWNLOAD_FOLDER
         )
         target_work_dir.mkdir(parents=True, exist_ok=True)
-        if self.ytdlp_client is not None:
-            # The client owns command construction, process limits, snapshots,
-            # and the complete alternate-cookie retry order.
-            execution = self.ytdlp_client.download(url, target_work_dir)
-            result = subprocess.CompletedProcess(
-                args=["yt-dlp", "--", url],
-                returncode=execution.returncode,
-                stdout=execution.stdout,
-                stderr=execution.stderr,
-            )
-            return result, execution.changed_audio_files
+
+        # The client owns command construction, process limits, snapshots, and
+        # the complete alternate-cookie retry order.
+        return self.ytdlp_client.download(url, target_work_dir)
 
     def _find_recoverable_existing_audio(
         self,
@@ -853,23 +810,8 @@ class PodcastDownloadService:
             self._record_activity(f"Skipped Short: {video_url}")
             return video_url, True
 
-        before_snapshot = self._snapshot_downloaded_audio(work_dir)
-        first_attempt_cookies = None
-        if (
-            is_youtube_url(video_url)
-            and self.cookies_file is not None
-            and self.always_use_cookies
-        ):
-            first_attempt_cookies = self.cookies_file
-
         try:
-            result, changed_audio_files = self._run_ytdlp(
-                video_url,
-                first_attempt_cookies,
-                work_dir,
-            )
-            after_snapshot = self._snapshot_downloaded_audio(work_dir)
-
+            execution = self._run_ytdlp(video_url, work_dir)
         except subprocess.TimeoutExpired:
             self.logger.error("Timeout downloading: %s", video_url)
             self._record_activity(f"Failed: {video_url}")
@@ -881,8 +823,8 @@ class PodcastDownloadService:
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 
-        if result.returncode != 0:
-            error_text = result.stderr.strip() or result.stdout.strip()
+        if execution.returncode != 0:
+            error_text = execution.stderr.strip() or execution.stdout.strip()
             self.logger.error("Failed: %s", video_url)
             if error_text:
                 self.logger.error("yt-dlp error: %s", error_text)
@@ -890,11 +832,11 @@ class PodcastDownloadService:
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 
-        audio_files_to_stamp = changed_audio_files
+        audio_files_to_stamp = execution.changed_audio_files
         if not audio_files_to_stamp:
             audio_files_to_stamp = self._find_recoverable_existing_audio(
-                before_snapshot,
-                after_snapshot,
+                execution.before_snapshot,
+                execution.after_snapshot,
             )
 
         if not audio_files_to_stamp:

@@ -44,7 +44,7 @@ uv run python -m pytest -q
 ## Part 3: Journal
 
 - 2026-07-26: Private service monkeypatches for cookie retry were replaced by
-  focused `YtDlpClient` contract tests; tests no longer import compatibility
-  modules.
+  focused `YtDlpClient` contract tests; store and service tests now consume
+  their typed public seams directly.
 - 2026-07-26: Factory tests gained a request-level regression check for injected
   queue, bypass, activity, authentication, and scheduler collaborators.

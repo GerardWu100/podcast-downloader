@@ -26,24 +26,8 @@ class Colors:
     """ANSI color codes used by command-line status output."""
 
     RED = "\033[0;31m"
-    GREEN = "\033[0;32m"
-    YELLOW = "\033[1;33m"
     BLUE = "\033[0;34m"
     NC = "\033[0m"
-
-
-def append_urls(urls_file: Path, urls: list[str]) -> int:
-    """Append validated URLs through the queue store."""
-    return QueueStore(urls_file, _logger).append_urls(urls)
-
-
-def add_to_bypass_age_file(
-    bypass_file: Path,
-    url: str,
-    logger: logging.Logger,
-) -> None:
-    """Record one normalized URL in the one-shot bypass store."""
-    BypassStore(bypass_file, logger).add(url)
 
 
 def _mark_youtube_bypass_urls(
@@ -54,7 +38,18 @@ def _mark_youtube_bypass_urls(
 
     Channels, playlists, and non-YouTube URLs are ignored because the bypass
     file only affects direct YouTube videos on the next downloader run.
+
+    Parameters
+    ----------
+    urls:
+        Candidate queue URLs supplied through command-line arguments or stdin.
+    bypass_age_check_file:
+        One-shot bypass file updated for eligible direct YouTube videos.
     """
+    bypass_store = BypassStore(bypass_age_check_file, _logger)
+
+    # Store only direct YouTube videos because other source types do not use
+    # the one-shot age-gate policy.
     for raw_url in urls:
         if not is_supported_media_url(raw_url):
             continue
@@ -62,11 +57,7 @@ def _mark_youtube_bypass_urls(
             continue
         if not is_youtube_url(raw_url):
             continue
-        add_to_bypass_age_file(
-            bypass_age_check_file,
-            normalize_youtube_url(raw_url),
-            _logger,
-        )
+        bypass_store.add(normalize_youtube_url(raw_url))
 
 
 def build_parser(
@@ -159,7 +150,13 @@ Examples:
 
 
 def main() -> int:
-    """Load config, then either add URLs or run one download pass."""
+    """Run one queue-update or download command from command-line arguments.
+
+    Returns
+    -------
+    int
+        Process exit status: zero after a successful command, otherwise one.
+    """
     project_root = Path(__file__).resolve().parents[1]
     # Docker mounts state in /data; local runs fall back to the project root.
     data_dir = Path(os.environ.get("PODCAST_DATA_DIR", str(project_root)))
@@ -182,7 +179,7 @@ def main() -> int:
         urls_to_add.extend(stdin_urls)
 
     if urls_to_add:
-        added = append_urls(args.file, urls_to_add)
+        added = QueueStore(args.file, _logger).append_urls(urls_to_add)
         if args.skip_age_check:
             _mark_youtube_bypass_urls(urls_to_add, config.bypass_age_check_file)
         print(f"Added {added} URL(s) to {args.file}")

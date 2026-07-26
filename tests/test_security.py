@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from src.media import youtube as url_utils
+from src.media import youtube
 
 
 def test_expand_command_uses_separator(monkeypatch) -> None:
@@ -15,13 +15,13 @@ def test_expand_command_uses_separator(monkeypatch) -> None:
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
+    monkeypatch.setattr(youtube.subprocess, "run", fake_run)
 
-    url_utils.expand_channel_or_playlist(
+    youtube.expand_channel_or_playlist(
         "https://www.youtube.com/@example",
         channel_count=1,
         min_channel_video_age_hours=0,
-        logger=url_utils.logging.getLogger("test"),
+        logger=youtube.logging.getLogger("test"),
     )
 
     command = commands[0]
@@ -38,13 +38,13 @@ def test_bare_youtube_channel_expands_from_videos_tab(monkeypatch) -> None:
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
+    monkeypatch.setattr(youtube.subprocess, "run", fake_run)
 
-    url_utils.expand_channel_or_playlist(
+    youtube.expand_channel_or_playlist(
         "https://www.youtube.com/@TopTradersUnplugged/",
         channel_count=1,
         min_channel_video_age_hours=0,
-        logger=url_utils.logging.getLogger("test"),
+        logger=youtube.logging.getLogger("test"),
     )
 
     command = commands[0]
@@ -63,13 +63,13 @@ def test_youtube_channel_videos_tab_expands_from_videos_tab(monkeypatch) -> None
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
+    monkeypatch.setattr(youtube.subprocess, "run", fake_run)
 
-    url_utils.expand_channel_or_playlist(
+    youtube.expand_channel_or_playlist(
         "https://www.youtube.com/@TopTradersUnplugged/videos",
         channel_count=1,
         min_channel_video_age_hours=0,
-        logger=url_utils.logging.getLogger("test"),
+        logger=youtube.logging.getLogger("test"),
     )
 
     command = commands[0]
@@ -88,13 +88,13 @@ def test_youtube_channel_streams_tab_expands_from_streams_tab(monkeypatch) -> No
         commands.append(command)
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(url_utils.subprocess, "run", fake_run)
+    monkeypatch.setattr(youtube.subprocess, "run", fake_run)
 
-    url_utils.expand_channel_or_playlist(
+    youtube.expand_channel_or_playlist(
         "https://www.youtube.com/@TopTradersUnplugged/streams",
         channel_count=1,
         min_channel_video_age_hours=0,
-        logger=url_utils.logging.getLogger("test"),
+        logger=youtube.logging.getLogger("test"),
     )
 
     command = commands[0]
@@ -356,12 +356,12 @@ def test_secure_cookie_respects_forwarded_proto(monkeypatch) -> None:
 def test_normalize_youtube_url() -> None:
     """Basic URL normalization tests."""
     assert (
-        url_utils.normalize_youtube_url("https://youtu.be/abc123")
+        youtube.normalize_youtube_url("https://youtu.be/abc123")
         == "https://www.youtube.com/watch?v=abc123"
     )
 
     assert (
-        url_utils.normalize_youtube_url(
+        youtube.normalize_youtube_url(
             "https://www.youtube.com/watch?v=abc123&list=PLxyz"
         )
         == "https://www.youtube.com/watch?v=abc123"
@@ -369,24 +369,22 @@ def test_normalize_youtube_url() -> None:
 
     # Channel URLs should pass through unchanged
     channel = "https://www.youtube.com/@testchannel"
-    assert url_utils.normalize_youtube_url(channel) == channel
+    assert youtube.normalize_youtube_url(channel) == channel
 
 
 def test_is_channel_or_playlist() -> None:
     """Channel and playlist detection tests."""
-    assert url_utils.is_channel_or_playlist("https://www.youtube.com/@user")
-    assert url_utils.is_channel_or_playlist("https://www.youtube.com/c/name")
-    assert url_utils.is_channel_or_playlist("https://www.youtube.com/channel/UC123")
-    assert url_utils.is_channel_or_playlist(
-        "https://www.youtube.com/playlist?list=PL123"
-    )
-    assert not url_utils.is_channel_or_playlist("https://www.youtube.com/watch?v=abc")
-    assert not url_utils.is_channel_or_playlist(
+    assert youtube.is_channel_or_playlist("https://www.youtube.com/@user")
+    assert youtube.is_channel_or_playlist("https://www.youtube.com/c/name")
+    assert youtube.is_channel_or_playlist("https://www.youtube.com/channel/UC123")
+    assert youtube.is_channel_or_playlist("https://www.youtube.com/playlist?list=PL123")
+    assert not youtube.is_channel_or_playlist("https://www.youtube.com/watch?v=abc")
+    assert not youtube.is_channel_or_playlist(
         "https://videos.example.com/playlist?list=abc"
     )
 
 
 def test_is_youtube_short_url() -> None:
     """Shorts URL detection."""
-    assert url_utils.is_youtube_short_url("https://www.youtube.com/shorts/abc123")
-    assert not url_utils.is_youtube_short_url("https://www.youtube.com/watch?v=abc123")
+    assert youtube.is_youtube_short_url("https://www.youtube.com/shorts/abc123")
+    assert not youtube.is_youtube_short_url("https://www.youtube.com/watch?v=abc123")

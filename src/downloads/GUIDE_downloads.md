@@ -21,8 +21,8 @@ the final exit status, output, snapshots, changed files, and attempt count.
 
 The service owns use-case decisions: age checks, expansion orchestration,
 publication, metadata recovery, cleanup, retention, and archive transactions.
-It accepts an injected client so offline tests do not need to patch its private
-subprocess methods.
+It accepts an injected client and consumes the client's typed result directly,
+so command policy and snapshots are not reconstructed inside the service.
 
 Download success requires at least one created or changed MP3 in the active
 source work folder. If `$B$` is the before snapshot, `$A$` is the after
@@ -45,5 +45,6 @@ $$
 
 ## Part 3: Journal
 
-- 2026-07-26: Audio subprocess execution and cookie retry policy moved from the
-  service into an injectable typed `YtDlpClient`.
+- 2026-07-26: Audio subprocess execution, cookie retry policy, and snapshots
+  moved into an injectable typed `YtDlpClient`; the service consumes its result
+  directly.
