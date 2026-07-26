@@ -5,6 +5,10 @@ sidebar_position: 4
 
 # Web UI and Security
 
+The short `/help` page is public and contains only static usage guidance and a
+link to the official `yt-dlp` cookie instructions. Queue contents, logs, cookie
+uploads, and all state-changing controls remain behind the authenticated UI.
+
 ## Login model
 
 The web UI is intentionally simple:

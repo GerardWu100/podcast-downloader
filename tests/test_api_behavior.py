@@ -139,6 +139,57 @@ def test_login_page_redirects_remembered_session_to_ui() -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
+def test_help_page_explains_behavior_and_cookie_setup() -> None:
+    """Public help should cover core controls and link to official cookie guidance."""
+    response = api_module.help_page()
+    body = response.body.decode("utf-8")
+
+    assert response.status_code == 200
+    assert "Basic behavior" in body
+    assert "Main functions" in body
+    assert "Adding YouTube cookies" in body
+    assert "github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies" in body
+    assert "Content-Security-Policy" in response.headers
+
+
+def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
+    """Queue UI should show service, queue count, and empty activity state."""
+    session_id = "test-ui-status-session"
+    queue_file = tmp_path / "urls.txt"
+    queue_file.write_text(
+        "https://www.youtube.com/@channel-one\nhttps://www.youtube.com/@channel-two\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            log_file=tmp_path / "download.log",
+        ),
+    )
+    api_module.SESSIONS[session_id] = {"created_at": time.time()}
+    request = _FakeRequest(
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    response = api_module.ui(request)
+    body = response.body.decode("utf-8")
+
+    assert 'aria-label="System status"' in body
+    assert (
+        '<span class="status-value"><span class="status-dot"></span>Online</span>'
+        in body
+    )
+    assert '<span class="status-value">2</span>' in body
+    assert '<span class="status-value">No activity yet</span>' in body
+    assert '<a class="nav-link" href="/help">Help</a>' in body
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
 def test_load_session_state_round_trip_and_filtering(monkeypatch, tmp_path) -> None:
     """Persisted sessions should round-trip cleanly and skip invalid or expired entries."""
     from src import api
