@@ -1,5 +1,7 @@
 # Conservative Refactoring Plan
 
+**Plan date:** 2026-07-26
+
 ## Purpose
 
 This plan improves structure and extensibility without rewriting the application or

@@ -37,7 +37,7 @@ docs/
 ├── review-and-safety.md
 ├── superpowers/
 │   └── plans/
-│       └── 2026-05-05-architecture-hardening.md
+│       └── 2026-07-26-conservative-refactoring.md
 └── web-ui-security.md
 ```
 
@@ -47,7 +47,7 @@ docs/
 - `web-ui-security.md`: authentication, CSRF, session, CSP, and proxy guidance.
 - `operations.md`: setup, Docker bootstrap, scheduler, and runtime files.
 - `review-and-safety.md`: summary of the safety review and remaining risks.
-- `superpowers/plans/2026-05-05-architecture-hardening.md`: current conservative
+- `superpowers/plans/2026-07-26-conservative-refactoring.md`: current conservative
   refactoring plan, including scope boundaries, phased acceptance checks, stop
   conditions, and deferred improvements.
 

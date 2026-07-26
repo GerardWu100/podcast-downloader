@@ -137,7 +137,7 @@ If you want the deeper design and operations details, start with these files:
 - [docs/web-ui-security.md](docs/web-ui-security.md)
 - [docs/operations.md](docs/operations.md)
 - [docs/review-and-safety.md](docs/review-and-safety.md)
-- [Conservative refactoring plan](docs/superpowers/plans/2026-05-05-architecture-hardening.md)
+- [Conservative refactoring plan](docs/superpowers/plans/2026-07-26-conservative-refactoring.md)
 
 ## Notes
 
