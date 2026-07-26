@@ -9,7 +9,24 @@ from pathlib import Path
 import threading
 import time
 
-from src.url_utils import append_to_downloaded_url_archive, load_downloaded_url_archive
+from src.state.archive_store import ArchiveStore
+
+
+def append_to_downloaded_url_archive(
+    archive_file: Path,
+    url: str,
+    logger: logging.Logger,
+) -> bool:
+    """Append one URL through the archive store contract."""
+    return ArchiveStore(archive_file, logger).append(url)
+
+
+def load_downloaded_url_archive(
+    archive_file: Path,
+    logger: logging.Logger,
+) -> set[str]:
+    """Load normalized URLs through the archive store contract."""
+    return ArchiveStore(archive_file, logger).load()
 
 
 def _lock_then_rewrite_archive(

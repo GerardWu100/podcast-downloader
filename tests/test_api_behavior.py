@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-import src.api as api_module
+from src.web import routes as api_module
 import src.config as config_module
 from src.passwords import DEFAULT_UI_PASSWORD, hash_password
 from src.trigger import (
@@ -192,7 +192,7 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
 
 def test_load_session_state_round_trip_and_filtering(monkeypatch, tmp_path) -> None:
     """Persisted sessions should round-trip cleanly and skip invalid or expired entries."""
-    from src import api
+    from src.web import routes as api
 
     monkeypatch.setattr(api, "SESSION_STATE_FILE", tmp_path / ".ui_sessions.json")
     now = 10_000.0
@@ -215,7 +215,7 @@ def test_secure_cookie_respects_cf_visitor(monkeypatch) -> None:
     """Cloudflare's CF-Visitor hint should also mark the session cookie Secure."""
     from types import SimpleNamespace
 
-    from src import api
+    from src.web import routes as api
 
     monkeypatch.setattr(api, "CONFIG", SimpleNamespace(trust_x_forwarded_for=True))
 
@@ -281,7 +281,7 @@ def test_login_page_shows_invalid_password_message(monkeypatch, tmp_path) -> Non
 
 def test_logs_endpoint_reads_concise_activity_log(monkeypatch, tmp_path) -> None:
     """The browser log endpoint should show activity.log, not the full download log."""
-    from src import api
+    from src.web import routes as api
 
     session_id = "test-activity-log-session"
     log_file = tmp_path / "download.log"
@@ -307,7 +307,7 @@ def test_logs_endpoint_reads_concise_activity_log(monkeypatch, tmp_path) -> None
 
 def test_logs_endpoint_can_read_full_download_log(monkeypatch, tmp_path) -> None:
     """The browser log endpoint should optionally tail the full download log."""
-    from src import api
+    from src.web import routes as api
 
     session_id = "test-download-log-session"
     log_file = tmp_path / "download.log"
@@ -335,7 +335,7 @@ def test_logs_endpoint_falls_back_to_activity_for_unknown_source(
     monkeypatch, tmp_path
 ) -> None:
     """Unknown log source values should keep serving the activity feed."""
-    from src import api
+    from src.web import routes as api
 
     session_id = "test-unknown-log-source-session"
     log_file = tmp_path / "download.log"

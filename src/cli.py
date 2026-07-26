@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from .config import ConfigError, DEFAULT_CHANNEL_VIDEO_COUNT, load_config
-from .downloader import Colors, PodcastDownloader
+from .downloads.service import PodcastDownloadService
 from .media.urls import is_supported_media_url
 from .media.youtube import (
     is_channel_or_playlist,
@@ -20,6 +20,16 @@ from .state.bypass_store import BypassStore
 from .state.queue_store import QueueStore
 
 _logger = logging.getLogger("cli")
+
+
+class Colors:
+    """ANSI color codes used by command-line status output."""
+
+    RED = "\033[0;31m"
+    GREEN = "\033[0;32m"
+    YELLOW = "\033[1;33m"
+    BLUE = "\033[0;34m"
+    NC = "\033[0m"
 
 
 def append_urls(urls_file: Path, urls: list[str]) -> int:
@@ -203,7 +213,7 @@ def main() -> int:
     args.output.mkdir(parents=True, exist_ok=True)
     config.intermediate_dir.mkdir(parents=True, exist_ok=True)
 
-    downloader = PodcastDownloader(
+    downloader = PodcastDownloadService(
         urls_file=args.file,
         downloads_dir=args.output,
         intermediate_dir=config.intermediate_dir,

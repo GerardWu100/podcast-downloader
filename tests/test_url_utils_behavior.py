@@ -11,21 +11,41 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from src import url_utils
-from src.url_utils import (
-    append_urls,
-    create_sample_urls_file,
+from src.media import youtube as url_utils
+from src.media.youtube import (
     expand_channel_or_playlist,
     get_youtube_playlist_folder_name,
     is_youtube_url,
     is_youtube_short_url,
     normalize_youtube_url,
-    read_urls_file,
-    remove_url_from_queue,
 )
 from src.state.archive_store import ArchiveStore
 from src.state.bypass_store import BypassStore
 from src.state.queue_store import QueueStore
+
+
+def create_sample_urls_file(urls_file: Path, logger: logging.Logger) -> None:
+    """Create the sample queue through its public store contract."""
+    QueueStore(urls_file, logger).create_sample_file()
+
+
+def append_urls(urls_file: Path, urls: list[str]) -> int:
+    """Append URLs through the queue store used by production."""
+    return QueueStore(urls_file, logging.getLogger("test")).append_urls(urls)
+
+
+def read_urls_file(urls_file: Path, logger: logging.Logger) -> list[str]:
+    """Read URLs through the queue store used by production."""
+    return QueueStore(urls_file, logger).read_urls()
+
+
+def remove_url_from_queue(
+    urls_file: Path,
+    url: str,
+    logger: logging.Logger,
+) -> bool:
+    """Remove one URL through the queue store used by production."""
+    return QueueStore(urls_file, logger).remove_url(url)
 
 
 def _lock_then_rewrite_queue(

@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..activity_log import activity_log_file_for, write_activity_event
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..config import DEFAULT_CHANNEL_VIDEO_COUNT
 from ..media.youtube import (
@@ -29,6 +28,7 @@ from ..media.youtube import (
     looks_like_youtube_channel_id,
     normalize_youtube_url,
 )
+from ..state.activity_store import ActivityLogStore, activity_log_file_for
 from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
@@ -36,7 +36,6 @@ from .audio_metadata import AudioMetadataWriter
 from .ytdlp_client import AudioSnapshot, YtDlpClient
 
 FALLBACK_SINGLE_DOWNLOAD_FOLDER = "singles"
-YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
 INTERMEDIATE_ROOT_TEMP_SUFFIXES = (
     ".part",
     ".ytdl",
@@ -129,6 +128,7 @@ class PodcastDownloadService:
         self.channel_count = channel_count
         self.log_file = log_file or (urls_file.parent / "download.log")
         self.activity_log_file = activity_log_file_for(self.log_file)
+        self.activity_store = ActivityLogStore(self.activity_log_file)
         self.downloaded_urls_file = downloaded_urls_file or (
             urls_file.parent / "downloaded_urls.txt"
         )
@@ -552,7 +552,7 @@ class PodcastDownloadService:
     def _record_activity(self, message: str) -> None:
         """Append one concise browser-facing activity event."""
         try:
-            write_activity_event(self.activity_log_file, message)
+            self.activity_store.write_event(message)
         except OSError as exc:
             self.logger.warning("Could not write activity log: %s", exc)
 
@@ -758,115 +758,17 @@ class PodcastDownloadService:
             self.intermediate_dir / FALLBACK_SINGLE_DOWNLOAD_FOLDER
         )
         target_work_dir.mkdir(parents=True, exist_ok=True)
-        before_snapshot = self._snapshot_downloaded_audio(target_work_dir)
         if self.ytdlp_client is not None:
-            # The client owns command construction and process limits. Keeping
-            # this method as a delegate avoids forcing callers to know client
-            # internals while tests migrate to injected fakes.
-            result = self.ytdlp_client._run_attempt(
-                url,
-                target_work_dir,
-                cookies_file,
+            # The client owns command construction, process limits, snapshots,
+            # and the complete alternate-cookie retry order.
+            execution = self.ytdlp_client.download(url, target_work_dir)
+            result = subprocess.CompletedProcess(
+                args=["yt-dlp", "--", url],
+                returncode=execution.returncode,
+                stdout=execution.stdout,
+                stderr=execution.stderr,
             )
-            after_snapshot = self._snapshot_downloaded_audio(target_work_dir)
-            return result, self._detect_changed_audio_files(
-                before_snapshot,
-                after_snapshot,
-            )
-
-        command = [
-            "yt-dlp",
-            "--paths",
-            f"temp:{target_work_dir}",
-            "--extract-audio",
-            "--audio-format",
-            "mp3",
-            "--audio-quality",
-            "0",
-            "--no-mtime",
-            "--embed-thumbnail",
-            "--add-metadata",
-            "--output",
-            str(target_work_dir / YTDLP_OUTPUT_FILENAME_TEMPLATE),
-        ]
-
-        if is_youtube_url(url):
-            command.extend(["--sponsorblock-remove", "sponsor,selfpromo"])
-        else:
-            command.append("--no-playlist")
-
-        if cookies_file:
-            command.extend(["--cookies", str(cookies_file)])
-
-        command.extend(["--", url])
-
-        # A successful return code is not enough, so snapshot MP3 state before
-        # and after the subprocess and return only the files that changed.
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
-        after_snapshot = self._snapshot_downloaded_audio(target_work_dir)
-        changed_audio_files = self._detect_changed_audio_files(
-            before_snapshot,
-            after_snapshot,
-        )
-        return result, changed_audio_files
-
-    def _youtube_download_attempt_failed(
-        self,
-        result: subprocess.CompletedProcess[str],
-        changed_audio_files: list[Path],
-        recoverable_audio_files: list[Path],
-    ) -> bool:
-        """Return whether one ``yt-dlp`` download attempt produced no usable MP3."""
-        if result.returncode != 0:
-            return True
-        if changed_audio_files:
-            return False
-        return not recoverable_audio_files
-
-    def _should_retry_youtube_download_with_alternate_cookies(
-        self,
-        video_url: str,
-        result: subprocess.CompletedProcess[str],
-        changed_audio_files: list[Path],
-        recoverable_audio_files: list[Path],
-        first_attempt_cookies: Path | None,
-    ) -> bool:
-        """Return whether a failed YouTube download should try the alternate mode.
-
-        When ``always_use_cookies`` is true, the first attempt used cookies and a
-        retry can run plain. When false, the first attempt was plain and a retry
-        can use the configured cookie file.
-        """
-        if not is_youtube_url(video_url):
-            return False
-        if self.cookies_file is None:
-            return False
-        if not self._youtube_download_attempt_failed(
-            result,
-            changed_audio_files,
-            recoverable_audio_files,
-        ):
-            return False
-        if self.always_use_cookies:
-            return first_attempt_cookies is not None
-        return first_attempt_cookies is None
-
-    def _cookies_for_retry_youtube_download(
-        self,
-        first_attempt_cookies: Path | None,
-    ) -> Path | None:
-        """Return cookies for the alternate download retry after a failed attempt."""
-        if self.cookies_file is None:
-            return None
-        if self.always_use_cookies:
-            return None
-        return self.cookies_file
+            return result, execution.changed_audio_files
 
     def _find_recoverable_existing_audio(
         self,
@@ -968,39 +870,6 @@ class PodcastDownloadService:
             )
             after_snapshot = self._snapshot_downloaded_audio(work_dir)
 
-            recoverable_audio_files = []
-            if result.returncode == 0 and not changed_audio_files:
-                recoverable_audio_files = self._find_recoverable_existing_audio(
-                    before_snapshot,
-                    after_snapshot,
-                )
-
-            if self._should_retry_youtube_download_with_alternate_cookies(
-                video_url,
-                result,
-                changed_audio_files,
-                recoverable_audio_files,
-                first_attempt_cookies,
-            ):
-                retry_cookies = self._cookies_for_retry_youtube_download(
-                    first_attempt_cookies,
-                )
-                if self.always_use_cookies:
-                    self.logger.info(
-                        "Cookie YouTube download failed; retrying without cookies",
-                    )
-                else:
-                    self.logger.info(
-                        "Plain YouTube download failed; retrying with cookies file: %s",
-                        self.cookies_file,
-                    )
-                before_snapshot = self._snapshot_downloaded_audio(work_dir)
-                result, changed_audio_files = self._run_ytdlp(
-                    video_url,
-                    retry_cookies,
-                    work_dir,
-                )
-                after_snapshot = self._snapshot_downloaded_audio(work_dir)
         except subprocess.TimeoutExpired:
             self.logger.error("Timeout downloading: %s", video_url)
             self._record_activity(f"Failed: {video_url}")

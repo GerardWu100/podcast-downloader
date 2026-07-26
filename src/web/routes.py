@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import html
-import json
 import logging
 import os
 import secrets
@@ -16,11 +15,6 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from ..activity_log import (
-    activity_log_file_for,
-    read_activity_log_tail,
-    read_download_log_tail,
-)
 from ..config import ConfigError, load_config
 from ..log_timezone import LOG_TIME_ZONE
 from ..passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
@@ -36,6 +30,11 @@ from ..media.youtube import (
     is_youtube_playlist,
     is_youtube_url,
     normalize_youtube_url,
+)
+from ..state.activity_store import (
+    NO_DOWNLOAD_LOG_MESSAGE,
+    ActivityLogStore,
+    activity_log_file_for,
 )
 from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
@@ -160,38 +159,9 @@ def _save_login_state(state: dict) -> None:
 def _load_and_save_login_state(update_fn: "Callable[[dict], None]") -> dict:
     return _auth_store().update_login_state(update_fn)
 
-    """Load login state, apply an update, then save it back under one lock."""
-    with _LOGIN_STATE_LOCK:
-        state = _load_login_state()
-        update_fn(state)
-        _save_login_state(state)
-        return state
-
 
 def _security_headers(script_nonce: str | None = None) -> dict[str, str]:
     return security_headers(script_nonce)
-
-    """Return defensive headers for browser-facing responses."""
-    csp_parts = [
-        "default-src 'none'",
-        "style-src 'unsafe-inline'",
-        "img-src 'self' data:",
-        "connect-src 'self'",
-        "form-action 'self'",
-        "base-uri 'none'",
-        "frame-ancestors 'none'",
-    ]
-    if script_nonce:
-        csp_parts.append(f"script-src 'nonce-{script_nonce}'")
-
-    return {
-        "Cache-Control": "no-store",
-        "Pragma": "no-cache",
-        "Referrer-Policy": "same-origin",
-        "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY",
-        "Content-Security-Policy": "; ".join(csp_parts),
-    }
 
 
 def _cleanup_expired_sessions() -> None:
@@ -249,45 +219,9 @@ def _password_is_configured(password_text: str) -> bool:
 def _client_ip(request: Request) -> str:
     return client_ip(request, CONFIG.trust_x_forwarded_for)
 
-    headers = getattr(request, "headers", {})
-    if CONFIG.trust_x_forwarded_for:
-        # Cloudflare Tunnel sets CF-Connecting-IP to the real client address.
-        cf_ip = headers.get("CF-Connecting-IP")
-        if cf_ip:
-            return cf_ip.strip()
-        # Other reverse proxies usually place the client IP in X-Forwarded-For.
-        forwarded = headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-    client = getattr(request, "client", None)
-    if client and getattr(client, "host", None):
-        return client.host
-    return "unknown"
-
 
 def _request_is_secure(request: Request) -> bool:
     return request_is_secure(request, CONFIG.trust_x_forwarded_for)
-
-    """Best-effort detection for HTTPS when sitting behind Cloudflare or a proxy."""
-    if request.url.scheme == "https":
-        return True
-    if not CONFIG.trust_x_forwarded_for:
-        return False
-
-    headers = getattr(request, "headers", {})
-    forwarded_proto = headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower()
-    if forwarded_proto == "https":
-        return True
-
-    cf_visitor = headers.get("CF-Visitor", "")
-    if cf_visitor:
-        try:
-            visitor_data = json.loads(cf_visitor)
-        except json.JSONDecodeError:
-            return False
-        if isinstance(visitor_data, dict):
-            return str(visitor_data.get("scheme", "")).lower() == "https"
-    return False
 
 
 def _invalidate_session(session_id: str | None) -> None:
@@ -311,37 +245,10 @@ def _session_has_expired(created_at_raw: float | str | None) -> bool:
 def _load_session_state() -> dict[str, dict[str, float | str]]:
     return _auth_store().load_sessions(SESSION_MAX_AGE_SECONDS)
 
-    """Load remembered login sessions from disk."""
-    if not SESSION_STATE_FILE.exists():
-        return {}
-    try:
-        raw_state = json.loads(SESSION_STATE_FILE.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(raw_state, dict):
-        return {}
-
-    now = time.time()
-    loaded: dict[str, dict[str, float | str]] = {}
-    for session_id, session in raw_state.items():
-        if not isinstance(session_id, str) or not isinstance(session, dict):
-            continue
-        try:
-            created_at = float(session.get("created_at", 0))
-        except (TypeError, ValueError):
-            continue
-        if now - created_at > SESSION_MAX_AGE_SECONDS:
-            continue
-        loaded[session_id] = {"created_at": created_at}
-    return loaded
-
 
 def _save_session_state(state: dict[str, dict[str, float | str]]) -> None:
     _auth_store().save_sessions(state)
     return
-
-    """Persist remembered login sessions to disk."""
-    SESSION_STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
 
 SESSIONS = _load_session_state()
@@ -1204,10 +1111,12 @@ def view_logs(request: Request, source: str = "activity") -> Response:
 
     try:
         if log_source == "download":
-            tail = read_download_log_tail(CONFIG.log_file)
+            tail = ActivityLogStore(CONFIG.log_file).read_tail(
+                empty_message=NO_DOWNLOAD_LOG_MESSAGE
+            )
         else:
             activity_log_file = activity_log_file_for(CONFIG.log_file)
-            tail = read_activity_log_tail(activity_log_file)
+            tail = ActivityLogStore(activity_log_file).read_tail()
         return Response(
             content=tail, media_type="text/plain", headers=_security_headers()
         )

@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 import logging
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Iterator
 from urllib.parse import parse_qs, urlparse, urlunparse
 
-from ..state.archive_store import ArchiveStore, LockedDownloadedUrlArchive
-from ..state.bypass_store import BypassStore
-from ..state.queue_store import QueueStore
 from .urls import normalized_hostname
 
 
@@ -379,71 +374,6 @@ def _metadata_value_is_present(raw_value: str) -> bool:
     """
     normalized_value = raw_value.strip()
     return normalized_value not in YTDLP_MISSING_VALUE_PLACEHOLDERS
-
-
-def create_sample_urls_file(urls_file: Path, logger: logging.Logger) -> None:
-    """Create a starter queue file when ``urls.txt`` is missing."""
-    QueueStore(urls_file, logger).create_sample_file()
-
-
-@contextmanager
-def locked_downloaded_url_archive(
-    archive_file: Path,
-) -> Iterator[LockedDownloadedUrlArchive]:
-    """Hold the downloaded URL archive lock for a full check-download-write pass."""
-    store = ArchiveStore(archive_file, logging.getLogger("url_utils.archive"))
-    with store.locked_transaction() as archive:
-        yield archive
-
-
-def read_urls_file(urls_file: Path, logger: logging.Logger) -> list[str]:
-    """Read monitored URLs from disk and ignore comments and blank lines."""
-    return QueueStore(urls_file, logger).read_urls()
-
-
-def load_queue_urls(urls_file: Path, logger: logging.Logger) -> list[str]:
-    """Return normalized queue entries from ``urls.txt`` under a shared lock."""
-    return QueueStore(urls_file, logger).load_normalized_urls()
-
-
-def remove_video_url_from_file(
-    urls_file: Path,
-    video_url: str,
-    logger: logging.Logger,
-) -> None:
-    """Remove one video URL from ``urls.txt`` and leave channels alone."""
-    QueueStore(urls_file, logger).remove_video_url(video_url)
-
-
-def remove_url_from_queue(urls_file: Path, url: str, logger: logging.Logger) -> bool:
-    """Remove one normalized URL from ``urls.txt`` under an exclusive lock."""
-    return QueueStore(urls_file, logger).remove_url(url)
-
-
-def load_downloaded_url_archive(
-    archive_file: Path,
-    logger: logging.Logger,
-) -> set[str]:
-    """Read normalized archive URLs while holding a shared lock."""
-    return ArchiveStore(archive_file, logger).load()
-
-
-def append_to_downloaded_url_archive(
-    archive_file: Path,
-    url: str,
-    logger: logging.Logger,
-) -> bool:
-    """Append one normalized URL to the archive under an exclusive lock."""
-    return ArchiveStore(archive_file, logger).append(url)
-
-
-def remove_from_downloaded_url_archive(
-    archive_file: Path,
-    url: str,
-    logger: logging.Logger,
-) -> bool:
-    """Remove one normalized URL from the archive under an exclusive lock."""
-    return ArchiveStore(archive_file, logger).remove(url)
 
 
 def is_old_enough(
@@ -861,28 +791,3 @@ def get_video_metadata(
     except Exception as exc:
         logger.warning("get_video_metadata error for %s: %s", url, exc)
         return None
-
-
-def load_bypass_age_urls(bypass_file: Path, logger: logging.Logger) -> set[str]:
-    """Return the URLs that should skip the age check on the next run."""
-    return BypassStore(bypass_file, logger).load()
-
-
-def add_to_bypass_age_file(bypass_file: Path, url: str, logger: logging.Logger) -> None:
-    """Append a normalized URL to the bypass-age file if it is not there already."""
-    BypassStore(bypass_file, logger).add(url)
-
-
-def remove_from_bypass_age_file(
-    bypass_file: Path, url: str, logger: logging.Logger
-) -> None:
-    """Remove one normalized URL from the bypass-age file."""
-    BypassStore(bypass_file, logger).remove(url)
-
-
-def append_urls(urls_file: Path, urls: list[str]) -> int:
-    """Append normalized URLs to ``urls.txt`` while skipping duplicates.
-
-    Returns the number of URLs added.
-    """
-    return QueueStore(urls_file, logging.getLogger("url_utils.queue")).append_urls(urls)

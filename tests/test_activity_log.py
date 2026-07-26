@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import logging
 
-from src.activity_log import (
+from src.state.activity_store import (
     activity_log_file_for,
     read_activity_log_tail,
     read_download_log_tail,

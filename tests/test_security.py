@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from src import url_utils
+from src.media import youtube as url_utils
 
 
 def test_expand_command_uses_separator(monkeypatch) -> None:
@@ -110,7 +110,7 @@ def test_login_action_accepts_valid_password_and_rejects_invalid_password(
     tmp_path: Path,
 ) -> None:
     """Login should authenticate by behavior without relying on implementation text."""
-    from src import api
+    from src.web import routes as api
     from src.passwords import hash_password
 
     password_file = tmp_path / ".ui_password"
@@ -167,7 +167,7 @@ def test_login_action_accepts_valid_password_and_rejects_invalid_password(
 
 def test_login_action_rejects_invalid_csrf_token(tmp_path: Path, monkeypatch) -> None:
     """Login should reject a mismatched CSRF token before checking the password."""
-    from src import api
+    from src.web import routes as api
 
     password_file = tmp_path / ".ui_password"
     password_file.write_text("unused-password\n", encoding="utf-8")
@@ -224,7 +224,7 @@ def test_plain_text_password_comparison() -> None:
 
 def test_session_expiry() -> None:
     """Sessions older than SESSION_MAX_AGE_SECONDS must be rejected."""
-    from src.api import SESSION_MAX_AGE_SECONDS, SESSIONS, _require_login
+    from src.web.routes import SESSION_MAX_AGE_SECONDS, SESSIONS, _require_login
 
     # Create an expired session
     expired_session_id = "test-expired-session"
@@ -248,7 +248,7 @@ def test_session_expiry() -> None:
 
 def test_valid_session_not_expired() -> None:
     """A fresh session should not be rejected."""
-    from src.api import SESSIONS, _require_login
+    from src.web.routes import SESSIONS, _require_login
 
     valid_session_id = "test-valid-session"
     SESSIONS[valid_session_id] = {
@@ -271,7 +271,7 @@ def test_valid_session_not_expired() -> None:
 
 def test_session_state_persists_across_restart(monkeypatch, tmp_path) -> None:
     """Remembered sessions should survive a process restart via disk state."""
-    from src import api
+    from src.web import routes as api
 
     monkeypatch.setattr(api, "SESSION_STATE_FILE", tmp_path / ".ui_sessions.json")
     api.SESSIONS.clear()
@@ -303,7 +303,7 @@ def test_session_state_persists_across_restart(monkeypatch, tmp_path) -> None:
 
 def test_session_is_not_bound_to_ip() -> None:
     """A remembered session should not depend on the login IP address."""
-    from src.api import SESSIONS, _require_login
+    from src.web.routes import SESSIONS, _require_login
 
     session_id = "test-no-ip-binding"
     SESSIONS[session_id] = {
@@ -331,7 +331,7 @@ def test_secure_cookie_respects_forwarded_proto(monkeypatch) -> None:
     """Cloudflare-proxied HTTPS should still mark the session cookie Secure."""
     from types import SimpleNamespace
 
-    from src import api
+    from src.web import routes as api
 
     monkeypatch.setattr(api, "CONFIG", SimpleNamespace(trust_x_forwarded_for=True))
 

@@ -13,6 +13,31 @@ from .file_locks import locked_text_file
 DEFAULT_ACTIVITY_LINE_COUNT = 100
 NO_ACTIVITY_MESSAGE = "No activity yet."
 NO_DOWNLOAD_LOG_MESSAGE = "No log entries yet."
+ACTIVITY_LOG_NAME = "activity.log"
+
+
+def activity_log_file_for(full_log_file: Path) -> Path:
+    """Return concise activity-log path beside the diagnostic log."""
+    return full_log_file.parent / ACTIVITY_LOG_NAME
+
+
+def read_activity_log_tail(
+    activity_log_file: Path,
+    line_count: int = DEFAULT_ACTIVITY_LINE_COUNT,
+) -> str:
+    """Return recent concise activity entries through ``ActivityLogStore``."""
+    return ActivityLogStore(activity_log_file).read_tail(line_count)
+
+
+def read_download_log_tail(
+    download_log_file: Path,
+    line_count: int = DEFAULT_ACTIVITY_LINE_COUNT,
+) -> str:
+    """Return recent diagnostic entries through ``ActivityLogStore``."""
+    return ActivityLogStore(download_log_file).read_tail(
+        line_count,
+        empty_message=NO_DOWNLOAD_LOG_MESSAGE,
+    )
 
 
 class ActivityLogStore:
