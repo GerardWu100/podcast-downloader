@@ -5,7 +5,7 @@
 This repository is a small web-video-to-audio pipeline with two entry surfaces:
 
 1. A CLI batch downloader for pulling audio from URLs, channels, and playlists.
-2. A FastAPI web UI for appending new URLs into the queue file, showing the current monitored entries from `urls.txt`, removing URLs from that list, and replacing the YouTube cookie file after login.
+2. A FastAPI web UI for appending new URLs into the queue file, showing current service and queue status, listing and removing monitored entries from `urls.txt`, replacing the YouTube cookie file after login, and serving a short public help page.
 
 The root folder exists to hold the project-level entrypoints, runtime configuration, state files, and operational artifacts. The actual application logic lives in [`src/`](/Users/gwh/projects/one-time-projects/podcast-downloader/src), while [`tests/`](/Users/gwh/projects/one-time-projects/podcast-downloader/tests) holds automated regressions.
 

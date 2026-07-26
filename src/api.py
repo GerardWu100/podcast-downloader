@@ -10,6 +10,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -21,6 +22,7 @@ from .activity_log import (
     read_download_log_tail,
 )
 from .config import ConfigError, load_config
+from .log_timezone import LOG_TIME_ZONE
 from .passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
 from .trigger import (
     pop_full_playlist_download_requests,
@@ -530,11 +532,199 @@ _BASE_STYLES = """
     border-radius:7px; padding:9px 14px; font-size:.82rem; margin-bottom:12px;
   }
   .bypass-row { margin-top:10px; }
-  .bypass-row label {
-    display:flex; align-items:center; gap:6px; cursor:pointer;
-    font-size:.78rem; color:var(--muted); font-weight:normal;
+.bypass-row label {
+  display:flex; align-items:center; gap:6px; cursor:pointer;
+  font-size:.78rem; color:var(--muted); font-weight:normal;
+}
+
+/* The refresh keeps the existing controls and terminology while improving
+   hierarchy, touch targets, focus visibility, and small-screen behavior. */
+:root {
+  --bg-accent:#e7eef9; --surface-raised:#fff; --border-strong:#cbd5e1;
+  --shadow:0 1px 2px rgba(23,32,51,.05),0 12px 30px rgba(23,32,51,.06);
+  --shadow-focus:0 0 0 3px rgba(37,99,235,.16); --r:14px;
+}
+body.theme-dark {
+  --bg:#0d121a; --bg-accent:#151e2b; --surface:#151c25;
+  --surface-raised:#19222d; --border:#293543; --border-strong:#39495c;
+  --shadow:0 1px 2px rgba(0,0,0,.32),0 16px 34px rgba(0,0,0,.22);
+  --shadow-focus:0 0 0 3px rgba(96,165,250,.18);
+}
+@media (prefers-color-scheme:dark) {
+  body:not(.theme-light) {
+    --bg:#0d121a; --bg-accent:#151e2b; --surface:#151c25;
+    --surface-raised:#19222d; --border:#293543; --border-strong:#39495c;
+    --shadow:0 1px 2px rgba(0,0,0,.32),0 16px 34px rgba(0,0,0,.22);
+    --shadow-focus:0 0 0 3px rgba(96,165,250,.18);
   }
+}
+html { min-height:100%; background:var(--bg); }
+body {
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 15% -10%, var(--bg-accent), transparent 38rem),
+    var(--bg);
+}
+.card { padding:22px; }
+.card-label { letter-spacing:.08em; }
+input[type=text],input[type=password] {
+  min-height:42px; padding:10px 12px; border-color:var(--border-strong);
+  border-radius:9px;
+}
+input[type=file] {
+  min-height:42px; border-color:var(--border-strong); border-radius:9px;
+}
+input:focus,select:focus,button:focus-visible,a:focus-visible {
+  outline:none; border-color:var(--accent); box-shadow:var(--shadow-focus);
+}
+.btn {
+  min-height:42px; border-radius:9px;
+  transition:background .15s,transform .15s;
+}
+.btn:active { transform:translateY(1px); }
+.msg-ok,.msg-warn,.msg-err { border-radius:9px; padding:10px 13px; }
+.text-link { color:var(--accent); text-decoration:none; font-weight:600; }
+.text-link:hover { text-decoration:underline; text-underline-offset:3px; }
 """
+
+
+def _last_activity_label(activity_log_file: Path) -> str:
+    """Return the latest activity-file update time for the status header.
+
+    Parameters
+    ----------
+    activity_log_file:
+        Path to the concise browser activity log.
+
+    Returns
+    -------
+    str
+        Toronto-local update time, or a short empty-state label when the file
+        has not been written yet.
+    """
+    try:
+        modified_at = activity_log_file.stat().st_mtime
+    except OSError:
+        return "No activity yet"
+    return datetime.fromtimestamp(modified_at, tz=LOG_TIME_ZONE).strftime(
+        "%Y-%m-%d %H:%M"
+    )
+
+
+@app.get("/help", response_class=HTMLResponse)
+def help_page() -> HTMLResponse:
+    """Render the short, public usage and cookie-setup reference page.
+
+    Returns
+    -------
+    fastapi.responses.HTMLResponse
+        Static help page with the same light and dark themes as the main UI.
+    """
+    script_nonce = secrets.token_urlsafe(16)
+    return HTMLResponse(
+        content=f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Podcast Downloader Help</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    {_BASE_STYLES}
+    body {{ padding:36px 16px; }}
+    .help-page {{ width:100%; max-width:720px; margin:0 auto; }}
+    .help-nav {{
+      display:flex; align-items:center; justify-content:space-between;
+      margin-bottom:18px;
+    }}
+    .help-nav a {{
+      color:var(--accent); text-decoration:none; font-size:.82rem; font-weight:650;
+    }}
+    .help-nav a:hover {{ text-decoration:underline; text-underline-offset:3px; }}
+    .theme-toggle {{
+      min-height:36px; padding:6px 12px; border:1px solid var(--border);
+      border-radius:8px; background:var(--surface); color:var(--muted);
+      cursor:pointer; font-size:.78rem; font-weight:600;
+    }}
+    .help-card h1 {{ margin:0 0 6px; font-size:1.45rem; letter-spacing:-.02em; }}
+    .lead {{ margin:0 0 24px; color:var(--muted); }}
+    .help-card h2 {{ margin:24px 0 8px; font-size:1rem; }}
+    .help-card p {{ margin:0 0 10px; }}
+    .help-card ol,.help-card ul {{ margin:8px 0 0; padding-left:20px; }}
+    .help-card li + li {{ margin-top:7px; }}
+    .help-card code {{
+      padding:2px 5px; border:1px solid var(--border); border-radius:5px;
+      background:var(--input-bg); font-size:.82em;
+    }}
+    .note {{
+      margin-top:12px; padding:11px 13px; border:1px solid var(--warn-border);
+      border-radius:9px; background:var(--warn-bg); color:var(--warn-text);
+      font-size:.82rem;
+    }}
+    @media (max-width:520px) {{
+      body {{ padding:20px 12px; }}
+      .help-card {{ padding:19px; }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="help-page">
+    <nav class="help-nav" aria-label="Help page navigation">
+      <a href="/">← Back to downloader</a>
+      <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
+    </nav>
+    <article class="card help-card">
+      <h1>How Podcast Downloader works</h1>
+      <p class="lead">A short guide to the queue, downloads, and YouTube cookies.</p>
+
+      <h2>Basic behavior</h2>
+      <ul>
+        <li>Add a YouTube channel, playlist, livestream, or direct video URL.</li>
+        <li>Channels and playlists stay monitored in <code>urls.txt</code>.</li>
+        <li>Finished audio is saved as MP3 with SponsorBlock segments removed when available.</li>
+        <li>Activity shows concise results; Download log contains diagnostic detail.</li>
+      </ul>
+
+      <h2>Main functions</h2>
+      <ul>
+        <li><strong>Add:</strong> append a supported URL to the queue.</li>
+        <li><strong>Download now:</strong> bypass the age wait for a direct YouTube video, or fetch a full playlist.</li>
+        <li><strong>Remove:</strong> stop monitoring a queued URL.</li>
+        <li><strong>Upload:</strong> replace the YouTube cookie file used by <code>yt-dlp</code>.</li>
+      </ul>
+
+      <h2>Adding YouTube cookies</h2>
+      <ol>
+        <li>Export browser cookies in Netscape format as a text file.</li>
+        <li>Open the YouTube cookies card in the downloader.</li>
+        <li>Select the exported file and choose Upload.</li>
+      </ol>
+      <p class="note">
+        Cookie exports can contain private sign-in data. Keep the file private.
+        See the official
+        <a class="text-link" href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp">yt-dlp cookie instructions</a>.
+      </p>
+    </article>
+  </main>
+  <script nonce="{script_nonce}">
+    const savedTheme = localStorage.getItem('podcast-theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const themeButton = document.getElementById('theme-toggle');
+    function applyTheme(theme) {{
+      document.body.classList.toggle('theme-dark', theme === 'dark');
+      document.body.classList.toggle('theme-light', theme === 'light');
+      themeButton.textContent = theme === 'dark' ? 'Light' : 'Dark';
+    }}
+    applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+    themeButton.addEventListener('click', () => {{
+      const nextTheme = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+      localStorage.setItem('podcast-theme', nextTheme);
+      applyTheme(nextTheme);
+    }});
+  </script>
+</body>
+</html>""",
+        headers=_security_headers(script_nonce=script_nonce),
+    )
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -594,6 +784,7 @@ def login_form(request: Request) -> Response:
     label {{ display:block; font-size:.72rem; font-weight:700; text-transform:uppercase;
              letter-spacing:.05em; color:var(--muted); margin-bottom:6px; }}
     .btn {{ margin-top:14px; width:100%; padding:10px; }}
+    .help-link {{ display:block; margin-top:18px; text-align:center; font-size:.78rem; }}
   </style>
 </head>
 <body>
@@ -611,6 +802,7 @@ def login_form(request: Request) -> Response:
         spellcheck="false" required autofocus />
       <button type="submit" class="btn">Sign in</button>
     </form>
+    <a class="help-link text-link" href="/help">How it works</a>
   </div>
   <script nonce="{script_nonce}">
     const savedTheme = localStorage.getItem('podcast-theme');
@@ -781,6 +973,9 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         queue_html = '<p class="empty">No monitored URLs in urls.txt.</p>'
 
     count = len(safe_queue_urls)
+    last_activity = html.escape(
+        _last_activity_label(activity_log_file_for(CONFIG.log_file))
+    )
 
     return HTMLResponse(
         content=f"""<!doctype html>
@@ -791,11 +986,14 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     {_BASE_STYLES}
-    body {{ padding:32px 16px; }}
-    .page {{ max-width:700px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }}
-    header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }}
+    body {{ padding:38px 18px 54px; }}
+    .page {{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }}
+    header {{
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:2px; padding:0 2px;
+    }}
     .header-actions {{ display:flex; align-items:center; gap:8px; }}
-    .brand h1 {{ font-size:1.1rem; font-weight:700; }}
+    .brand h1 {{ font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }}
     .brand p  {{ font-size:.78rem; color:var(--muted); }}
     .theme-toggle {{
       font-size:.78rem; color:var(--muted); background:var(--surface);
@@ -896,6 +1094,62 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
     .log-line--err .log-msg {{ color:var(--log-err); }}
     .log-line--info .log-msg {{ color:var(--log-info); }}
     .log-line--dim .log-msg {{ color:var(--log-dim); }}
+    .brand p {{ margin-top:3px; font-size:.8rem; }}
+    .theme-toggle,.nav-link {{
+      font-size:.78rem; color:var(--muted); background:var(--surface);
+      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+      cursor:pointer; transition:color .15s,border-color .15s;
+      text-decoration:none; line-height:1.5;
+    }}
+    .theme-toggle:hover,.nav-link:hover {{ color:var(--text); border-color:var(--accent); }}
+    .status-strip {{
+      display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:hidden;
+      background:var(--surface-raised); border:1px solid var(--border);
+      border-radius:var(--r); box-shadow:var(--shadow);
+    }}
+    .status-item {{ min-width:0; padding:15px 18px; }}
+    .status-item + .status-item {{ border-left:1px solid var(--border); }}
+    .status-label {{
+      display:block; margin-bottom:4px; color:var(--muted); font-size:.67rem;
+      font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+    }}
+    .status-value {{
+      display:flex; align-items:center; gap:7px; min-width:0;
+      color:var(--text); font-size:.83rem; font-weight:650;
+      font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden;
+      text-overflow:ellipsis;
+    }}
+    .status-dot {{
+      width:8px; height:8px; flex:0 0 auto; border-radius:50%;
+      background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.13);
+    }}
+    .card {{ transition:border-color .15s,box-shadow .15s; }}
+    .card:hover {{ border-color:var(--border-strong); }}
+    @media (max-width:640px) {{
+      body {{ padding:22px 12px 36px; }}
+      .page {{ gap:14px; }}
+      header {{ align-items:flex-start; gap:14px; }}
+      .header-actions {{ flex-wrap:wrap; justify-content:flex-end; }}
+      .status-strip {{ grid-template-columns:1fr; }}
+      .status-item {{ padding:12px 16px; }}
+      .status-item + .status-item {{
+        border-left:0; border-top:1px solid var(--border);
+      }}
+      .input-row,.file-row {{ display:flex; flex-direction:column; }}
+      .input-row .btn,.file-row .btn {{ width:100%; }}
+      .q-item {{ display:grid; grid-template-columns:auto minmax(0,1fr); }}
+      .remove-form {{ grid-column:2; }}
+      .log-bar {{ align-items:flex-start; }}
+      .log-controls {{ flex-wrap:wrap; }}
+      .log-line {{ gap:7px; padding:8px 10px; }}
+      .log-time {{ min-width:56px; }}
+    }}
+    @media (max-width:440px) {{
+      header {{ flex-direction:column; }}
+      .header-actions {{ width:100%; justify-content:flex-start; }}
+      .card {{ padding:18px; }}
+      .log-time {{ display:none; }}
+    }}
   </style>
 </head>
 <body>
@@ -906,6 +1160,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         <p>YouTube to MP3</p>
       </div>
       <div class="header-actions">
+        <a class="nav-link" href="/help">Help</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
         <form method="post" action="/logout" style="margin:0">
           <input type="hidden" name="csrf_token" value="{safe_token}" />
@@ -913,6 +1168,21 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         </form>
       </div>
     </header>
+
+    <section class="status-strip" aria-label="System status">
+      <div class="status-item">
+        <span class="status-label">Service</span>
+        <span class="status-value"><span class="status-dot"></span>Online</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Monitored URLs</span>
+        <span class="status-value">{count}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Last activity</span>
+        <span class="status-value">{last_activity}</span>
+      </div>
+    </section>
 
     <div class="card">
       <span class="card-label">Add to queue</span>

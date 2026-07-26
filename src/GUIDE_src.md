@@ -42,7 +42,7 @@ The folder solves four distinct problems:
 
 ### Web path
 
-1. [`api.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/api.py) loads the same config as the CLI.
+1. [`api.py`](/Users/gwh/projects/one-time-projects/podcast-downloader/src/api.py) loads the same config as the CLI, renders the responsive login and queue pages, and serves a short public `/help` reference.
 2. In Docker deployments, that config is read from the mounted data directory, which is seeded from the repo default `config.ini` on first boot.
 3. The Docker scheduler reads `DOWNLOAD_INTERVAL_HOURS` during module import and now aborts startup immediately if the value is not a positive integer.
 4. Login checks `.ui_password`, which now stores a PBKDF2 hash in Docker deployments. Docker first copies an image-bundled repo `.ui_password` into the mounted data directory when one exists, then the API rejects blank or legacy placeholder values, rate-limits repeated failures by client IP, and creates a persistent session.
@@ -267,5 +267,6 @@ src/
 - 2026-05-05: Expanded-item downloads now serialize on the archive lock, config validation rejects bad ranges and blank paths, and `src.cli` can run as a package module for scheduler subprocesses.
 - 2026-05-06: Queue, archive, bypass, and activity-log persistence moved behind `src/state/` stores while compatibility wrappers kept existing imports working.
 - 2026-05-15: Downloaded MP3 files now route into direct source folders under the output directory, with direct individual videos in `singles/`, and retention cleanup deletes only old YouTube channel files while removing their concrete URLs from the archive.
+- 2026-07-26: The queue page status strip reports only web-layer facts it can verify—service availability, monitored URL count, and latest activity time—rather than guessing scheduler state from log text.
 - 2026-06-22: Scheduled full-queue retention cleanup now runs before archive-backed download checks so expired channel audio can be replaced without waiting another scheduler interval.
 - 2026-06-22: Human-facing log timestamps now omit seconds, and download-date metadata uses the shared Toronto/Eastern timezone instead of the machine-local timezone.

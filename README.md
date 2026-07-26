@@ -78,7 +78,7 @@ uv run python test_sponsorblock.py
 
 Open [http://127.0.0.1:8000/login](http://127.0.0.1:8000/login) after starting the API with `uv run uvicorn src.api:app --host 127.0.0.1 --port 8000`.
 
-The UI lets you add URLs, remove monitored entries from `urls.txt`, upload a replacement YouTube `cookies.txt`, and view recent activity or the full `download.log` tail. Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
+The UI lets you add URLs, remove monitored entries from `urls.txt`, upload a replacement YouTube `cookies.txt`, and view recent activity or the full `download.log` tail. Its status strip shows whether the web service is online, the monitored URL count, and the latest activity time. A short usage and cookie-export guide is available at [http://127.0.0.1:8000/help](http://127.0.0.1:8000/help). Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
 
 ## Getting YouTube Cookies
 
