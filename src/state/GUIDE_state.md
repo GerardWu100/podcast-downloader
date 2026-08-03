@@ -35,3 +35,8 @@ is replaced atomically.
 - 2026-07-26: Authentication persistence joined the state layer; obsolete
   state-function adapters, aliases, and dead mutation paths were removed after
   callers adopted stores directly.
+- 2026-08-03: Fixed a data-corruption bug in the append paths of `QueueStore`,
+  `BypassStore`, and `ArchiveStore`. A hand-edited file whose last line lacked a
+  trailing newline had the next appended URL spliced onto that line, losing both
+  entries. Each append now repairs the missing separator first
+  (`tests/test_append_newline_safety.py`).

@@ -7,6 +7,22 @@ from collections.abc import Callable
 
 from fastapi.responses import HTMLResponse
 
+# Inline SVG favicon (a download arrow onto a tray) shared by every page. It is
+# served as a base64 data URI so no static-file route is needed; the existing
+# Content-Security-Policy already allows ``img-src data:``. Without it browsers
+# request ``/favicon.ico`` and log a 404 on every page load.
+FAVICON_TAG = (
+    '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,'
+    "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAz"
+    "MiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzI1NjNl"
+    "YicvPjxwYXRoIGQ9J00xNiA3djEwbTAgMGwtNC00bTQgNGw0LTQnIGZpbGw9J25vbmUnIHN0"
+    "cm9rZT0nI2ZmZicgc3Ryb2tlLXdpZHRoPScyLjQnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcg"
+    "c3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjxwYXRoIGQ9J005IDIyaDE0JyBmaWxsPSdub25l"
+    "JyBzdHJva2U9JyNmZmYnIHN0cm9rZS13aWR0aD0nMi40JyBzdHJva2UtbGluZWNhcD0ncm91"
+    "bmQnLz48L3N2Zz4="
+    '" />'
+)
+
 BASE_STYLES = """
   :root {
     color-scheme:light dark;
@@ -175,6 +191,7 @@ def render_help_page(
   <meta charset="utf-8" />
   <title>Podcast Downloader Help</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  {FAVICON_TAG}
   <style>
         {BASE_STYLES}
     body {{ padding:36px 16px; }}
@@ -289,6 +306,7 @@ def render_login_page(
     <head>
       <meta charset="utf-8" /><title>Podcast Downloader</title>
       <meta name="viewport" content="width=device-width,initial-scale=1" />
+      {FAVICON_TAG}
       <style>
     {BASE_STYLES}
     body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }}
@@ -367,6 +385,7 @@ def render_queue_page(
       <meta charset="utf-8" />
       <title>Podcast Downloader</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      {FAVICON_TAG}
       <style>
     {BASE_STYLES}
     body {{ padding:38px 18px 54px; }}

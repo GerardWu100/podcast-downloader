@@ -185,11 +185,19 @@ class QueueStore:
         with locked_text_file(self.urls_file, "a+", fcntl.LOCK_EX) as file_handle:
             file_handle.seek(0)
             existing = set()
+            last_line = ""
             for line in file_handle:
+                last_line = line
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#"):
                     continue
                 existing.add(normalize_youtube_url(stripped))
+
+            # A hand-edited urls.txt may omit the trailing newline on its final
+            # line. Appending straight to the end would splice the first new URL
+            # onto that line and corrupt both entries, so repair the separator
+            # before writing. An empty file needs no separator.
+            needs_separator = bool(last_line) and not last_line.endswith("\n")
 
             file_handle.seek(0, 2)
             for raw_url in urls:
@@ -204,6 +212,9 @@ class QueueStore:
                 if normalized in existing:
                     continue
 
+                if needs_separator:
+                    file_handle.write("\n")
+                    needs_separator = False
                 file_handle.write(f"{normalized}\n")
                 existing.add(normalized)
                 added += 1

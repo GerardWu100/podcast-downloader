@@ -49,13 +49,18 @@ class BypassStore:
                 fcntl.LOCK_EX,
             ) as file_handle:
                 file_handle.seek(0)
-                existing = {
-                    normalize_youtube_url(line.strip())
-                    for line in file_handle
-                    if line.strip()
-                }
+                existing: set[str] = set()
+                last_line = ""
+                for line in file_handle:
+                    last_line = line
+                    if line.strip():
+                        existing.add(normalize_youtube_url(line.strip()))
                 if normalized not in existing:
                     file_handle.seek(0, 2)
+                    # Repair a missing final newline so the new URL is not
+                    # spliced onto a hand-edited last line.
+                    if last_line and not last_line.endswith("\n"):
+                        file_handle.write("\n")
                     file_handle.write(f"{normalized}\n")
         except Exception as exc:
             self.logger.warning("Could not write to bypass age check file: %s", exc)

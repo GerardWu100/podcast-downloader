@@ -23,6 +23,10 @@ class LockedDownloadedUrlArchive:
     def __init__(self, file_handle: TextIO) -> None:
         """Create a transaction around an already locked file handle."""
         self.file_handle = file_handle
+        # Whether the file already ends in a newline. A hand-edited archive that
+        # omits the final newline would otherwise splice the next appended URL
+        # onto its last line. Set while reading existing entries below.
+        self._ends_with_newline = True
         self._urls = self._read_urls()
 
     def _read_urls(self) -> set[str]:
@@ -30,11 +34,14 @@ class LockedDownloadedUrlArchive:
         from ..media.youtube import normalize_youtube_url
 
         self.file_handle.seek(0)
-        return {
-            normalize_youtube_url(line.strip())
-            for line in self.file_handle
-            if line.strip()
-        }
+        urls: set[str] = set()
+        last_line = ""
+        for line in self.file_handle:
+            last_line = line
+            if line.strip():
+                urls.add(normalize_youtube_url(line.strip()))
+        self._ends_with_newline = (not last_line) or last_line.endswith("\n")
+        return urls
 
     def contains(self, url: str) -> bool:
         """Return whether a normalized URL is already archived."""
@@ -52,6 +59,9 @@ class LockedDownloadedUrlArchive:
             return False
 
         self.file_handle.seek(0, 2)
+        if not self._ends_with_newline:
+            self.file_handle.write("\n")
+            self._ends_with_newline = True
         self.file_handle.write(f"{normalized}\n")
         self.file_handle.flush()
         self._urls.add(normalized)
@@ -71,6 +81,9 @@ class LockedDownloadedUrlArchive:
             self.file_handle.write(f"{archived_url}\n")
         self.file_handle.truncate()
         self.file_handle.flush()
+        # The rewrite terminates every line (or leaves the file empty), so a
+        # later append in the same transaction needs no repair newline.
+        self._ends_with_newline = True
         return True
 
 
