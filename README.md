@@ -69,7 +69,7 @@ uv run python main.py --download-single-url "https://videos.example.com/watch/ep
 uv run python main.py -f custom_urls.txt -o ./custom_downloads -n 3
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 uv run python -m pytest -q
-uv run python test_sponsorblock.py
+uv run python scripts/sponsorblock_smoke_check.py
 ```
 
 `--skip-age-check` only applies with `--add-url` or `--add-url-stdin`, and only for direct YouTube URLs. `--download-single-url` runs exactly one direct media URL through the single-item path.
@@ -125,7 +125,7 @@ All runtime settings live in `config.ini`.
 - `tests/`: automated regression coverage.
 - `downloads/`: generated MP3 files.
 - `docs/`: longer-form project documentation.
-- `test_sponsorblock.py`: manual live-network smoke script.
+- `scripts/`: manual, run-by-hand checks that are not part of the test suite.
 
 ## Documentation
 

@@ -48,7 +48,7 @@ MP3 snapshots and zero-delta metadata recovery now inspect only the current sour
 
 ### 8. Optional live smoke dependency isolated
 
-`test_sponsorblock.py` imports the optional `yt-dlp` Python package only when the script is run directly. The documented offline pytest command can therefore collect the repository without that separately installed package. The smoke script now uses the same `sponsor` and `selfpromo` categories as production.
+`scripts/sponsorblock_smoke_check.py` imports the optional `yt-dlp` Python package only when the script is run directly. The documented offline pytest command can therefore collect the repository without that separately installed package. The smoke script uses the same `sponsor` and `selfpromo` categories as production.
 
 ## Verification performed
 

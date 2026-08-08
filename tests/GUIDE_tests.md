@@ -14,8 +14,9 @@ Coverage is organized around public architecture seams:
 - queue, archive, bypass, activity, and authentication stores;
 - CLI, configuration, scheduler, password, and Docker bootstrap behavior.
 
-The live SponsorBlock smoke script remains `test_sponsorblock.py` at the root
-and is intentionally separate from normal collection.
+The live SponsorBlock smoke script lives at
+`scripts/sponsorblock_smoke_check.py`. It hits the network, so it is kept out of
+`tests/` and is not named like a test module, which keeps it out of collection.
 
 ## Part 2: Code Reference
 

@@ -49,6 +49,10 @@ secrets.toml
 .netrc
 
 # Runtime artifacts
+# urls.txt is the operator's live queue: the app rewrites it and creates a
+# starter copy when it is missing, so it is state, not source.
+urls.txt
+bypass_age_check_urls.txt
 download.log
 activity.log
 downloaded_urls.txt

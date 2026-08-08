@@ -136,7 +136,7 @@ Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files old
 There is one manual live-network script:
 
 ```bash
-uv run python test_sponsorblock.py
+uv run --with "yt-dlp[default]" python scripts/sponsorblock_smoke_check.py
 ```
 
 It is intentionally kept out of the normal pytest suite because it depends on the live YouTube and SponsorBlock ecosystem.

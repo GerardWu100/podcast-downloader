@@ -55,8 +55,9 @@ interrupted process does not leave partial JSON.
   then performs the best-effort `yt-dlp` update.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
-- `test_sponsorblock.py`: opt-in live-network smoke test; it is not part of the
-  normal offline suite.
+- `scripts/sponsorblock_smoke_check.py`: opt-in live-network check run by hand.
+  It lives outside `tests/` and is not named like a test module so that the
+  offline suite never collects it.
 
 Useful commands:
 
@@ -72,3 +73,8 @@ uv run python -m pytest -q
 - 2026-07-26: The conservative refactor made `src/api.py` a deployment-only
   entrypoint, split web/media/download/state ownership, and removed the old
   `downloader.py`, `url_utils.py`, and `activity_log.py` adapters.
+- 2026-08-08: Repository cleanup. `urls.txt` stopped being tracked because it is
+  operator state that the app rewrites and recreates when missing; the live
+  smoke script moved from the root to `scripts/`; a superseded 2025 blog draft
+  under `content/` was deleted in favour of `blog/`. `.dockerignore` now excludes
+  runtime state and session files that `COPY . .` was baking into the image.
