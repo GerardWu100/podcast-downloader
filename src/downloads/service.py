@@ -161,7 +161,6 @@ class PodcastDownloadService:
             logger=self.logger,
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
         )
-        self._downloaded_urls = self._load_downloaded_urls()
 
         if self.cookies_file:
             cookie_mode = "always" if self.always_use_cookies else "fallback"
@@ -478,25 +477,15 @@ class PodcastDownloadService:
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
 
-    def _load_downloaded_urls(self) -> set[str]:
-        """Load the archive of expanded URLs that already succeeded."""
-        return self.archive_store.load()
-
     @property
     def downloaded_urls(self) -> set[str]:
-        """Return the latest archived expanded URLs from disk.
+        """Return the archived expanded URLs that already succeeded.
 
-        The archive is shared across downloader processes and service objects,
-        so this property refreshes from disk on access instead of trusting only
-        constructor-time state.
+        The archive file is shared across downloader processes and service
+        objects, so this reads from disk on every access rather than caching.
+        Callers that need the set to stay stable should bind it to a local.
         """
-        self._downloaded_urls = self._load_downloaded_urls()
-        return set(self._downloaded_urls)
-
-    @downloaded_urls.setter
-    def downloaded_urls(self, urls: set[str]) -> None:
-        """Replace the in-memory archive cache used by compatibility callers."""
-        self._downloaded_urls = set(urls)
+        return self.archive_store.load()
 
     def _record_activity(self, message: str) -> None:
         """Append one concise browser-facing activity event."""
@@ -645,9 +634,7 @@ class PodcastDownloadService:
                 continue
 
             deleted_files.append(audio_file)
-            archive_removed = self.archive_store.remove(source_url)
-            if archive_removed:
-                self._downloaded_urls.discard(normalize_youtube_url(source_url))
+            self.archive_store.remove(source_url)
             self.logger.info("Deleted expired MP3: %s", audio_file)
             self._record_activity(f"Deleted expired MP3: {audio_file.name}")
 
@@ -761,13 +748,12 @@ class PodcastDownloadService:
             self.downloads_dir / FALLBACK_SINGLE_DOWNLOAD_FOLDER
         )
         target_work_dir = self._work_dir_for_final_output_dir(target_final_output_dir)
-        # Refresh archive state because another process may have updated the file.
-        self._downloaded_urls = self._load_downloaded_urls()
 
         if use_archive:
+            # The transaction reads the archive under an exclusive lock, so it
+            # already sees writes from other downloader processes.
             with self.archive_store.locked_transaction() as archive:
                 if archive.contains(normalized_url):
-                    self._downloaded_urls.add(normalized_url)
                     self.logger.info("Already downloaded: %s", normalized_url)
                     return normalized_url, True
 
@@ -780,7 +766,6 @@ class PodcastDownloadService:
                 )
                 if success:
                     archive.append_success(normalized_url)
-                    self._downloaded_urls.add(normalized_url)
                 return result_url, success
 
         return self._download_video_unlocked(
