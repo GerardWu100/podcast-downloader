@@ -12,8 +12,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..config import DEFAULT_CHANNEL_VIDEO_COUNT
+from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..media.youtube import (
     expand_channel_or_playlist,
     get_video_metadata,
@@ -174,8 +174,7 @@ class PodcastDownloadService:
     def _sanitize_download_folder_name(self, raw_name: str) -> str:
         """Return a filesystem-safe folder name derived from a source URL."""
         decoded_name = unquote(raw_name).strip()
-        if decoded_name.startswith("@"):
-            decoded_name = decoded_name[1:]
+        decoded_name = decoded_name.removeprefix("@")
 
         without_handle_prefix = decoded_name
         collapsed_whitespace = re.sub(r"\s+", "-", without_handle_prefix)

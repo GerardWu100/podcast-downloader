@@ -22,12 +22,11 @@ Outputs
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import textwrap
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
-
 
 BLOG_DIR = Path(__file__).resolve().parent
 DATA_FILE = BLOG_DIR / "data" / "pipeline.json"

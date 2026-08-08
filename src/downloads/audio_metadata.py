@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
-
 
 FFMPEG_METADATA_TIMEOUT_SECONDS = 120
 ID3V2_VERSION_WITH_FULL_DATE = "4"

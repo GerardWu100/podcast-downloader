@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 
 from .urls import normalized_hostname
 
-
 YTDLP_MISSING_VALUE_PLACEHOLDERS = {"", "NA", "N/A", "None", "none", "null"}
 YOUTUBE_CHANNEL_CONTENT_TABS = {"streams", "videos"}
 YOUTUBE_CHANNEL_ID_PATTERN = re.compile(r"^UC[\w-]{20,}$")

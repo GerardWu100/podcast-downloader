@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from src.state.activity_store import ActivityLogStore
 from src.state.archive_store import ArchiveStore
 from src.state.bypass_store import BypassStore
 from src.state.queue_store import QueueStore
@@ -68,3 +69,19 @@ def test_archive_append_repairs_missing_final_newline(tmp_path: Path) -> None:
 
     assert store.load() == {_URL_A, _URL_B}
     assert archive_file.read_text(encoding="utf-8") == f"{_URL_A}\n{_URL_B}\n"
+
+
+def test_activity_log_append_repairs_missing_final_newline(tmp_path: Path) -> None:
+    """A hand-edited activity log gains a separator instead of a merged line."""
+    activity_log_file = tmp_path / "activity.log"
+    activity_log_file.write_text(
+        "[2026-01-01 00:00] hand written entry", encoding="utf-8"
+    )
+
+    store = ActivityLogStore(activity_log_file)
+    store.write_event("Downloaded: something")
+
+    lines = activity_log_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+    assert lines[0] == "[2026-01-01 00:00] hand written entry"
+    assert lines[1].endswith("Downloaded: something")

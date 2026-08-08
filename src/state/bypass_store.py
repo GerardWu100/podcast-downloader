@@ -6,7 +6,7 @@ import fcntl
 import logging
 from pathlib import Path
 
-from .file_locks import locked_text_file
+from .file_locks import locked_line_file, locked_text_file
 
 
 class BypassStore:
@@ -24,11 +24,14 @@ class BypassStore:
         if not self.bypass_file.exists():
             return set()
         try:
-            with locked_text_file(self.bypass_file, "r", fcntl.LOCK_SH) as file_handle:
+            with locked_line_file(
+                self.bypass_file,
+                "r",
+                fcntl.LOCK_SH,
+            ) as bypass_lines:
                 return {
-                    normalize_youtube_url(line.strip())
-                    for line in file_handle
-                    if line.strip() and not line.strip().startswith("#")
+                    normalize_youtube_url(entry)
+                    for entry in bypass_lines.entries(skip_comments=True)
                 }
         except Exception as exc:
             self.logger.warning("Could not read bypass age check file: %s", exc)
@@ -39,29 +42,18 @@ class BypassStore:
         from ..media.youtube import normalize_youtube_url
 
         normalized = normalize_youtube_url(url.strip())
-        self.bypass_file.parent.mkdir(parents=True, exist_ok=True)
-        if not self.bypass_file.exists():
-            self.bypass_file.touch()
         try:
-            with locked_text_file(
+            with locked_line_file(
                 self.bypass_file,
                 "a+",
                 fcntl.LOCK_EX,
-            ) as file_handle:
-                file_handle.seek(0)
-                existing: set[str] = set()
-                last_line = ""
-                for line in file_handle:
-                    last_line = line
-                    if line.strip():
-                        existing.add(normalize_youtube_url(line.strip()))
+            ) as bypass_lines:
+                existing = {
+                    normalize_youtube_url(entry)
+                    for entry in bypass_lines.entries(skip_comments=True)
+                }
                 if normalized not in existing:
-                    file_handle.seek(0, 2)
-                    # Repair a missing final newline so the new URL is not
-                    # spliced onto a hand-edited last line.
-                    if last_line and not last_line.endswith("\n"):
-                        file_handle.write("\n")
-                    file_handle.write(f"{normalized}\n")
+                    bypass_lines.append_line(normalized)
         except Exception as exc:
             self.logger.warning("Could not write to bypass age check file: %s", exc)
 

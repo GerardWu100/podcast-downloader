@@ -6,7 +6,7 @@ import fcntl
 import logging
 from pathlib import Path
 
-from .file_locks import locked_text_file
+from .file_locks import locked_line_file, locked_text_file
 
 
 class QueueStore:
@@ -177,29 +177,13 @@ class QueueStore:
         if not urls:
             return 0
 
-        self.urls_file.parent.mkdir(parents=True, exist_ok=True)
-        if not self.urls_file.exists():
-            self.urls_file.touch()
-
         added = 0
-        with locked_text_file(self.urls_file, "a+", fcntl.LOCK_EX) as file_handle:
-            file_handle.seek(0)
-            existing = set()
-            last_line = ""
-            for line in file_handle:
-                last_line = line
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                existing.add(normalize_youtube_url(stripped))
+        with locked_line_file(self.urls_file, "a+", fcntl.LOCK_EX) as queue_lines:
+            existing = {
+                normalize_youtube_url(entry)
+                for entry in queue_lines.entries(skip_comments=True)
+            }
 
-            # A hand-edited urls.txt may omit the trailing newline on its final
-            # line. Appending straight to the end would splice the first new URL
-            # onto that line and corrupt both entries, so repair the separator
-            # before writing. An empty file needs no separator.
-            needs_separator = bool(last_line) and not last_line.endswith("\n")
-
-            file_handle.seek(0, 2)
             for raw_url in urls:
                 url = raw_url.strip()
                 if not url:
@@ -212,10 +196,7 @@ class QueueStore:
                 if normalized in existing:
                     continue
 
-                if needs_separator:
-                    file_handle.write("\n")
-                    needs_separator = False
-                file_handle.write(f"{normalized}\n")
+                queue_lines.append_line(normalized)
                 existing.add(normalized)
                 added += 1
 

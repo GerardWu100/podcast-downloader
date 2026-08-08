@@ -19,9 +19,18 @@ lock permits concurrent readers; an exclusive lock serializes mutation.
 `AuthStore` locks a stable sibling lock file because the JSON data file itself
 is replaced atomically.
 
+Every line-per-entry store goes through `locked_line_file()`, which yields a
+`LockedLineFile`. That class owns the two rules those files share: read entries
+as stripped non-blank lines (optionally skipping `#` comments), and append only
+through `append_line()`, which writes a separator first when the file does not
+already end in a newline. Keeping the rule in one place is what makes it hold
+for every append path rather than for whichever ones a caller remembered.
+`AuthStore` deliberately stays on `locked_text_file()` because JSON documents
+and zero-content lock files are not line-per-entry.
+
 ## Part 2: Code Reference
 
-- `file_locks.py`: `locked_text_file()`.
+- `file_locks.py`: `locked_text_file()`, `LockedLineFile`, `locked_line_file()`.
 - `queue_store.py`: queue creation, reads, normalized append, and removal.
 - `archive_store.py`: archive reads, append/remove, and long transactions.
 - `bypass_store.py`: one-shot age-bypass state.
@@ -40,3 +49,8 @@ is replaced atomically.
   trailing newline had the next appended URL spliced onto that line, losing both
   entries. Each append now repairs the missing separator first
   (`tests/test_append_newline_safety.py`).
+- 2026-08-08: Moved that separator repair out of the three stores and into the
+  shared `LockedLineFile`. The per-store version had missed
+  `ActivityLogStore.write_event`, which was still merging events onto a
+  hand-edited final line; it is now covered too. `BypassStore.add` also stopped
+  treating commented-out URLs as duplicates, matching `BypassStore.load`.

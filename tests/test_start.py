@@ -5,13 +5,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
-import start
 import src.config as config_module
-from src.trigger import pop_batch_download_request
-from src.trigger import pop_single_url_download_requests
-from src.trigger import queue_batch_download
-from src.trigger import queue_single_url_download
+import start
+from src.trigger import (
+    pop_batch_download_request,
+    pop_single_url_download_requests,
+    queue_batch_download,
+    queue_single_url_download,
+)
 
 
 def test_run_immediate_downloads_processes_single_url_requests(monkeypatch) -> None:

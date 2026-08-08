@@ -1,8 +1,8 @@
 """Tests for security fixes and code quality."""
 
-from pathlib import Path
 import subprocess
 import time
+from pathlib import Path
 
 from src.media import youtube
 
@@ -110,8 +110,8 @@ def test_login_action_accepts_valid_password_and_rejects_invalid_password(
     tmp_path: Path,
 ) -> None:
     """Login should authenticate by behavior without relying on implementation text."""
-    from src.web import routes as api
     from src.passwords import hash_password
+    from src.web import routes as api
 
     password_file = tmp_path / ".ui_password"
     password_file.write_text(f"{hash_password('correct-password')}\n", encoding="utf-8")

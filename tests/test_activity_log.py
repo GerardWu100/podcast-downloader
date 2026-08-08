@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 import fcntl
+import logging
 import multiprocessing
-from pathlib import Path
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import logging
-
+import src.state.activity_store as activity_store_module
+from src.downloads.service import PodcastDownloadService
 from src.state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
     activity_log_file_for,
 )
-from src.downloads.service import PodcastDownloadService
-import src.state.activity_store as activity_store_module
 
 
 def test_activity_log_file_uses_download_log_directory(tmp_path: Path) -> None:

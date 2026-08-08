@@ -5,9 +5,9 @@ from __future__ import annotations
 import fcntl
 import logging
 import multiprocessing
-from pathlib import Path
 import threading
 import time
+from pathlib import Path
 
 from src.state.archive_store import ArchiveStore
 

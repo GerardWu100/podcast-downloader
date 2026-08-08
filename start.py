@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import uvicorn
-
-from src.trigger import download_trigger
-from src.trigger import pop_batch_download_request
-from src.trigger import pop_full_playlist_download_requests
-from src.trigger import pop_single_url_download_requests
-
+from src.trigger import (
+    download_trigger,
+    pop_batch_download_request,
+    pop_full_playlist_download_requests,
+    pop_single_url_download_requests,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 

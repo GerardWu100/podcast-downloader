@@ -7,19 +7,20 @@ from collections.abc import Callable
 
 from fastapi.responses import HTMLResponse
 
-# Inline SVG favicon (a download arrow onto a tray) shared by every page. It is
-# served as a base64 data URI so no static-file route is needed; the existing
-# Content-Security-Policy already allows ``img-src data:``. Without it browsers
-# request ``/favicon.ico`` and log a 404 on every page load.
+# Inline SVG favicon (a download arrow above a tray) shared by every page,
+# served as a data URI so no static-file route is needed. Without it browsers
+# request /favicon.ico and log a 404 on every page load. The URI is written in
+# readable SVG with only "#", "<" and ">" percent-encoded, so the artwork can be
+# edited in place. src/web/auth.py sets "img-src 'self' data:", which allows it.
+FAVICON_ACCENT_COLOR = "%232563eb"  # "#2563eb", matching --accent in BASE_STYLES
 FAVICON_TAG = (
-    '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,'
-    "PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAz"
-    "MiAzMic+PHJlY3Qgd2lkdGg9JzMyJyBoZWlnaHQ9JzMyJyByeD0nNycgZmlsbD0nIzI1NjNl"
-    "YicvPjxwYXRoIGQ9J00xNiA3djEwbTAgMGwtNC00bTQgNGw0LTQnIGZpbGw9J25vbmUnIHN0"
-    "cm9rZT0nI2ZmZicgc3Ryb2tlLXdpZHRoPScyLjQnIHN0cm9rZS1saW5lY2FwPSdyb3VuZCcg"
-    "c3Ryb2tlLWxpbmVqb2luPSdyb3VuZCcvPjxwYXRoIGQ9J005IDIyaDE0JyBmaWxsPSdub25l"
-    "JyBzdHJva2U9JyNmZmYnIHN0cm9rZS13aWR0aD0nMi40JyBzdHJva2UtbGluZWNhcD0ncm91"
-    "bmQnLz48L3N2Zz4="
+    '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,'
+    "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E"
+    f"%3Crect width='32' height='32' rx='7' fill='{FAVICON_ACCENT_COLOR}'/%3E"
+    "%3Cpath d='M16 7v10m0 0l-4-4m4 4l4-4' fill='none' stroke='%23fff'"
+    " stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E"
+    "%3Cpath d='M9 22h14' fill='none' stroke='%23fff' stroke-width='2.4'"
+    " stroke-linecap='round'/%3E%3C/svg%3E"
     '" />'
 )
 

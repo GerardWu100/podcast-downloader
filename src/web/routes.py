@@ -17,13 +17,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..config import ConfigError, PodcastConfig, load_config
 from ..log_timezone import LOG_TIME_ZONE
-from ..passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
-from ..trigger import (
-    DownloadTrigger,
-    in_process_download_trigger,
-    pop_full_playlist_download_requests,
-    pop_single_url_download_requests,
-)
 from ..media.urls import is_supported_media_url
 from ..media.youtube import (
     is_channel_or_playlist,
@@ -31,6 +24,7 @@ from ..media.youtube import (
     is_youtube_url,
     normalize_youtube_url,
 )
+from ..passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
@@ -40,6 +34,12 @@ from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
+from ..trigger import (
+    DownloadTrigger,
+    in_process_download_trigger,
+    pop_full_playlist_download_requests,
+    pop_single_url_download_requests,
+)
 from .auth import client_ip, request_is_secure, security_headers
 from .templates import render_help_page, render_login_page, render_queue_page
 
@@ -48,9 +48,9 @@ _Dependency = TypeVar("_Dependency")
 
 # Tests and older callers reset pending trigger state through this module.
 __all__ = [
-    "router",
     "pop_full_playlist_download_requests",
     "pop_single_url_download_requests",
+    "router",
 ]
 
 router = APIRouter()
@@ -303,7 +303,6 @@ def _save_session_state(
     request: Request | None = None,
 ) -> None:
     _auth_store(request).save_sessions(state)
-    return
 
 
 SESSIONS = _load_session_state()

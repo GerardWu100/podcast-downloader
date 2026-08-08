@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-import time
 
 from src.state.activity_store import ActivityLogStore
 from src.state.archive_store import ArchiveStore

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import asyncio
 import time
+from dataclasses import replace
 
 import pytest
-
-from src.web import routes as api_module
 import src.config as config_module
 from src.passwords import DEFAULT_UI_PASSWORD, hash_password
 from src.trigger import (
@@ -16,6 +14,7 @@ from src.trigger import (
     pop_full_playlist_download_requests,
     queue_batch_download,
 )
+from src.web import routes as api_module
 
 
 class _FakeClient:

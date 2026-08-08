@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from .config import ConfigError, DEFAULT_CHANNEL_VIDEO_COUNT, load_config
+from .config import DEFAULT_CHANNEL_VIDEO_COUNT, ConfigError, load_config
 from .downloads.service import PodcastDownloadService
 from .media.urls import is_supported_media_url
 from .media.youtube import (

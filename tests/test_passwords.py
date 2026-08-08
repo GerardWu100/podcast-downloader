@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from src.passwords import hash_password, is_password_hash, verify_password
 
 
