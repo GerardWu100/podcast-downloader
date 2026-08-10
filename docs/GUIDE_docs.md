@@ -2,17 +2,17 @@
 
 ## Part 1: Documentation Purpose
 
-`docs/` contains user- and operator-facing material. Developer navigation lives
-in `GUIDE_*` files beside the code.
+`docs/` contains material for users and operators. Developer navigation lives
+in the `GUIDE_*` files beside the code.
 
 The reading order is:
 
-1. `intro.md` for purpose and project map.
-2. `architecture.md` for pipeline, module boundaries, state, and trust.
+1. `intro.md` for the purpose and project map.
+2. `architecture.md` for the pipeline, code boundaries, saved state, and trust.
 3. `cli-and-config.md` for commands and settings.
-4. `web-ui-security.md` for authentication and browser controls.
+4. `web-ui-security.md` for sign-in and browser protections.
 5. `operations.md` for local and Docker operation.
-6. `review-and-safety.md` for review findings and residual risks.
+6. `review-and-safety.md` for review findings and remaining risks.
 
 `superpowers/plans/` stores implementation plans as historical engineering
 artifacts. A completed plan may describe modules that existed before its

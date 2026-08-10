@@ -1,4 +1,4 @@
-"""Locked queue-file storage for monitored media URLs."""
+"""Store and edit the monitored media URL queue under a file lock."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .file_locks import locked_line_file, locked_text_file
 
 
 class QueueStore:
-    """Read and mutate the durable ``urls.txt`` queue under file locks.
+    """Read and edit the saved ``urls.txt`` queue under file locks.
 
     Parameters
     ----------
@@ -68,7 +68,7 @@ class QueueStore:
 """
         self.urls_file.write_text(sample_content, encoding="utf-8")
         self.logger.info("Created sample URLs file: %s", self.urls_file)
-        self.logger.info("Please add your media URLs and run again.")
+        self.logger.info("Add media URLs to the file, then run the downloader again.")
 
     def read_urls(self) -> list[str]:
         """Read valid queue entries and ignore comments and blank lines."""

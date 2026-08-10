@@ -1,4 +1,4 @@
-"""PBKDF2 hashing and verification for the web UI credentials file."""
+"""Hash and verify web UI passwords with PBKDF2."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def verify_password(password: str, stored_value: str) -> bool:
         _, iterations_text, salt_text, expected_hash_text = stored_value.split("$", 3)
         iterations = int(iterations_text)
         if iterations < 100_000:
-            # Reject very low iteration counts; anything below this is not a real hash.
+            # Reject unusually weak hashes instead of accepting them silently.
             return False
         salt_bytes = _b64decode(salt_text)
         expected_hash = _b64decode(expected_hash_text)

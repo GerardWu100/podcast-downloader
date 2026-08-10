@@ -1,4 +1,4 @@
-"""Locked, atomic JSON persistence for web authentication state."""
+"""Save web sign-in state in locked, safely replaced JSON files."""
 
 from __future__ import annotations
 
@@ -48,8 +48,8 @@ class AuthStore:
         if not isinstance(raw_state, dict):
             return {}
 
-        # Only dictionary records are meaningful to session and rate-limit
-        # callers. Ignore malformed entries without rejecting healthy state.
+        # Keep only dictionary records used by session and login-limit code.
+        # Ignore malformed entries without rejecting the healthy records.
         return {
             str(key): value
             for key, value in raw_state.items()
@@ -58,7 +58,7 @@ class AuthStore:
 
     @staticmethod
     def _write_unlocked(state_file: Path, state: JsonState) -> None:
-        """Atomically replace one JSON state file through a sibling temporary."""
+        """Write one JSON state file through a temporary sibling, then replace it."""
         state_file.parent.mkdir(parents=True, exist_ok=True)
         temporary_file = state_file.with_name(f".{state_file.name}.tmp")
         temporary_file.write_text(
@@ -68,7 +68,7 @@ class AuthStore:
         temporary_file.replace(state_file)
 
     def _read(self, state_file: Path) -> JsonState:
-        """Read state while holding the shared interprocess lock."""
+        """Read state while holding a shared process lock."""
         with locked_text_file(
             self._lock_file(state_file),
             "a+",
@@ -77,7 +77,7 @@ class AuthStore:
             return self._read_unlocked(state_file)
 
     def _write(self, state_file: Path, state: JsonState) -> None:
-        """Replace state while holding the exclusive interprocess lock."""
+        """Replace state while holding an exclusive process lock."""
         with locked_text_file(
             self._lock_file(state_file),
             "a+",

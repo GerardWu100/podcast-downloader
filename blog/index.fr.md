@@ -12,7 +12,7 @@ Je voulais un petit service capable de surveiller une chaîne YouTube, de retire
 
 `yt-dlp` se charge de l’extraction. SponsorBlock fournit des plages temporelles maintenues par la communauté pour les segments de sponsoring et d’autopromotion. `ffmpeg` recopie l’audio tout en mettant ses tags à jour. Ces outils prennent en charge le traitement multimédia. L’application doit encore déterminer si l’épisode existe réellement, s’il est prudent de marquer l’URL comme terminée et ce qui se passe lorsque deux processus du scheduler voient le même élément.
 
-La leçon de conception la plus utile tient en une phrase : la réussite d’un sous-processus est un indice, pas la transition d’état elle-même.
+La leçon de conception la plus utile tient en une phrase : la réussite d’une commande est un indice, pas la preuve qu’il faut marquer l’URL comme terminée.
 
 ## D’une URL à un élément de la bibliothèque
 
@@ -22,7 +22,7 @@ Pour YouTube, le téléchargement demande à SponsorBlock de retirer les catégo
 
 ![Le pipeline complet, de l’URL à la bibliothèque](images/pipeline-flow.png)
 
-Le schéma sépare trois préoccupations que l’on confond facilement. La politique de source décide *quoi* tenter. La preuve locale établit si la tentative a produit un artefact exploitable. L’état durable ne change qu’après cette preuve et la publication du fichier.
+Le schéma sépare trois préoccupations que l’on confond facilement. La politique de source décide *quoi* tenter. Les vérifications locales établissent si la tentative a produit un fichier exploitable. L’état sauvegardé ne change qu’après cette vérification et la publication du fichier.
 
 Le répertoire de travail et la bibliothèque finale sont également distincts. `yt-dlp` écrit les fichiers partiels, miniatures et fichiers convertis dans un dossier de travail propre à la source. Seul un MP3 dont les tags ont été écrits rejoint le répertoire lu par Audiobookshelf. Après un échec, les fichiers temporaires sont supprimés, sauf dans un cas de récupération précis où un MP3 existant peut être conservé pour retenter l’écriture des métadonnées.
 
@@ -30,7 +30,7 @@ Le modèle de nom est `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. Le pr
 
 ## Définir la réussite à partir du système de fichiers
 
-Un code de sortie nul ne prouve pas qu’un nouveau MP3 est apparu. Un extracteur peut conclure que l’élément existe déjà, réutiliser un chemin ou terminer sans produire l’artefact attendu par l’application. Le téléchargeur prend donc un instantané de tous les MP3 présents sous le répertoire de travail avant et après chaque tentative.
+Un code de sortie nul ne prouve pas qu’un nouveau MP3 est apparu. Un extracteur peut conclure que l’élément existe déjà, réutiliser un chemin ou terminer sans produire le fichier attendu par l’application. Le téléchargeur enregistre donc tous les MP3 présents sous le répertoire de travail avant et après chaque tentative.
 
 Pour un chemin MP3 $p$, soit $m(p)$ son heure de modification dans le système de fichiers, en nanosecondes, et $z(p)$ sa taille en octets. L’état enregistré est la paire ordonnée
 
@@ -106,7 +106,7 @@ Cette asymétrie est intentionnelle : une incertitude au téléchargement laisse
 
 ## L’idempotence exige un verrou autour de la partie lente
 
-Les vidéos issues d’une chaîne ou d’une playlist sont inscrites dans `downloaded_urls.txt`. Cette archive rend les sondages répétés idempotents : revoir la même URL normalisée ne doit pas déclencher un second téléchargement.
+Les vidéos issues d’une chaîne ou d’une playlist sont inscrites dans `downloaded_urls.txt`. Cet historique rend les sondages répétés sûrs : revoir la même URL normalisée ne doit pas déclencher un second téléchargement.
 
 Une séquence rapide du type « vérifier le fichier, télécharger, puis ajouter l’URL » reste vulnérable à une course. Deux workers peuvent effectuer la vérification avant que l’un des deux ait ajouté l’URL. Le code conserve un verrou exclusif pendant la détection du doublon, la tentative de téléchargement, qui est lente, et l’ajout final en cas de réussite :
 
@@ -136,7 +136,7 @@ Cette décision sérialise le travail. Le verrou porte sur le fichier d’archiv
 
 La file d’attente, l’archive, la liste des dérogations ponctuelles à la limite d’âge et le journal d’activité du navigateur restent de simples fichiers texte UTF-8. Des verrous partagés protègent les lectures ; des verrous exclusifs protègent les opérations de lecture-modification-écriture. Le déploiement reste ainsi facile à inspecter et à sauvegarder, sans prétendre que des écritures texte non coordonnées seraient sûres.
 
-## Frontières de sécurité et de confidentialité
+## Limites de sécurité et de confidentialité
 
 Chaque URL fournie par l’utilisateur apparaît après `--` dans la commande du sous-processus. Une URL commençant par des tirets ne peut donc pas devenir une option de `yt-dlp`. Les requêtes hors YouTube ne reçoivent jamais le chemin du fichier de cookies. Les imports depuis le navigateur acceptent le format Netscape, normalisent les fins de ligne et écrivent le fichier avec le mode propriétaire uniquement `600` sur les systèmes de type Unix.
 
@@ -144,7 +144,7 @@ Ce droit d’accès ne rend pas inoffensive une exportation de navigateur. Le fi
 
 ## Ce que la suite de tests établit
 
-J’ai lancé toute la suite de régression hors ligne le 13 juillet 2026. Les 185 tests ont réussi en environ neuf secondes sur la machine d’audit. Il s’agit de tests comportementaux fondés sur des répertoires temporaires et des sous-processus simulés, pas d’un benchmark de débit.
+La suite de régression hors ligne couvre 208 tests. Ils utilisent des répertoires temporaires et des sous-processus simulés : cette couverture décrit le comportement, pas le débit.
 
 | Frontière vérifiée | Preuve apportée par la suite |
 |---|---|
@@ -158,15 +158,15 @@ J’ai lancé toute la suite de régression hors ligne le 13 juillet 2026. Les 1
 
 La falsification de requête intersite, ou Cross-Site Request Forgery (CSRF), consiste à pousser un navigateur à soumettre une action authentifiée à l’insu de l’utilisateur. L’interface utilise des jetons de connexion à usage unique et des jetons propres à chaque session pour les formulaires qui modifient l’état, en plus d’un mot de passe haché et d’en-têtes de navigateur restrictifs. C’est une protection raisonnable pour une interface d’administration personnelle, pas une transformation du service en plateforme multi-utilisateur.
 
-Le dépôt contient aussi, à la racine, un smoke test SponsorBlock qui appelle réellement le réseau. Il importe le paquet `yt-dlp`, installé séparément, uniquement dans son point d’entrée et contacte les services externes lorsqu’on l’exécute directement. Cet import tardif permet à toute la suite hors ligne de collecter le dépôt sans ce paquet optionnel. Je n’ai pas lancé le téléchargement réel pendant cet audit ; un déploiement devrait le vérifier séparément lorsque `yt-dlp`, `ffmpeg`, les cookies et l’accès réseau sont disponibles.
+Le dépôt contient aussi une vérification SponsorBlock qui utilise le réseau. Elle importe le paquet `yt-dlp`, installé séparément, uniquement lorsqu’on l’exécute. Cela permet à la suite hors ligne de fonctionner sans ce paquet optionnel. Exécutez cette vérification séparément lorsque `yt-dlp`, `ffmpeg`, les cookies et l’accès réseau sont disponibles.
 
 ## Les limites de cette conception
 
-Ce projet vise une utilisation personnelle avec Audiobookshelf. L’état conservé dans des fichiers est séduisant parce que l’échelle opérationnelle reste petite et que son contenu est transparent. Ce choix deviendrait mauvais avec de nombreux workers, plusieurs utilisateurs ou un système de fichiers partagé à distance. Une file de tâches en base de données, avec des baux et des transitions d’état explicites, serait alors plus facile à raisonner.
+Ce projet vise une utilisation personnelle avec Audiobookshelf. L’état conservé dans des fichiers convient parce que l’échelle reste petite et que le contenu est facile à inspecter. Ce choix deviendrait mauvais avec plusieurs processus de téléchargement, plusieurs utilisateurs ou un système de fichiers partagé à distance. Une file de tâches en base de données, avec des baux et des changements d’état explicites, serait alors plus facile à raisonner.
 
 Le comportement externe reste la plus grande variable incontrôlée. YouTube modifie ses exigences d’extraction, les cookies expirent, la couverture SponsorBlock varie selon la vidéo et `yt-dlp` évolue assez vite pour que le projet installe une version courante hors du fichier de verrouillage. L’image Docker inclut Deno pour les défis JavaScript actuels de YouTube, mais aucun choix de packaging ne peut stabiliser définitivement un extracteur externe.
 
-La frontière locale, elle, est nette : on ne modifie pas l’état durable parce qu’une commande semble sûre d’elle. On observe l’artefact, on inscrit sa provenance, on le publie, puis seulement on marque le travail comme terminé.
+La règle locale est nette : on ne modifie pas l’état sauvegardé parce qu’une commande semble sûre d’elle. On vérifie le fichier, on inscrit sa provenance, on le publie, puis seulement on marque le travail comme terminé.
 
 ## Références
 

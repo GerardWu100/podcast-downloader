@@ -1,4 +1,4 @@
-"""Locked one-shot age-bypass storage for direct YouTube videos."""
+"""Store one-use exceptions to the YouTube waiting period."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .file_locks import locked_line_file, locked_text_file
 
 
 class BypassStore:
-    """Manage URLs that skip the YouTube age gate for one download attempt."""
+    """Manage URLs that skip the YouTube age wait for one attempt."""
 
     def __init__(self, bypass_file: Path, logger: logging.Logger) -> None:
         """Create a bypass store for one ``bypass_age_check_urls.txt`` file."""

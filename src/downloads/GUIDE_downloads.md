@@ -2,27 +2,27 @@
 
 ## Part 1: Download Workflow
 
-`downloads/` turns one concrete URL into a finished MP3. Channel and playlist
-expansion happens in `media/youtube.py` before this boundary.
+`downloads/` turns one individual URL into a finished MP3. Channel and playlist
+expansion happens in `media/youtube.py` before the URL reaches this folder.
 
 ```text
 concrete URL
   -> YtDlpClient downloads into source-scoped scratch folder
-  -> changed MP3 files are identified from before/after snapshots
-  -> AudioMetadataWriter stamps completion date and canonical source URL
-  -> PodcastDownloadService publishes MP3 into the final source folder
-  -> queue/archive/bypass stores record the state transition
+  -> compare the MP3 files before and after the command
+  -> AudioMetadataWriter writes the completion date and source URL
+  -> PodcastDownloadService moves the MP3 into the final source folder
+  -> queue/archive/bypass stores record the result
 ```
 
-`YtDlpClient` owns audio command construction, the per-attempt subprocess
-timeout, SponsorBlock flags, cookie/plain retry order, recursive MP3 snapshots,
-and changed-file detection. The timeout comes from `download_timeout_seconds`
-in `config.ini` and defaults to one hour, because it has to cover the media
-download plus the MP3 conversion for episodes that run one to three hours. It returns `YtDlpResult`, whose named fields include
-the final exit status, output, snapshots, changed files, and attempt count.
+`YtDlpClient` builds the audio command, applies the per-attempt timeout, sets
+SponsorBlock flags, chooses cookie order, records MP3 snapshots, and finds
+changed files. The timeout comes from `download_timeout_seconds` in
+`config.ini` and defaults to one hour so it can cover a long episode and MP3
+conversion. It returns `YtDlpResult`, which includes the final status, output,
+snapshots, changed files, and attempt count.
 
-The service owns use-case decisions: age checks, expansion orchestration,
-publication, metadata recovery, cleanup, retention, and archive transactions.
+The service owns workflow decisions: age checks, expansion, publication,
+metadata recovery, cleanup, retention, and archive transactions.
 It accepts an injected client and consumes the client's typed result directly,
 so command policy and snapshots are not reconstructed inside the service.
 

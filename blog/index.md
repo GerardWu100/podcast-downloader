@@ -8,11 +8,11 @@ categories: ["Computer Science", "Data Engineering"]
 
 # A Podcast Downloader That Does Not Trust Exit Code 0
 
-I wanted a small service that could watch a YouTube channel, strip sponsor segments, and place finished episodes in Audiobookshelf. The first version of that sentence sounds like a wrapper around one command. The finished project is mostly about everything that can go wrong around that command.
+I wanted a small service that could watch a YouTube channel, strip sponsor segments, and place finished episodes in Audiobookshelf. The first version of that sentence sounds like a small tool around one command. The finished project is mostly about everything that can go wrong around that command.
 
 `yt-dlp` handles extraction. SponsorBlock supplies community-maintained time ranges for sponsor and self-promotion segments. `ffmpeg` copies the audio while updating its tags. Those tools handle the media work. The application still has to decide whether an episode really exists, whether it is safe to mark the URL as complete, and what happens when two scheduler processes see the same item.
 
-The useful design lesson turned out to be simple: a successful subprocess is only evidence. It is not the state transition.
+The useful design lesson turned out to be simple: a successful command is only evidence. It does not by itself mean that the application should mark the URL complete.
 
 ## From a URL to a library item
 
@@ -22,7 +22,7 @@ YouTube downloads add SponsorBlock removal for the `sponsor` and `selfpromo` cat
 
 ![The complete URL-to-library pipeline](images/pipeline-flow.png)
 
-The diagram separates three concerns that are easy to blur together. Source policy decides *what* to attempt. Local proof decides whether the attempt produced a usable artifact. Durable state changes only after that proof and publication succeed.
+The diagram separates three concerns that are easy to blur together. Source policy decides *what* to attempt. Local checks decide whether the attempt produced a usable file. Saved state changes only after that check and publication succeed.
 
 The scratch directory and the finished library are also separate. `yt-dlp` writes partial files, thumbnails, and converted audio into a per-source work folder. Only a stamped MP3 is moved into the Audiobookshelf-facing directory. A failed attempt cleans its scratch files, except for one narrow recovery case where an existing MP3 may be kept for a later metadata retry.
 
@@ -30,7 +30,7 @@ The output template is `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. The 
 
 ## Define success from the filesystem
 
-A return code of zero does not prove that a new MP3 appeared. An extractor can decide that an item is already present, reuse an existing path, or complete without producing the artifact the application expects. The downloader therefore snapshots every MP3 below the work directory before and after each attempt.
+A return code of zero does not prove that a new MP3 appeared. An extractor can decide that an item is already present, reuse an existing path, or finish without producing the file the application expects. The downloader therefore records every MP3 below the work directory before and after each attempt.
 
 For an MP3 path $p$, let $m(p)$ be its filesystem modification time in nanoseconds and let $z(p)$ be its size in bytes. The recorded state is the ordered pair
 
@@ -58,7 +58,7 @@ $$
 S(u) = V(u) \land M(u) \land P(u).
 $$
 
-The queue or archive changes only when $S(u)$ is true. This is the actual state machine behind the prose: queued, attempted, verified, stamped, published, then recorded.
+The queue or archive changes only when $S(u)$ is true. In plain language: the URL is queued, tried, checked, tagged, published, and recorded—in that order.
 
 The implementation is intentionally plain:
 
@@ -78,7 +78,7 @@ def _detect_changed_audio_files(
     return sorted(changed_files)
 ```
 
-There is one conservative recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the active source work folder, the service may retry the metadata step on that file. This covers a prior run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess. Scoping this lookup matters: an earlier implementation searched the entire intermediate tree and could mistake the sole MP3 from another source for the current URL's output. A regression test now fixes that boundary.
+There is one cautious recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the active source work folder, the service may retry the tagging step on that file. This covers a previous run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess. The search must stay in the active folder: an earlier implementation searched the whole temporary tree and could use another source's MP3 by mistake.
 
 ## Retry policy: alternate credentials, not blind repetition
 
@@ -106,7 +106,7 @@ The asymmetry matters: download uncertainty leaves work retryable, while deletio
 
 ## Idempotency needs a lock around the slow part
 
-Expanded channel and playlist videos are recorded in `downloaded_urls.txt`. That archive makes repeated polling idempotent: seeing the same normalized URL again should not trigger another download.
+Expanded channel and playlist videos are recorded in `downloaded_urls.txt`. That history makes repeated polling safe: seeing the same normalized URL again should not trigger another download.
 
 A quick “check the file, then download, then append” sequence is still racy. Two workers can both check before either one appends. The code holds one exclusive file lock across the duplicate check, the slow download attempt, and the success append:
 
@@ -132,11 +132,11 @@ if use_archive:
 
 Holding a lock during a network download is normally something I would question. Here it protects a narrow per-archive invariant, and concurrent duplicate work is more costly than waiting. The lock uses Python's [`fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock), so this design assumes a Unix-like local filesystem with compatible advisory locking. The test suite starts two downloader objects against the same expanded URL and verifies that `yt-dlp` is called once.
 
-The cost is serialization. The lock is per archive file, not per URL, so two different expanded videos also wait behind each other. That is acceptable for one personal scheduler; it would waste capacity in a multi-worker service. A database queue with per-job leases would be the natural replacement at larger scale.
+The cost is that work happens one item at a time. The lock covers the whole archive file, not one URL, so two different expanded videos also wait behind each other. That is acceptable for one personal scheduler; it would waste capacity in a service with many download processes. A database queue with one lease per job would be a better fit at larger scale.
 
 The queue, archive, one-shot age-bypass list, and browser activity feed all remain ordinary UTF-8 text files. Shared locks protect reads; exclusive locks protect read-modify-write operations. This keeps deployment easy to inspect and back up without pretending that uncoordinated text-file writes are safe.
 
-## Security and privacy boundaries
+## Security and privacy limits
 
 Every user-supplied URL appears after `--` in the subprocess command, which prevents a URL beginning with hyphens from becoming a `yt-dlp` option. Non-YouTube requests never receive the cookie path. Browser uploads accept Netscape-format cookie text, normalize line endings, and write the file with owner-only mode `600` on Unix-like systems.
 
@@ -144,7 +144,7 @@ That permission bit does not make exported browser cookies harmless. A browser e
 
 ## What the test suite establishes
 
-I ran the full offline regression suite on July 13, 2026. All 185 tests passed in roughly nine seconds on the audit machine. These are behavioral tests with temporary directories and patched subprocesses, not a throughput benchmark.
+The offline regression suite covers 208 tests. They use temporary directories and patched subprocesses, so this is behavioral coverage, not a throughput benchmark.
 
 | Verified boundary | Evidence in the suite |
 |---|---|
@@ -158,15 +158,15 @@ I ran the full offline regression suite on July 13, 2026. All 185 tests passed i
 
 Cross-Site Request Forgery (CSRF) is an attack in which a browser is tricked into submitting an authenticated action. The web interface uses one-time login tokens and per-session tokens for state-changing forms, alongside a hashed password and restrictive browser headers. That is reasonable protection for a personal admin surface, but it does not turn the service into a general multi-user platform.
 
-The repository also contains a root-level live SponsorBlock smoke script. It imports the separately installed `yt-dlp` package only inside its entrypoint and contacts external services when run directly. The lazy import lets the full offline suite collect the repository without that optional package. I did not run the live download in this audit; a deployment should run it separately when `yt-dlp`, `ffmpeg`, cookies, and network access are available.
+The repository also contains a live SponsorBlock check. It imports the separately installed `yt-dlp` package only when run directly and contacts external services then. This keeps the offline suite independent of that optional package. Run the check separately when `yt-dlp`, `ffmpeg`, cookies, and network access are available.
 
 ## Where this design stops
 
-This project is built for a personal Audiobookshelf workflow. Its file-backed state is attractive because the operating scale is small and the files are transparent. It would become the wrong storage model if many workers, several users, or a remote shared filesystem entered the picture. At that point, a database-backed job queue with leases and explicit state transitions would be easier to reason about.
+This project is built for a personal Audiobookshelf workflow. Its file-based state works well because the scale is small and the files are easy to inspect. It would be the wrong storage model for many download processes, several users, or a remote shared filesystem. At that point, a database-backed job queue with leases and explicit status changes would be easier to reason about.
 
 External behavior remains the largest uncontrolled variable. YouTube changes extraction requirements, browser cookies expire, SponsorBlock coverage varies by video, and `yt-dlp` evolves quickly enough that this project installs a current release outside its lockfile. The Docker image includes Deno for current YouTube JavaScript challenges, but no packaging choice can make an external extractor permanently stable.
 
-Still, the local boundary is solid: do not mutate durable state because a command sounded confident. Observe the artifact, stamp its provenance, publish it, and only then mark the work complete.
+Still, the local rule is solid: do not change saved state because a command sounded confident. Check the file, record where it came from, publish it, and only then mark the work complete.
 
 ## References
 

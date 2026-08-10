@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compatibility entry point that preserves ``python main.py``."""
+"""Start the downloader with the familiar ``python main.py`` command."""
 
 import sys
 

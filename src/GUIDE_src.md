@@ -2,8 +2,8 @@
 
 ## Part 1: Architecture
 
-`src/` is the importable application package. Dependencies flow from entry
-surfaces into domain owners:
+`src/` is the importable application package. Calls flow from the entry points
+to the part of the code that owns each decision:
 
 ```mermaid
 flowchart LR
@@ -16,15 +16,14 @@ flowchart LR
     API["api.py"] --> Web
 ```
 
-- `media/` decides whether a URL is supported and what a YouTube URL means.
-- `state/` owns durable file formats and locking.
-- `downloads/` turns concrete media URLs into published MP3 files.
-- `web/` constructs the FastAPI app and owns request security, routes, and HTML.
-- `cli.py` parses commands and dispatches to stores or `PodcastDownloadService`.
+- `media/` decides whether a URL is supported and how to interpret YouTube URLs.
+- `state/` owns saved file formats and locking.
+- `downloads/` turns individual media URLs into published MP3 files.
+- `web/` builds the FastAPI app and owns request security, routes, and HTML.
+- `cli.py` parses commands and sends work to the stores or download service.
 
-Provider policy must not mutate queue or archive files. State stores must not
-run `yt-dlp`. The download service coordinates both without reimplementing
-their low-level rules.
+URL rules must not edit queue or history files. State stores must not run
+`yt-dlp`. The download service coordinates both without copying their details.
 
 ## Part 2: Code Reference
 
@@ -43,9 +42,9 @@ their low-level rules.
 - `downloads/GUIDE_downloads.md`: download workflow and external clients.
 - `web/GUIDE_web.md`: application construction, authentication, routes, pages.
 
-Start in the smallest owner matching the change. For example, YouTube URL
+Start with the smallest owner that matches the change. YouTube URL
 classification belongs in `media/youtube.py`; an MP3 publication rule belongs
-in `downloads/service.py`; a queue mutation belongs in `state/queue_store.py`.
+in `downloads/service.py`; a queue edit belongs in `state/queue_store.py`.
 
 ## Part 3: Journal
 

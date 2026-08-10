@@ -122,7 +122,7 @@ def _activity_store(request: Request) -> ActivityLogStore:
 
 
 def _download_trigger(request: Request) -> DownloadTrigger:
-    """Return the injected scheduler wake-up collaborator."""
+    """Return the injected object that wakes the scheduler."""
     return _app_state_value(
         request,
         "download_trigger",
@@ -225,7 +225,7 @@ def _cleanup_expired_sessions(request: Request | None = None) -> None:
 def _cleanup_expired_login_csrf_tokens(
     request: Request | None = None,
 ) -> None:
-    """Remove stale login CSRF tokens so the in-memory store stays small."""
+    """Remove old login tokens so the in-memory map stays small."""
     _cleanup_expired_sessions(request)
     cutoff = time.time() - LOGIN_CSRF_TTL_SECONDS
     expired_session_ids = [
@@ -302,7 +302,7 @@ SESSIONS = _load_session_state()
 
 
 def _require_login(request: Request) -> RedirectResponse | None:
-    """Validate the current session and redirect to login when it is invalid."""
+    """Check the current session and redirect to login when it has expired."""
     session_id = request.cookies.get(SESSION_COOKIE)
     session = SESSIONS.get(session_id)
     if not session:
@@ -316,7 +316,7 @@ def _require_login(request: Request) -> RedirectResponse | None:
 
 
 def _has_valid_session(request: Request) -> bool:
-    """Return whether the request already carries an active remembered session.
+    """Return whether the request carries an active remembered session.
 
     Public entry pages such as ``/`` and ``/login`` use this check to send an
     already-authenticated browser straight to ``/ui``.
@@ -518,7 +518,7 @@ def login_action(
     password:
         Plain-text password submitted by the browser.
     csrf_token:
-        One-time Cross-Site Request Forgery token submitted by the login form.
+        One-time Cross-Site Request Forgery token from the login form.
     csrf_session:
         Identifier used to find the server-side login token.
 
@@ -602,17 +602,17 @@ def logout(
 
 
 _MSG_DISPLAY: dict[str, tuple[str, str]] = {
-    "added": ("msg-ok", "URL added to queue."),
-    "removed": ("msg-ok", "URL removed from queue."),
-    "duplicate": ("msg-warn", "This URL is already in the queue."),
-    "downloaded": ("msg-warn", "This URL has already been downloaded."),
-    "notfound": ("msg-warn", "That URL is no longer in the queue."),
-    "invalid": ("msg-err", "Invalid URL - enter an http(s) media URL."),
-    "error": ("msg-err", "Could not add URL."),
-    "cookies_updated": ("msg-ok", "Cookie file updated."),
+    "added": ("msg-ok", "Source added to the queue."),
+    "removed": ("msg-ok", "Source removed from the queue."),
+    "duplicate": ("msg-warn", "This source is already in the queue."),
+    "downloaded": ("msg-warn", "This source has already been downloaded."),
+    "notfound": ("msg-warn", "That source is no longer in the queue."),
+    "invalid": ("msg-err", "Invalid URL. Enter an http(s) media URL."),
+    "error": ("msg-err", "Could not add that source."),
+    "cookies_updated": ("msg-ok", "YouTube access file updated."),
     "cookies_invalid": (
         "msg-err",
-        "Invalid cookies.txt - upload a Netscape-format file.",
+        "Invalid cookies.txt. Upload a Netscape-format file.",
     ),
     "cookies_error": ("msg-err", "Could not update cookies.txt."),
 }
@@ -651,9 +651,9 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 
     config = _request_config(request)
     if config.min_channel_video_age_hours > 0:
-        bypass_label = html.escape("Download now (skip age wait or full playlist)")
+        bypass_label = html.escape("Run now (skip the wait or download a full playlist)")
     else:
-        bypass_label = html.escape("Download now (full playlist)")
+        bypass_label = html.escape("Run now (download a full playlist)")
     bypass_row_html = f"""
         <div class="bypass-row">
           <label>
@@ -679,7 +679,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         )
         queue_html = f'<ul class="q-list">{items}</ul>'
     else:
-        queue_html = '<p class="empty">No monitored URLs in urls.txt.</p>'
+        queue_html = '<p class="empty">No sources are being monitored.</p>'
 
     count = len(safe_queue_urls)
     last_activity = html.escape(

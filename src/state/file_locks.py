@@ -1,4 +1,4 @@
-"""Shared advisory locking helpers for UTF-8 text state files."""
+"""Shared locks and line-file helpers for UTF-8 state files."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ COMMENT_PREFIX = "#"
 
 @contextmanager
 def locked_text_file(path: Path, mode: str, lock_type: int) -> Iterator[TextIO]:
-    """Open a text file and hold an advisory ``fcntl`` lock.
+    """Open a text file and hold its process-shared ``fcntl`` lock.
 
     Parameters
     ----------
@@ -64,8 +64,8 @@ class LockedLineFile:
         byte_count = os.fstat(self.file_handle.fileno()).st_size
         if byte_count == 0:
             return False
-        # pread reads at an absolute offset without moving the handle, which
-        # text-mode handles cannot do with seek(-1, 2).
+        # `pread` reads at an absolute offset without moving the handle; a
+        # text-mode handle cannot reliably use `seek(-1, 2)`.
         return os.pread(self.file_handle.fileno(), 1, byte_count - 1) != b"\n"
 
     def entries(self, *, skip_comments: bool = False) -> list[str]:
@@ -101,7 +101,7 @@ class LockedLineFile:
             self.file_handle.write(f"{line}\n")
         self.file_handle.truncate()
         self.file_handle.flush()
-        # Every written line is terminated, so a later append needs no repair.
+        # Every written line ends with a newline, so a later append is safe.
         self._separator_is_missing = False
 
 

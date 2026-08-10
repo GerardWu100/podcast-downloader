@@ -1,4 +1,4 @@
-"""Validate generic web media URLs accepted by the downloader."""
+"""Validate the generic web URLs accepted by the downloader."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 
 def normalized_hostname(url: str) -> str:
-    """Return a lower-case hostname with any port removed.
+    """Return the lower-case hostname without its port.
 
     Parameters
     ----------
@@ -26,7 +26,7 @@ def normalized_hostname(url: str) -> str:
 
 
 def is_supported_media_url(url: str) -> bool:
-    """Return whether ``yt-dlp`` may attempt a direct web URL.
+    """Return whether ``yt-dlp`` can try a direct web URL.
 
     Parameters
     ----------
@@ -43,6 +43,6 @@ def is_supported_media_url(url: str) -> bool:
     except ValueError:
         return False
 
-    # Keep provider-independent validation deliberately narrow. Provider
-    # modules apply any additional classification or normalization policy.
+    # Keep this check independent of any provider. Provider modules add their
+    # own classification, normalization, and policy.
     return parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)

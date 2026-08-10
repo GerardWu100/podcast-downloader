@@ -1,11 +1,11 @@
-"""Thread-safe download wake-up state shared by the web UI and scheduler.
+"""Thread-safe queues that let the web UI wake the scheduler.
 
 The web UI and Docker scheduler run in the same Python process under
 ``start.py``. Direct-video additions need one extra piece of state: the exact
 URL that should be considered immediately as a single podcast item. The batch
 flag remains available for scheduler compatibility, but the current browser
 submission path uses the single-URL queue for direct videos and leaves channels
-or playlists for the scheduled full-queue run.
+or playlists for immediate processing instead of waiting for the next full run.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ _batch_download_requested = False
 
 
 class DownloadTrigger(Protocol):
-    """Interface used by the web application to request scheduler work."""
+    """Interface the web app uses to request scheduler work."""
 
     def queue_single_url_download(self, url: str) -> None:
         """Queue one direct media URL for immediate processing."""
@@ -31,7 +31,7 @@ class DownloadTrigger(Protocol):
 
 
 class InProcessDownloadTrigger:
-    """Adapter that submits work to this module's shared scheduler queues."""
+    """Adapter that writes requests to this module's shared queues."""
 
     def queue_single_url_download(self, url: str) -> None:
         """Queue one direct media URL for immediate processing.

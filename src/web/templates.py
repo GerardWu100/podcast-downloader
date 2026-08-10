@@ -7,11 +7,9 @@ from collections.abc import Callable
 
 from fastapi.responses import HTMLResponse
 
-# Inline SVG favicon (a download arrow above a tray) shared by every page,
-# served as a data URI so no static-file route is needed. Without it browsers
-# request /favicon.ico and log a 404 on every page load. The URI is written in
-# readable SVG with only "#", "<" and ">" percent-encoded, so the artwork can be
-# edited in place. src/web/auth.py sets "img-src 'self' data:", which allows it.
+# Every page shares this inline SVG favicon. Keeping it as a data URI avoids a
+# static-file route and prevents browsers from requesting a missing
+# `/favicon.ico`. The SVG stays readable so its artwork can be edited here.
 FAVICON_ACCENT_COLOR = "%232563eb"  # "#2563eb", matching --accent in BASE_STYLES
 FAVICON_TAG = (
     '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,'
@@ -123,8 +121,7 @@ BASE_STYLES = """
   font-size:.78rem; color:var(--muted); font-weight:normal;
 }
 
-/* The refresh keeps the existing controls and terminology while improving
-   hierarchy, touch targets, focus visibility, and small-screen behavior. */
+/* Keep controls easy to scan and use on small screens. */
 :root {
   --bg-accent:#e7eef9; --surface-raised:#fff; --border-strong:#cbd5e1;
   --shadow:0 1px 2px rgba(23,32,51,.05),0 12px 30px rgba(23,32,51,.06);
@@ -239,32 +236,32 @@ def render_help_page(
     </nav>
     <article class="card help-card">
       <h1>How Podcast Downloader works</h1>
-      <p class="lead">A short guide to the queue, downloads, and YouTube cookies.</p>
+      <p class="lead">Add sources, track downloads, and update YouTube access.</p>
 
-      <h2>Basic behavior</h2>
+      <h2>What it does</h2>
       <ul>
         <li>Add a YouTube channel, playlist, livestream, or direct video URL.</li>
-        <li>Channels and playlists stay monitored in <code>urls.txt</code>.</li>
-        <li>Finished audio is saved as MP3 with SponsorBlock segments removed when available.</li>
-        <li>Activity shows concise results; Download log contains diagnostic detail.</li>
+        <li>Channels and playlists stay in the queue in <code>urls.txt</code>.</li>
+        <li>Finished audio is saved as MP3, with sponsor segments removed when available.</li>
+        <li>Activity gives a short summary; the detailed log helps diagnose problems.</li>
       </ul>
 
-      <h2>Main functions</h2>
+      <h2>Controls</h2>
       <ul>
-        <li><strong>Add:</strong> append a supported URL to the queue.</li>
-        <li><strong>Download now:</strong> bypass the age wait for a direct YouTube video, or fetch a full playlist.</li>
+        <li><strong>Add:</strong> put a supported URL in the queue.</li>
+        <li><strong>Run now:</strong> skip the waiting period for a direct YouTube video, or download a full playlist.</li>
         <li><strong>Remove:</strong> stop monitoring a queued URL.</li>
         <li><strong>Upload:</strong> replace the YouTube cookie file used by <code>yt-dlp</code>.</li>
       </ul>
 
-      <h2>Adding YouTube cookies</h2>
+      <h2>Adding YouTube access cookies</h2>
       <ol>
         <li>Export browser cookies in Netscape format as a text file.</li>
-        <li>Open the YouTube cookies card in the downloader.</li>
+        <li>Open the YouTube access cookies card in the downloader.</li>
         <li>Select the exported file and choose Upload.</li>
       </ol>
       <p class="note">
-        Cookie exports can contain private sign-in data. Keep the file private.
+        Cookie exports can contain private sign-in data for many websites. Keep the file private.
         See the official
         <a class="text-link" href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp">yt-dlp cookie instructions</a>.
       </p>
@@ -331,7 +328,7 @@ def render_login_page(
       <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
       <div class="card">
     <h1>Podcast Downloader</h1>
-    <p class="sub">Turns YouTube channels, playlists, and videos into MP3 files with sponsor segments removed.</p>
+    <p class="sub">Download YouTube audio as MP3. Sponsor segments are removed when available.</p>
     {message_html}
     <form method="post" action="/login">
       <input type="hidden" name="csrf_token" value="{safe_token}" />
@@ -568,7 +565,7 @@ def render_queue_page(
     <header>
       <div class="brand">
         <h1>Podcast Downloader</h1>
-        <p>Turns YouTube channels, playlists, and videos into MP3 files with sponsor segments removed.</p>
+        <p>Download YouTube audio as MP3. Sponsor segments are removed when available.</p>
       </div>
       <div class="header-actions">
         <a class="nav-link" href="/help">Help</a>
@@ -586,23 +583,23 @@ def render_queue_page(
         <span class="status-value"><span class="status-dot"></span>Online</span>
       </div>
       <div class="status-item">
-        <span class="status-label">Monitored URLs</span>
+        <span class="status-label">Monitored sources</span>
         <span class="status-value">{count}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">Last activity</span>
+        <span class="status-label">Last update</span>
         <span class="status-value">{last_activity}</span>
       </div>
     </section>
 
     <div class="card">
-      <span class="card-label">Add to queue</span>
+      <span class="card-label">Add a source</span>
       {msg_html}
       <form method="post" action="/add-url">
         <input type="hidden" name="csrf_token" value="{safe_token}" />
         <div class="input-row">
           <input id="url" name="url" type="text"
-            placeholder="https://www.youtube.com/watch?v=...  or  /@channel"
+            placeholder="Paste a video, channel, or playlist URL"
             autocomplete="off" autocapitalize="none" spellcheck="false" required />
           <button type="submit" class="btn">Add</button>
         </div>
@@ -612,7 +609,7 @@ def render_queue_page(
 
     <div class="card">
       <div class="card-row">
-        <span class="card-label" style="margin:0">Monitored URLs (<code>urls.txt</code>)</span>
+        <span class="card-label" style="margin:0">Sources in queue (<code>urls.txt</code>)</span>
         <span class="badge">{count}</span>
       </div>
       {queue_html}
@@ -621,15 +618,15 @@ def render_queue_page(
     <div class="card">
       <div class="log-bar">
         <div class="log-controls">
-          <span class="card-label" style="margin:0">Logs</span>
-          <select id="log-source" class="log-source" aria-label="Log source">
+          <span class="card-label" style="margin:0">Activity and logs</span>
+          <select id="log-source" class="log-source" aria-label="Choose a log">
             <option value="activity" selected>Activity</option>
-            <option value="download">Download log</option>
+            <option value="download">Detailed log</option>
           </select>
         </div>
         <div class="log-controls">
           <span id="log-ts"></span>
-          <label><input type="checkbox" id="auto-cb" checked> Auto</label>
+          <label><input type="checkbox" id="auto-cb" checked> Auto-refresh</label>
           <button class="btn-ghost" id="refresh-logs" type="button">Refresh</button>
         </div>
       </div>
@@ -637,7 +634,7 @@ def render_queue_page(
     </div>
 
     <div class="card">
-      <span class="card-label">YouTube cookies</span>
+      <span class="card-label">YouTube access cookies</span>
       <form method="post" action="/upload-cookies" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{safe_token}" />
         <div class="file-row">

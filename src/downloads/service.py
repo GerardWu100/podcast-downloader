@@ -1,4 +1,4 @@
-"""Download orchestration for media URLs, archive updates, and activity logs."""
+"""Coordinate downloads, saved URL history, and activity messages."""
 
 from __future__ import annotations
 
@@ -46,8 +46,7 @@ INTERMEDIATE_ROOT_TEMP_SUFFIXES = (
     ".tmp",
 )
 INVALID_FOLDER_CHARACTER_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
-# download.log rotation: five megabytes per file, three older files retained,
-# so diagnostics stay available without growing without bound.
+# Keep three older five-megabyte log files so diagnostics do not grow forever.
 LOG_FILE_MAX_BYTES = 5 * 1024 * 1024
 LOG_FILE_BACKUP_COUNT = 3
 
@@ -74,7 +73,7 @@ class DownloadTarget:
 
 
 class PodcastDownloadService:
-    """Run one batch of downloads and keep queue/archive files in sync."""
+    """Run downloads and keep the queue and history files consistent."""
 
     def __init__(
         self,
@@ -150,8 +149,8 @@ class PodcastDownloadService:
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
         )
-        # Stores own all file-format and locking behavior; the service only
-        # coordinates their state transitions around a download attempt.
+        # Stores own file formats and locking. This service only coordinates
+        # their updates around each download attempt.
         self.queue_store = QueueStore(self.urls_file, logging.getLogger("queue"))
         self.archive_store = ArchiveStore(
             self.downloaded_urls_file, logging.getLogger("archive")
@@ -182,7 +181,7 @@ class PodcastDownloadService:
             )
 
     def _sanitize_download_folder_name(self, raw_name: str) -> str:
-        """Return a filesystem-safe folder name derived from a source URL."""
+        """Return a folder name that is safe to use on the filesystem."""
         decoded_name = unquote(raw_name).strip()
         decoded_name = decoded_name.removeprefix("@")
 
@@ -235,12 +234,12 @@ class PodcastDownloadService:
         return folder_name
 
     def _download_output_dir_for_source(self, source_url: str) -> Path:
-        """Return the direct child folder for finished MP3s from one queue source."""
+        """Return the output folder for one monitored source."""
         folder_name = self._source_folder_name(source_url)
         return self.downloads_dir / folder_name
 
     def _uses_separate_intermediate_dir(self) -> bool:
-        """Return whether finished MP3s are published into a different tree."""
+        """Return whether the temporary and final folders differ."""
         return self.intermediate_dir.resolve() != self.downloads_dir.resolve()
 
     def _publish_audio_files_to_output_dir(
@@ -248,7 +247,7 @@ class PodcastDownloadService:
         intermediate_audio_files: list[Path],
         final_output_dir: Path,
     ) -> list[Path]:
-        """Move stamped MP3 files from the work tree into the library tree."""
+        """Move tagged MP3 files from temporary storage into the library."""
         if not intermediate_audio_files:
             return []
 
@@ -265,12 +264,12 @@ class PodcastDownloadService:
         return published_files
 
     def _delete_intermediate_file(self, file_path: Path) -> None:
-        """Delete one scratch file and log a warning when removal fails."""
+        """Delete one temporary file and report a failure if removal fails."""
         try:
             file_path.unlink()
         except OSError as exc:
             self.logger.warning(
-                "Could not delete intermediate artifact %s: %s",
+                "Could not delete temporary file %s: %s",
                 file_path,
                 exc,
             )
@@ -292,7 +291,7 @@ class PodcastDownloadService:
         work_dir: Path,
         preserved_paths: set[Path],
     ) -> None:
-        """Remove scratch files from one work folder while keeping selected paths."""
+        """Remove temporary files while keeping selected paths."""
         if not work_dir.exists():
             return
 
@@ -315,7 +314,7 @@ class PodcastDownloadService:
         *,
         preserve_mp3_files: list[Path] | None = None,
     ) -> None:
-        """Remove scratch files from one work folder after an attempt finishes.
+        """Clean a work folder after an attempt finishes.
 
         When ``preserve_mp3_files`` is set, keep those MP3 paths for a later
         metadata retry and delete every other file in the work folder. When it
@@ -349,7 +348,7 @@ class PodcastDownloadService:
             )
 
     def _cleanup_intermediate_root_temp_files(self) -> None:
-        """Remove stale ``yt-dlp`` temp files left at the intermediate root."""
+        """Remove stale ``yt-dlp`` temporary files from the intermediate root."""
         if not self._uses_separate_intermediate_dir():
             return
         if not self.intermediate_dir.is_dir():
@@ -368,7 +367,7 @@ class PodcastDownloadService:
         *,
         preserve_mp3_files: list[Path] | None = None,
     ) -> None:
-        """Run work-folder and root temp cleanup after one download attempt."""
+        """Clean the work folder and intermediate root after an attempt."""
         self._cleanup_intermediate_work_dir(
             work_dir,
             preserve_mp3_files=preserve_mp3_files,
@@ -470,9 +469,8 @@ class PodcastDownloadService:
         )
 
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
-        # Rotate rather than append forever. This log runs unattended for months
-        # on a small host, and the web UI tails it every 15 seconds while the
-        # queue page is open, so an unbounded file costs both disk and reads.
+        # This log can run unattended for months, and the web UI reads it every
+        # 15 seconds. Rotation keeps both disk use and reads bounded.
         file_handler = RotatingFileHandler(
             self.log_file,
             maxBytes=LOG_FILE_MAX_BYTES,
@@ -498,7 +496,7 @@ class PodcastDownloadService:
 
     @property
     def downloaded_urls(self) -> set[str]:
-        """Return the archived expanded URLs that already succeeded.
+        """Return expanded URLs that already finished successfully.
 
         The archive file is shared across downloader processes and service
         objects, so this reads from disk on every access rather than caching.
@@ -728,8 +726,8 @@ class PodcastDownloadService:
         )
         target_work_dir.mkdir(parents=True, exist_ok=True)
 
-        # The client owns command construction, process limits, snapshots, and
-        # the complete alternate-cookie retry order.
+        # The client owns command construction, time limits, file snapshots,
+        # and the complete alternate-cookie retry order.
         return self.ytdlp_client.download(url, target_work_dir)
 
     def _find_recoverable_existing_audio(
@@ -769,8 +767,8 @@ class PodcastDownloadService:
         target_work_dir = self._work_dir_for_final_output_dir(target_final_output_dir)
 
         if use_archive:
-            # The transaction reads the archive under an exclusive lock, so it
-            # already sees writes from other downloader processes.
+            # The exclusive transaction sees writes from other downloader
+            # processes before it checks for a duplicate.
             with self.archive_store.locked_transaction() as archive:
                 if archive.contains(normalized_url):
                     self.logger.info("Already downloaded: %s", normalized_url)
@@ -803,7 +801,7 @@ class PodcastDownloadService:
         final_output_dir: Path,
         work_dir: Path,
     ) -> tuple[str, bool]:
-        """Run the actual subprocess work once archive policy is settled."""
+        """Run the external download after history checks are settled."""
         self.logger.info("[%s/%s] Downloading: %s", index, total, video_url)
 
         if is_youtube_short_url(video_url):
@@ -909,7 +907,7 @@ class PodcastDownloadService:
             upload_date,
             self.min_channel_video_age_hours,
         )
-        # Unknown or satisfied age checks proceed; only a known "too new" result waits.
+        # Unknown or satisfied age checks proceed; only a known-too-new video waits.
         if age_check is None:
             self.logger.info("Allowed video with unknown age: %s", url)
             return False
@@ -925,7 +923,7 @@ class PodcastDownloadService:
         return True
 
     def _expand_queue_url(self, url: str) -> list[DownloadTarget]:
-        """Expand one queue entry into concrete download targets."""
+        """Turn one queue entry into individual download targets."""
         output_dir = self._download_output_dir_for_source(url)
         if is_channel_or_playlist(url):
             video_urls = expand_channel_or_playlist(
@@ -952,7 +950,7 @@ class PodcastDownloadService:
         ]
 
     def download_all(self) -> tuple[int, int]:
-        """Process every valid queue entry once.
+        """Process each valid queue entry once.
 
         Returns
         -------
@@ -968,9 +966,8 @@ class PodcastDownloadService:
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
         self.intermediate_dir.mkdir(parents=True, exist_ok=True)
         retention_dirs = self._retention_channel_output_dirs(urls)
-        # Scheduled runs must clear expired channel files from the archive before
-        # candidate downloads are checked. Otherwise the same 48-hour cycle can
-        # skip an archived item and only then make it eligible by deleting it.
+        # Remove expired channel files before checking history. Otherwise this
+        # run could skip an archived item and make it eligible only afterward.
         self._run_retention_cleanup(retention_dirs)
 
         bypass_urls = self.bypass_store.load()
@@ -1011,7 +1008,7 @@ class PodcastDownloadService:
         return successful, failed
 
     def download_full_playlist_now(self, playlist_url: str) -> tuple[int, int]:
-        """Expand and download every video in one YouTube playlist immediately.
+        """Expand and download every video in one YouTube playlist now.
 
         Returns
         -------
@@ -1070,7 +1067,7 @@ class PodcastDownloadService:
         return successful, failed
 
     def download_single_queue_url(self, url: str) -> tuple[int, int]:
-        """Process exactly one queued direct media URL.
+        """Process exactly one direct media URL from the queue.
 
         Returns
         -------

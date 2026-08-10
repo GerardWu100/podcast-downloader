@@ -1,4 +1,4 @@
-"""MP3 metadata writing helpers.
+"""Write project-owned tags into MP3 files.
 
 Audiobookshelf reads podcast publication dates from embedded audio metadata, so
 the downloader stamps a local completion timestamp into each successful MP3.
@@ -19,7 +19,7 @@ METADATA_TEMP_SUFFIX = ".download-date.tmp"
 
 
 class AudioMetadataWriter:
-    """Write project metadata into MP3 files without replacing inodes.
+    """Write project tags without replacing the existing file identity.
 
     Parameters
     ----------
@@ -107,8 +107,8 @@ class AudioMetadataWriter:
         )
 
         try:
-            # ffmpeg may echo existing ID3 tags with non-UTF-8 bytes in stderr.
-            # Use errors="replace" so a metadata dump does not abort the copy pass.
+            # ffmpeg can echo malformed tag bytes. Replace those bytes so a
+            # diagnostic message cannot stop the metadata copy.
             result = self.run_command(
                 command,
                 capture_output=True,
@@ -125,12 +125,12 @@ class AudioMetadataWriter:
                 )
                 raise RuntimeError(error_message)
 
-            # Copy bytes into the existing path so inode-based library scanners
-            # continue to see one stable audio file.
+            # Copy the result back to the same path so library scanners keep
+            # seeing one stable audio file.
             with temp_audio_file.open("rb") as temp_audio:
                 with audio_file.open("wb") as final_audio:
                     shutil.copyfileobj(temp_audio, final_audio)
         finally:
-            # A failed ffmpeg run can leave a partial temp file beside the MP3.
+            # A failed ffmpeg run can leave a partial temporary file behind.
             if temp_audio_file.exists():
                 temp_audio_file.unlink()

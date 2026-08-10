@@ -1,4 +1,4 @@
-"""Container entrypoint that runs the web UI and scheduler together."""
+"""Start the web UI and scheduled downloads in one container."""
 
 from __future__ import annotations
 
@@ -18,18 +18,18 @@ from src.trigger import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-# In Docker, PODCAST_DATA_DIR=/data holds .env and all runtime state. Local
-# runs keep those files at the repo root.
+# Docker keeps `.env` and runtime files in `/data`; local runs keep them at the
+# project root.
 DATA_DIR = Path(os.environ.get("PODCAST_DATA_DIR", str(PROJECT_ROOT)))
 
 
 def _cli_command() -> list[str]:
-    """Return the scheduler-safe CLI command for the current Python executable."""
+    """Return the CLI command with the Python executable used by this process."""
     return [sys.executable, "-m", "src.cli"]
 
 
 def _parse_interval_hours(raw_value: str) -> int:
-    """Parse ``DOWNLOAD_INTERVAL_HOURS`` and reject invalid values early."""
+    """Parse ``DOWNLOAD_INTERVAL_HOURS`` and reject invalid values immediately."""
     try:
         interval_hours = int(raw_value)
     except ValueError as exc:
@@ -56,7 +56,7 @@ POST_UPDATE_WAIT_SECONDS = 5 * 60
 
 
 def update_ytdlp() -> bool:
-    """Update ``yt-dlp`` in place when auto-update is enabled."""
+    """Update ``yt-dlp`` when automatic updates are enabled."""
     if not AUTO_UPDATE:
         result = subprocess.run(
             ["yt-dlp", "--version"],
@@ -95,7 +95,7 @@ def update_ytdlp() -> bool:
 
 
 def _wait_for_post_update_delay_or_ui_trigger() -> bool:
-    """Wait after an update, but handle a pending UI trigger first.
+    """Wait after an update unless the UI asks for work during the wait.
 
     Scheduled runs pause five minutes after ``yt-dlp`` updates so YouTube has
     time to settle. UI-triggered work can interrupt that wait immediately.
@@ -104,14 +104,14 @@ def _wait_for_post_update_delay_or_ui_trigger() -> bool:
     -------
     bool
         ``True`` when a UI-triggered download was handled during the delay.
-        The caller should skip the full scheduled queue pass in that case.
+        ``True`` when a UI request was handled and the full queue should wait.
     """
     wait_minutes = POST_UPDATE_WAIT_SECONDS // 60
     print(
         f"[scheduler] Waiting {wait_minutes} minutes after the yt-dlp update before downloading...",
         flush=True,
     )
-    # Event.wait keeps the delay interruptible when the UI queues a direct video.
+    # The event makes this delay interruptible when the UI adds a direct video.
     triggered = download_trigger.wait(timeout=POST_UPDATE_WAIT_SECONDS)
     if not triggered:
         return False
@@ -126,7 +126,7 @@ def _wait_for_post_update_delay_or_ui_trigger() -> bool:
 
 
 def _wait_for_interval_or_ui_triggers() -> None:
-    """Wait for the next scheduled interval while serving UI-triggered runs."""
+    """Wait for the next scheduled run while accepting UI requests."""
     while True:
         triggered = download_trigger.wait(timeout=INTERVAL_SECONDS)
         if not triggered:
@@ -157,9 +157,8 @@ def run_scheduler() -> None:
         subprocess.run(_cli_command(), check=False, cwd=str(PROJECT_ROOT))
         print(f"[scheduler] Done. Next run in {INTERVAL_HOURS}h.", flush=True)
 
-        # Wait for either the full interval or a UI-triggered download.
-        # After each triggered run we wait a full interval again before the next
-        # scheduled run, so adding a URL always resets the 48h clock.
+        # Wait for the full interval or a UI-triggered download. A triggered run
+        # starts a fresh interval, so adding a URL resets the schedule.
         _wait_for_interval_or_ui_triggers()
 
 
@@ -168,7 +167,7 @@ def _run_immediate_downloads(
     full_playlist_requests: list[str] | None = None,
     batch_requested: bool = False,
 ) -> None:
-    """Run UI-triggered downloads without doing a scheduled ``yt-dlp`` update.
+    """Run downloads requested by the UI without updating ``yt-dlp`` first.
 
     Parameters
     ----------
@@ -215,7 +214,7 @@ def _run_immediate_downloads(
 
 
 def run_scheduler_in_background() -> None:
-    """Restart the whole container if the scheduler thread crashes unexpectedly."""
+    """Exit the container if the scheduler thread stops unexpectedly."""
     try:
         run_scheduler()
     except Exception as exc:
@@ -228,9 +227,9 @@ def start_web() -> None:
 
 
 if __name__ == "__main__":
-    # Hash the .env password into .ui_credentials.json before serving logins.
+    # Create and check the credentials file before serving the login page.
     print(f"[startup] {sync_ui_credentials(DATA_DIR)}", flush=True)
-    # Keep the web server as PID 1 so Docker can restart the container if it exits.
+    # Keep the web server as PID 1 so Docker can restart the container if needed.
     scheduler_thread = threading.Thread(target=run_scheduler_in_background, daemon=True)
     scheduler_thread.start()
     start_web()

@@ -3,11 +3,11 @@ title: Operations
 sidebar_position: 5
 ---
 
-# Operations
+# Running the downloader
 
 ## Local development
 
-Install dependencies:
+Install the dependencies:
 
 ```bash
 uv sync --dev
@@ -25,20 +25,20 @@ Run the API locally:
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
-Set the web UI login by copying `.env.example` to `.env` and editing both values:
+Set the web UI login by copying `.env.example` to `.env` and changing both values:
 
 ```bash
 cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-On startup the app reads `.env`, hashes `UI_PASSWORD` with PBKDF2, verifies the hash against the plain password (a self-test), and writes only the hash into `.ui_credentials.json`. No manual hashing command exists or is needed. To change the password, edit `.env` and restart; the hash is regenerated and re-verified automatically.
+At startup the app reads `.env`, hashes `UI_PASSWORD` with PBKDF2, checks that the hash matches the password, and writes only the hash to `.ui_credentials.json`. There is no manual hashing step. To change the password, edit `.env` and restart; the app creates and checks the new hash automatically.
 
 For Docker deployments, create that `.env` file in the repo before you copy the project to the server or run `docker compose up -d`. The image build carries it into `/app/.env`, and the first container start seeds the mounted `/data/.env` from it automatically. After that, `/data/.env` on the host (`$HOME/.containers/podcast-downloader/.env`) is the file to edit.
 
 ## Docker behavior
 
-The container bootstrap path does the following:
+When the container starts, it:
 
 1. Copies the repo `config.ini` into the mounted data directory if that file is missing.
 2. Copies an image-bundled `.env` (or `.env.example` when the repo has no `.env`) into the mounted data directory when no mounted `.env` exists yet, and sets its permissions to owner-only.
@@ -46,19 +46,19 @@ The container bootstrap path does the following:
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, and `.login_state.json`.
 5. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
 
-`start.py` then hashes the `.env` password into `.ui_credentials.json` and self-tests the hash before the web server starts. When `.env` still holds the example password `changeme`, startup logs a warning.
+`start.py` then hashes and checks the `.env` password before the web server starts. If `.env` still contains the example password `changeme`, startup logs a warning.
 
 ## YouTube cookies
 
-For YouTube requests that are blocked after normal unauthenticated access, provide a Netscape-format cookie file named `cookies.txt`. In Docker Compose, the runtime file is `$HOME/.containers/podcast-downloader/cookies.txt` on the host and `/data/cookies.txt` inside the container.
+If YouTube blocks a normal request, provide a Netscape-format cookie file named `cookies.txt`. With Docker Compose, the file is `$HOME/.containers/podcast-downloader/cookies.txt` on the host and `/data/cookies.txt` in the container.
 
-The mounted data cookie is the source of truth. The entrypoint does not replace it on rebuilds or restarts; it only runs `chmod 600` on the existing file. If `/data/cookies.txt` is missing, the entrypoint seeds it from image-bundled `/app/cookies.txt` when that file exists.
+The mounted cookie file is the one the app uses. Rebuilds and restarts do not replace it; the entrypoint only applies `chmod 600`. If `/data/cookies.txt` is missing, the entrypoint copies `/app/cookies.txt` when that file exists.
 
-You can update cookies without SSH file copying by signing in to the web UI and using the YouTube cookies upload form. The upload endpoint requires the normal UI session and CSRF token, overwrites the configured cookie path, validates the Netscape header, normalizes line endings to LF, and writes permission mode `600`.
+You can update cookies from the web UI instead of copying a file over SSH. The upload form requires a normal signed-in session, checks the Netscape header, converts line endings to LF, and writes the file with permission mode `600`.
 
 You can also set `cookies_file` in `config.ini` to another mounted path.
 
-`always_use_cookies` defaults to `true`, so YouTube `yt-dlp` calls pass `--cookies <file>` on the first attempt and retry once without cookies when that attempt fails or produces no usable result. Set it to `false` to invert the order: plain first, cookies on retry. Keep the cookie file private because it contains browser authentication state.
+`always_use_cookies` defaults to `true`, so YouTube `yt-dlp` calls use `--cookies <file>` first and retry once without cookies if needed. Set it to `false` to try without cookies first. Keep the file private because it contains browser sign-in data.
 
 ### Cookie file format
 
@@ -133,7 +133,7 @@ Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files old
 
 ## Manual smoke check
 
-There is one manual live-network script:
+There is one manual check that uses the live network:
 
 ```bash
 uv run --with "yt-dlp[default]" python scripts/sponsorblock_smoke_check.py

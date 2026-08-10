@@ -1,4 +1,4 @@
-"""Resolve runtime paths and tuning values from config.ini and env vars."""
+"""Load runtime paths and settings from ``config.ini`` and environment variables."""
 
 from __future__ import annotations
 
@@ -11,14 +11,10 @@ DEFAULT_CHANNEL_VIDEO_COUNT = 2
 DEFAULT_MIN_CHANNEL_VIDEO_AGE_HOURS = 24
 DEFAULT_DELAY_SECONDS = 2.0
 DEFAULT_RETENTION_DAYS = 30
-# Wall-clock budget for one yt-dlp attempt, covering the media download plus
-# the MP3 extraction, SponsorBlock pass, and thumbnail embed that follow it. A
-# full-length podcast episode is routinely one to three hours of audio, and a
-# throttled YouTube download of that size can take well over ten minutes, so
-# this default is deliberately generous.
+# Time limit for one yt-dlp attempt, including download, conversion, SponsorBlock,
+# and thumbnail work. Long episodes on a slow connection need a generous limit.
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 3600
-# One minute is the smallest budget that can plausibly finish a real download,
-# so anything lower is treated as a configuration mistake.
+# A limit below one minute is unlikely to finish a real download.
 MINIMUM_DOWNLOAD_TIMEOUT_SECONDS = 60
 
 
@@ -135,13 +131,13 @@ def _get_path(
 
 
 def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
-    """Load config.ini, then layer on environment overrides and safe defaults."""
+    """Load ``config.ini`` and apply environment overrides and defaults."""
     parser = configparser.ConfigParser()
     parser.read(config_path)
     section = parser["podcast"] if "podcast" in parser else {}
 
     urls_file = _get_path(section, "urls_file", "urls.txt", project_root)
-    # Docker keeps downloads on a separate mount, so let the env var win first.
+    # Docker can put downloads on a separate mount, so let the environment win.
     if "PODCAST_DOWNLOAD_DIR" in os.environ:
         env_download_dir = os.environ.get("PODCAST_DOWNLOAD_DIR", "")
         output_dir = Path(_require_non_blank(env_download_dir, "PODCAST_DOWNLOAD_DIR"))
@@ -211,9 +207,8 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         False,
     )
 
-    # Cookie files are optional. When ``always_use_cookies`` is true, YouTube
-    # yt-dlp calls pass cookies on the first attempt and retry once without them
-    # when that attempt fails. When false, the order is inverted.
+    # Cookies are optional. ``always_use_cookies`` chooses which mode comes
+    # first; the other mode is tried once if the first attempt fails.
     cookies_file: Path | None = None
     if "cookies_file" in section:
         explicit_cookies = _require_non_blank(

@@ -1,6 +1,6 @@
-"""Generate deterministic architecture graphics for the podcast blog post.
+"""Generate the two architecture diagrams used by the podcast blog post.
 
-The script reads the frozen stage and gate labels in ``blog/data/pipeline.json``
+The script reads fixed stage and gate labels from ``blog/data/pipeline.json``
 and writes two high-resolution PNG files under ``blog/images``. It does not
 inspect runtime state or contact external services.
 

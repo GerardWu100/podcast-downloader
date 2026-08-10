@@ -2,11 +2,11 @@
 
 ## Part 1: Plain-File State
 
-`state/` owns every durable application state file. The project intentionally
-uses plain text and JSON rather than a database because deployment uses one web
-worker and one scheduler thread.
+`state/` owns every saved application state file. The project uses plain text
+and JSON instead of a database because it runs one web worker and one scheduler
+thread.
 
-| Store | File | Important invariant |
+| Store | File | Rule that must always hold |
 |---|---|---|
 | `QueueStore` | `urls.txt` | URLs are validated and normalized under a lock |
 | `ArchiveStore` | `downloaded_urls.txt` | Check/download/append can share one exclusive transaction |
@@ -15,16 +15,15 @@ worker and one scheduler thread.
 | `AuthStore` | `.ui_sessions.json`, `.login_state.json` | JSON updates are locked and atomically replaced |
 
 `locked_text_file()` uses `fcntl`, the Unix file-locking interface. A shared
-lock permits concurrent readers; an exclusive lock serializes mutation.
+lock lets readers run together; an exclusive lock makes changes one at a time.
 `AuthStore` locks a stable sibling lock file because the JSON data file itself
 is replaced atomically.
 
-Every line-per-entry store goes through `locked_line_file()`, which yields a
-`LockedLineFile`. That class owns the two rules those files share: read entries
-as stripped non-blank lines (optionally skipping `#` comments), and append only
-through `append_line()`, which writes a separator first when the file does not
-already end in a newline. Keeping the rule in one place is what makes it hold
-for every append path rather than for whichever ones a caller remembered.
+Every one-entry-per-line store uses `locked_line_file()`, which yields a
+`LockedLineFile`. It owns two shared rules: read stripped, non-blank lines
+(optionally skipping `#` comments), and append through `append_line()`. The
+append method adds the missing newline when a hand-edited file does not end
+with one. Keeping this rule in one place makes it apply to every caller.
 `AuthStore` deliberately stays on `locked_text_file()` because JSON documents
 and zero-content lock files are not line-per-entry.
 

@@ -5,22 +5,23 @@ sidebar_position: 1
 
 # Podcast Downloader
 
-Podcast Downloader is a small personal-use system for turning web videos into MP3 files, trimming SponsorBlock segments for YouTube, and managing a queue through either the command line or a lightweight browser UI.
+Podcast Downloader is a small personal tool for turning online videos into MP3 files, removing SponsorBlock segments from YouTube downloads, and managing a queue from the command line or a browser UI.
 
 ## What it does
 
-- Accepts direct video URLs from `http` and `https` websites.
+- Accepts direct video URLs from `http` and `https` sites.
 - Accepts YouTube `youtu.be` short links, channel URLs, channel livestream tabs, and playlist URLs.
-- Expands YouTube channel and playlist URLs into the latest configured number of individual videos with `yt-dlp`.
+- Finds the configured number of recent videos in each YouTube channel or playlist with `yt-dlp`.
 - Uses the channel tab as the source mode: `/videos` means normal uploads, `/streams` means livestream entries, and a bare channel URL defaults to `/videos`.
 - Filters out YouTube Shorts.
-- Optionally skips YouTube channel uploads and direct YouTube videos that are too new for reliable SponsorBlock coverage.
-- Downloads audio as MP3 and stores it locally.
-- Groups MP3 files by source folder under `downloads/`, with direct individual videos in `singles/`.
-- Deletes YouTube channel MP3 files older than the configured retention window based on embedded download-date metadata, while leaving playlist and single-video files alone.
-- Lets you append new URLs from a password-protected web form.
+- Can wait before downloading new YouTube videos, giving SponsorBlock time to add segment data.
+- Downloads audio as MP3 and stores it locally. The files also carry metadata,
+  small descriptive tags such as the source URL and download date.
+- Groups MP3 files by source under `downloads/`; direct videos go in `singles/`.
+- Deletes old channel MP3 files according to the embedded download date, while leaving playlist and one-off files alone.
+- Lets you add new URLs through a password-protected web form.
 
-## Main components
+## Main parts
 
 - `src/cli.py`: command-line entrypoint.
 - `src/downloads/`: download orchestration, `yt-dlp`, and audio metadata.

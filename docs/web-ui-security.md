@@ -5,21 +5,21 @@ sidebar_position: 4
 
 # Web UI and Security
 
-The short `/help` page is public and contains only static usage guidance and a
-link to the official `yt-dlp` cookie instructions. Queue contents, logs, cookie
-uploads, and all state-changing controls remain behind the authenticated UI.
+The short `/help` page is public and contains only usage guidance and a link to
+the official `yt-dlp` cookie instructions. The queue, logs, cookie uploads, and
+all controls that change data require a signed-in session.
 
 ## Login model
 
 The web UI is intentionally simple:
 
 - The operator sets `UI_USERNAME` and `UI_PASSWORD` in `.env` in the data directory (copy `.env.example` to start).
-- On every startup the app hashes `UI_PASSWORD` with PBKDF2-HMAC-SHA256, verifies the hash against the plain password (a self-test), and stores the account name plus the hash in `.ui_credentials.json`. The login check reads only the hash file.
+- On every startup the app hashes `UI_PASSWORD` with PBKDF2-HMAC-SHA256, checks the hash against the password, and stores the account name plus the hash in `.ui_credentials.json`. Login reads only the hash file.
 - The login form asks for both the username and the password.
 - Failed attempts are recorded in `.login_state.json`.
 - After too many failures from the same IP, the client is temporarily banned.
 - Successful login creates a persistent session cookie stored in `.ui_sessions.json`.
-- Both JSON state files use interprocess locks and sibling temporary files followed by atomic replacement.
+- Both JSON files use process-safe locks and temporary files, then replace the old file in one step.
 
 ## Credential setup
 
@@ -44,14 +44,15 @@ Both `.env` and `.ui_credentials.json` are written with owner-only (600) file pe
 - The session file stores the session id and creation timestamp only; it is not tied to the login IP.
 - A browser that reopens `/` or `/login` with a valid session cookie is redirected to `/ui` instead of seeing the password form again.
 
-## CSRF protection
+## Protection against unwanted form submissions
 
-Two CSRF mechanisms are used:
+The app uses two Cross-Site Request Forgery (CSRF) protections. CSRF is when a
+different site tricks a signed-in browser into submitting a form.
 
-- The login form gets a one-time anonymous CSRF token with a 10-minute time to live.
+- The login form gets a one-time token that expires after 10 minutes.
 - Authenticated state-changing forms, including queue edits, logout, and cookie upload, get a per-session CSRF token.
 
-Both checks use `secrets.compare_digest` for constant-time comparison.
+Both checks use `secrets.compare_digest` to avoid leaking timing information.
 
 ## Browser hardening
 
@@ -64,7 +65,9 @@ HTML responses include:
 - `X-Frame-Options: DENY`
 - A strict Content Security Policy
 
-The queue UI now uses a per-response script nonce instead of inline event handlers. This keeps the activity viewer working without weakening the Content Security Policy to allow arbitrary inline JavaScript.
+The queue UI uses a new script nonce for each response instead of inline event
+handlers. The activity viewer therefore works without allowing arbitrary inline
+JavaScript.
 
 Failed login attempts redirect back to the HTML login form with an inline error message such as `Invalid username or password.` instead of returning a raw JSON error response. Wrong usernames and wrong passwords produce the same message and take the same time to check, so responses do not reveal which half was wrong.
 
@@ -76,7 +79,8 @@ The checked-in `config.ini` sets:
 trust_x_forwarded_for = true
 ```
 
-That is only safe when the app is behind a reverse proxy you control, such as Cloudflare Tunnel or another proxy that rewrites client IP headers correctly.
+This is safe only when the app is behind a reverse proxy you control, such as
+Cloudflare Tunnel, and that proxy rewrites client IP headers correctly.
 
 When that setting is on, the app also honors `X-Forwarded-Proto` and Cloudflare's `CF-Visitor` scheme hint so the session cookie can be marked `Secure` behind HTTPS.
 

@@ -18,35 +18,35 @@ flowchart LR
     Downloads --> State
 ```
 
-`src/media/` interprets URLs without changing durable state. `src/state/` owns
-plain-file formats and locking. `src/downloads/` turns concrete URLs into
-published MP3 files, using `YtDlpClient` for command execution. `src/web/` owns
-application construction, request-security policy, routes, and HTML.
-`src/api.py` only exports the production application created by `create_app()`.
+`src/media/` interprets URLs without changing saved state. `src/state/` owns
+the file formats and locks. `src/downloads/` turns individual URLs into
+published MP3 files, using `YtDlpClient` to run external commands. `src/web/`
+builds the app and owns request security, routes, and HTML. `src/api.py` only
+exports the production app created by `create_app()`.
 
 ## End-to-end flow
 
 1. The downloader reads `urls.txt`.
-2. Each non-comment line is validated as an `http` or `https` media URL that `yt-dlp` can attempt.
+2. It checks each non-comment line as an `http` or `https` media URL that `yt-dlp` can try.
 3. YouTube direct video URLs are normalized into canonical watch URLs.
-4. YouTube channel and playlist URLs are expanded into concrete videos through `yt-dlp --flat-playlist`. For channel URLs, `/videos` polls normal uploads, `/streams` polls livestream entries, and a bare channel URL is normalized to `/videos` before expansion. Playlists are capped to the configured `channel_count` instead of enumerating the whole playlist.
-5. YouTube direct video URLs are age-checked too when `min_channel_video_age_hours > 0`, unless the user explicitly bypassed that gate from the CLI or web UI.
+4. YouTube channel and playlist URLs are turned into individual videos with `yt-dlp --flat-playlist`. For channels, `/videos` checks normal uploads, `/streams` checks livestreams, and a bare channel URL becomes `/videos`. Playlists are limited to `channel_count` entries instead of reading the whole playlist.
+5. Direct YouTube videos also wait when `min_channel_video_age_hours > 0`, unless the user skips that wait from the CLI or web UI.
 6. Channel results are filtered:
    - YouTube Shorts are skipped.
    - Videos newer than `min_channel_video_age_hours` are skipped when upload age is known, including when `yt-dlp` reports a timestamp placeholder but still provides an upload date.
 7. Each selected video is downloaded as audio. SponsorBlock removal is enabled only for YouTube URLs.
-8. YouTube cookie usage follows `always_use_cookies`: either pass cookies on the first `yt-dlp` call, or try without cookies first and retry once with `--cookies` when the plain attempt fails or produces no usable MP3.
+8. YouTube cookie usage follows `always_use_cookies`: the app either uses cookies first or tries without them first, then makes one attempt with the other choice if needed.
 9. MP3 output goes under the configured download directory: channel and playlist sources each get their own folder, while direct individual videos go into `singles/`. Each filename contains the channel or uploader, title, and extractor media ID.
-10. A download only counts as successful if an MP3 file was created or changed inside the active source work folder.
+10. A download counts as successful only when an MP3 file was created or changed inside the active source work folder.
 11. Successful MP3 files get an embedded MP3 date tag set to the local download completion time and a comment tag containing the source URL.
 12. Before a scheduled full-queue cycle checks archive-backed channel candidates, YouTube channel MP3 files older than `retention_days` are deleted when embedded metadata proves both the download date and source video URL. Playlist and single-video MP3 files are not retention-deleted.
-13. The downloader writes full diagnostic detail to `download.log` and concise browser-facing events to `activity.log`.
+13. The downloader writes detailed diagnostics to `download.log` and short browser-facing messages to `activity.log`.
 14. Successful direct-video URLs are removed from `urls.txt`.
 15. Successful expanded URLs are written to `downloaded_urls.txt` so future channel scans stay idempotent.
 
 ## Why the downloader checks file changes
 
-A plain subprocess exit code is not enough. `yt-dlp` can exit with code `0` even when no MP3 was created or updated in the target folder. The project therefore snapshots MP3 file state before and after each run.
+A command's exit code is not enough. `yt-dlp` can return `0` even when it did not create or update an MP3 in the target folder. The project therefore records the MP3 files before and after each run.
 
 Let:
 
@@ -66,11 +66,11 @@ $$
 s_A(p) \ne s_B(p)
 $$
 
-The download is considered successful if at least one MP3 file in the active source work folder satisfies that condition. Scoping both snapshots to that folder is part of the invariant: a file created by another source or process cannot prove that the current URL succeeded.
+The download is successful only if at least one MP3 in the active source work folder satisfies that condition. Limiting both snapshots to that folder is important: a file created by another source or process cannot prove that this URL worked.
 
 The downloader also passes `--no-mtime` to `yt-dlp`. That flag is useful hygiene because it prevents source timestamps from being preserved on the output file, but Audiobookshelf's visible podcast episode date comes from embedded audio metadata. After a successful download, the downloader runs a small `ffmpeg` copy pass over each changed MP3, preserves existing streams and metadata, and overwrites the embedded `date` metadata with the Toronto/Eastern completion timestamp. The same pass writes the source URL to the embedded `comment` metadata. YouTube URLs are normalized to canonical watch URLs before writing that comment, so `https://www.youtube.com/live/VIDEO_ID` and `https://www.youtube.com/watch?v=VIDEO_ID` do not create separate metadata identities. The rewrite uses a non-`.mp3` temporary filename, then copies the rewritten bytes back into the original MP3 path without replacing that path's inode. That matters because Audiobookshelf's scanner and watcher use file paths and inode values when matching library files. Audiobookshelf maps the embedded audio date into `podcastEpisode.pubDate` / `podcastEpisode.publishedAt`.
 
-The same embedded date is the retention clock. A retention clock is the timestamp used to decide whether a file is old enough to delete. The project intentionally uses the local download completion date, not YouTube release date and not filesystem modification time. Retention applies only to files in current YouTube channel output folders. Playlist and single-video files are kept. Files with missing or unreadable embedded date metadata, or missing source URL comment metadata, are left in place because cleanup cannot prove both that they are expired and which archive URL to remove.
+The same embedded date decides when a file is old enough to delete. The project uses the local download completion date, not the YouTube release date or the file's modification time. Cleanup applies only to current YouTube channel folders. Playlist and single-video files are kept. Files with missing or unreadable dates, or without a source URL in the comment tag, stay in place because cleanup cannot safely prove that they should be deleted or which archive entry to remove.
 
 When a channel MP3 is deleted, the downloader removes the same concrete video URL from `downloaded_urls.txt`. That keeps the audio file and expanded-item archive consistent: an old file removed from disk is no longer treated as already downloaded forever.
 
@@ -103,7 +103,7 @@ YouTube channel folder names are derived from the source URL and sanitized for t
 
 Both the CLI and the web UI mutate `urls.txt`. In Docker deployments, the downloader may be removing completed video URLs at the same time the web UI is appending new URLs. To avoid lost updates, queue-file reads and writes now use an interprocess file lock.
 
-That matters because this race is otherwise possible:
+Without the lock, this could happen:
 
 1. Downloader reads `urls.txt`.
 2. Web UI appends a new URL.
@@ -114,7 +114,7 @@ The lock forces those operations to run one at a time.
 
 YouTube URL normalization also treats the `/live/VIDEO_ID` route as the same concrete video as `/watch?v=VIDEO_ID`. Completed livestreams can move between those shapes in user-submitted links and YouTube surfaces, so the queue and bypass stores collapse them to the watch URL before comparing entries.
 
-The same locking model now applies to `downloaded_urls.txt` because the archive file is written by the downloader and read synchronously by the web UI during duplicate detection. That prevents the UI from reading stale or partial archive contents while a download completion is being recorded.
+The same lock protects `downloaded_urls.txt`, which the downloader writes and the web UI reads when checking for duplicates. The UI therefore cannot read a half-written archive.
 
 The lock and file-mutation rules are owned by `src/state/` stores:
 
@@ -127,7 +127,7 @@ Callers use these stores directly. The former `src/url_utils.py` and `src/activi
 
 `activity.log` and `download.log` timestamps both use `America/Toronto` through a shared `LOG_TIME_ZONE` setting and omit seconds for easier browser scanning. Docker Compose also sets `TZ=America/Toronto` so other process timestamps stay aligned.
 
-Expanded channel and playlist downloads also hold the archive lock across the duplicate check, the download attempt, and the success append. That long lock is intentional. It means a second scheduler process will wait instead of downloading the same expanded video while the first process is still working. The URL is appended only after a successful download, so a failed attempt remains retryable.
+Channel and playlist downloads also hold the archive lock during the duplicate check, the download, and the success append. This is intentional: a second scheduler waits instead of downloading the same video at the same time. The URL is added only after success, so failed attempts can run again.
 
 ## Deployment modes
 
@@ -153,4 +153,4 @@ Expanded channel and playlist downloads also hold the archive lock across the du
 - SponsorBlock is a YouTube-only cleanup step in this project; non-YouTube URLs are passed through `yt-dlp` without SponsorBlock flags and with `--no-playlist`.
 - Queue URLs are user input and are always passed to `yt-dlp` after `--` so they cannot be interpreted as command-line flags.
 - Proxy headers are only trusted when `trust_x_forwarded_for = true`.
-- Browser sessions are persisted to `.ui_sessions.json` and are not bound to the authenticating IP address; the client IP is used only for login failure bans. Public entry pages redirect a browser with a valid remembered session to `/ui`.
+- Browser sessions are saved in `.ui_sessions.json` and are not tied to the login IP. The client IP is used only for temporary login bans. Public entry pages send a browser with a valid session to `/ui`.

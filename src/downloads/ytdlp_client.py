@@ -1,4 +1,4 @@
-"""Run ``yt-dlp`` audio downloads behind one explicit client boundary."""
+"""Run ``yt-dlp`` audio downloads in one small, testable client."""
 
 from __future__ import annotations
 
@@ -99,8 +99,8 @@ class YtDlpClient:
         """Capture recursive MP3 modification time and size state."""
         captured_files: dict[Path, tuple[int, int]] = {}
 
-        # Recursive snapshots include extractor-created subfolders while
-        # remaining scoped to this source's isolated working directory.
+        # Include subfolders created by the extractor, but stay inside this
+        # source's private work directory.
         for audio_file in work_dir.rglob("*.mp3"):
             if not audio_file.is_file():
                 continue
@@ -152,8 +152,8 @@ class YtDlpClient:
         if cookies_file is not None:
             command.extend(["--cookies", str(cookies_file)])
 
-        # ``--`` prevents a user-controlled URL beginning with a dash from
-        # being interpreted as another command-line option.
+        # `--` keeps a user-supplied URL beginning with `-` from becoming an
+        # option to yt-dlp.
         command.extend(["--", url])
         return command
 
@@ -203,7 +203,7 @@ class YtDlpClient:
         if not is_youtube_url(url) or self.cookies_file is None:
             return False, None
 
-        # YouTube gets one retry with the opposite cookie policy.
+        # YouTube gets one retry using the other cookie choice.
         if self.always_use_cookies and first_attempt_cookies is not None:
             return True, None
         if not self.always_use_cookies and first_attempt_cookies is None:

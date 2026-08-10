@@ -1,4 +1,4 @@
-"""Production Uvicorn entrypoint for the podcast downloader web interface."""
+"""Expose the production web app to Uvicorn."""
 
 from __future__ import annotations
 

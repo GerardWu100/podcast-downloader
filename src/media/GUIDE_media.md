@@ -2,16 +2,16 @@
 
 ## Part 1: URL Policy
 
-`media/` interprets URLs without mutating application state.
+`media/` interprets URLs without changing saved application state.
 
-- `urls.py` accepts absolute `http` and `https` URLs that `yt-dlp` may attempt.
-- `youtube.py` recognizes YouTube hosts, normalizes equivalent video URLs,
-  classifies channels/playlists/Shorts, resolves display and folder names,
-  checks upload age, and expands channels or playlists through metadata calls.
+- `urls.py` accepts absolute `http` and `https` URLs that `yt-dlp` can try.
+- `youtube.py` recognizes YouTube hosts, makes equivalent video URLs match,
+  identifies channels, playlists, and Shorts, resolves display and folder names,
+  checks upload age, and finds videos in channels or playlists.
 
-Generic validation stays separate so a future non-YouTube provider does not
-inherit YouTube-specific rules. A provider interface should be added only when
-a second provider needs its own expansion or metadata policy.
+Generic validation stays separate so another provider would not inherit
+YouTube-only rules. Add a provider interface only when a second provider needs
+its own expansion or metadata rules.
 
 Every `yt-dlp` metadata command places `--` immediately before the
 user-controlled URL, preventing it from being parsed as an option.

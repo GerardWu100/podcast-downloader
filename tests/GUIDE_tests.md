@@ -2,21 +2,22 @@
 
 ## Part 1: Test Strategy
 
-The suite is offline and contract-oriented. It substitutes subprocesses and
-external clients instead of contacting media providers.
+The suite runs offline and checks the boundaries between parts of the app. It
+replaces subprocesses and external clients instead of contacting media sites.
 
-Coverage is organized around public architecture seams:
+Coverage follows the app's main boundaries:
 
-- `create_app()` and web route behavior;
+- `create_app()` and web routes;
 - `YtDlpClient` command/retry/result contracts;
-- `PodcastDownloadService` workflow outcomes;
+- `PodcastDownloadService` workflow results;
 - media classification and expansion functions;
 - queue, archive, bypass, activity, and authentication stores;
 - CLI, configuration, scheduler, password, and Docker bootstrap behavior.
 
-The live SponsorBlock smoke script lives at
-`scripts/sponsorblock_smoke_check.py`. It hits the network, so it is kept out of
-`tests/` and is not named like a test module, which keeps it out of collection.
+The live SponsorBlock check lives at
+`scripts/sponsorblock_smoke_check.py`. It uses the network, so it stays out of
+`tests/` and is not named like a test module. Pytest therefore does not collect
+it by accident.
 
 ## Part 2: Code Reference
 

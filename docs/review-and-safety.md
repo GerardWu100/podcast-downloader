@@ -5,20 +5,20 @@ sidebar_position: 6
 
 # Review and Safety Notes
 
-This page captures the current review outcome for the repository.
+This page records the current review findings for the repository.
 
 ## Changes made during this review
 
 ### 1. Queue-file race fixed
 
-`urls.txt` updates now use an interprocess file lock. This prevents lost URLs when:
+`urls.txt` updates now use a file lock shared by processes. This prevents lost URLs when:
 
 - the downloader is removing a completed URL
 - the browser UI is appending a new URL at the same time
 
 ### 2. UI Content Security Policy fixed
 
-The queue page previously shipped a strict Content Security Policy while also depending on inline JavaScript and an inline `onclick` handler for the browser activity viewer. That combination breaks the refresh behavior in modern browsers.
+The queue page used a strict Content Security Policy but also depended on inline JavaScript and an inline `onclick` handler for the activity viewer. Those two choices prevented refreshes in modern browsers.
 
 The page now:
 
@@ -26,9 +26,9 @@ The page now:
 - removes inline event-handler attributes
 - explicitly allows same-origin `fetch()` requests to `/logs`
 
-### 3. Config validation tightened
+### 3. Configuration checks tightened
 
-Malformed numeric values in `config.ini` now fail fast with a `ConfigError` instead of silently falling back to defaults. Out-of-range values now fail too, including `channel_count < 1`, `min_channel_video_age_hours < 0`, and `delay_seconds < 0`. Blank path settings also fail before they can collapse to the data directory.
+Bad numeric values in `config.ini` now fail immediately with a `ConfigError` instead of silently using defaults. Values outside their allowed range fail too, including `channel_count < 1`, `min_channel_video_age_hours < 0`, and `delay_seconds < 0`. Blank paths fail before they can accidentally resolve to the data directory.
 
 ### 4. Archive-backed download race fixed
 
@@ -46,17 +46,17 @@ The Docker scheduler now launches `python -m src.cli` from the resolved project 
 
 MP3 snapshots and zero-delta metadata recovery now inspect only the current source work folder. The former intermediate-tree scan could mistake the sole MP3 from another source for the current URL's output. Output filenames now include the extractor media ID so equal channel-title pairs do not collide.
 
-### 8. Optional live smoke dependency isolated
+### 8. Optional live-check dependency isolated
 
 `scripts/sponsorblock_smoke_check.py` imports the optional `yt-dlp` Python package only when the script is run directly. The documented offline pytest command can therefore collect the repository without that separately installed package. The smoke script uses the same `sponsor` and `selfpromo` categories as production.
 
-## Verification performed
+## Checks run
 
-- `uv run python -m pytest -q`
+- `uv run python -m pytest -q` (208 tests passed)
 - `uv run ruff check .`
 - `uv run python -m compileall src tests start.py main.py`
 
-## Current residual risks
+## Remaining risks
 
 ### Operational
 

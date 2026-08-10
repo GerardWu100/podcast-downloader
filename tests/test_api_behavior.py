@@ -146,9 +146,9 @@ def test_help_page_explains_behavior_and_cookie_setup() -> None:
     body = response.body.decode("utf-8")
 
     assert response.status_code == 200
-    assert "Basic behavior" in body
-    assert "Main functions" in body
-    assert "Adding YouTube cookies" in body
+    assert "What it does" in body
+    assert "Controls" in body
+    assert "Adding YouTube access cookies" in body
     assert "github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies" in body
     assert "Content-Security-Policy" in response.headers
 
@@ -482,7 +482,7 @@ def test_ui_bypass_label_uses_shorter_immediate_download_text(monkeypatch) -> No
     response = api_module.ui(request)
     body = response.body.decode("utf-8")
 
-    assert "Download now (skip age wait or full playlist)" in body
+    assert "Run now (skip the wait or download a full playlist)" in body
     assert "Download this video now" not in body
 
     api_module.SESSIONS.pop(session_id, None)
@@ -510,7 +510,7 @@ def test_ui_shows_playlist_checkbox_when_age_gate_disabled(monkeypatch) -> None:
     body = response.body.decode("utf-8")
 
     assert "skip_age_check" in body
-    assert "Download now (full playlist)" in body
+    assert "Run now (download a full playlist)" in body
 
     api_module.SESSIONS.pop(session_id, None)
 
@@ -535,7 +535,7 @@ def test_ui_includes_authenticated_cookie_upload_form() -> None:
     assert 'enctype="multipart/form-data"' in body
     assert 'name="cookie_file"' in body
     assert 'name="csrf_token"' in body
-    assert body.index("Logs") < body.index("YouTube cookies")
+    assert body.index("Activity and logs") < body.index("YouTube access cookies")
 
     api_module.SESSIONS.pop(session_id, None)
 
@@ -1262,7 +1262,7 @@ def test_ui_shows_monitored_urls_with_remove_controls(tmp_path, monkeypatch) -> 
     response = api_module.ui(request)
     body = response.body.decode("utf-8")
 
-    assert "Monitored URLs" in body
+    assert "Monitored sources" in body
     assert "https://www.youtube.com/watch?v=abc123" in body
     assert "https://www.youtube.com/@channelname" in body
     assert 'action="/remove-url"' in body

@@ -1,4 +1,4 @@
-"""Classify, normalize, and expand YouTube URLs."""
+"""Recognize, normalize, and expand YouTube URLs."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def _youtube_cookie_attempts(
     cookies_file: Path | None,
     always_use_cookies: bool,
 ) -> tuple[Path | None, ...]:
-    """Return the ordered cookie modes for one YouTube operation.
+    """Return the cookie order for one YouTube operation.
 
     Parameters
     ----------
@@ -120,7 +120,7 @@ def _youtube_cookie_attempts(
     if not is_youtube_url(url) or cookies_file is None:
         return (None,)
 
-    # YouTube retries once using the opposite cookie policy.
+    # YouTube gets one retry using the other cookie choice.
     if always_use_cookies:
         return cookies_file, None
     return None, cookies_file
@@ -133,7 +133,7 @@ def _fetch_ytdlp_print_line(
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
 ) -> str | None:
-    """Return the first ``yt-dlp --print`` line without downloading media.
+    """Read the first ``yt-dlp --print`` line without downloading media.
 
     Parameters
     ----------
@@ -226,7 +226,7 @@ def get_youtube_channel_display_name(
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
 ) -> str | None:
-    """Return a human-readable YouTube channel name for one video or channel URL."""
+    """Return a readable channel name for one video or channel URL."""
     metadata_line = _fetch_ytdlp_print_line(
         url,
         "%(channel)s\t%(uploader)s",
@@ -258,7 +258,7 @@ def get_youtube_channel_folder_name(
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
 ) -> str | None:
-    """Return a stable channel folder name, preferring ``@`` handles when present."""
+    """Return a stable channel folder name, preferring an ``@`` handle."""
     metadata_line = _fetch_ytdlp_print_line(
         url,
         "%(channel)s\t%(uploader_id)s",
@@ -290,7 +290,7 @@ def get_youtube_playlist_folder_name(
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
 ) -> str | None:
-    """Return a readable YouTube playlist title for folder naming.
+    """Return a readable YouTube playlist title for the output folder.
 
     The value comes from ``yt-dlp`` playlist metadata instead of the ``list=``
     identifier, which is usually an opaque ``PL...`` string. ``None`` means the
@@ -314,7 +314,7 @@ def get_youtube_playlist_folder_name(
 
 
 def _metadata_value_is_present(raw_value: str) -> bool:
-    """Return whether a ``yt-dlp`` metadata field contains usable data.
+    """Return whether a ``yt-dlp`` field contains usable data.
 
     ``yt-dlp`` uses ``NA`` as its default placeholder when a template field is
     unavailable. Treat those placeholders as missing so callers can fall back to
@@ -427,7 +427,7 @@ def _build_expansion_command(
     *,
     full_playlist: bool = False,
 ) -> list[str]:
-    """Build the ``yt-dlp`` metadata command for a channel or playlist.
+    """Build the ``yt-dlp`` command that lists a channel or playlist.
 
     Channels fetch extra entries because Shorts and fresh uploads can be
     filtered out before the service reaches the requested ``channel_count``.
@@ -569,9 +569,8 @@ def _expand_channel_or_playlist_once(
             logger,
         )
 
-    # Playlists preserve the flat playlist order and skip only metadata columns
-    # that were printed to support channel age filtering. Slice defensively in
-    # case an extractor ignores ``--playlist-end``.
+    # Keep playlist order and ignore the extra fields used for age checks. Slice
+    # defensively in case an extractor ignores `--playlist-end`.
     playlist_entries = all_entries if full_playlist else all_entries[:channel_count]
     video_urls = [_split_expanded_entry(entry)[0] for entry in playlist_entries]
     logger.info("Found %s videos", len(video_urls))
@@ -588,7 +587,7 @@ def expand_channel_or_playlist(
     *,
     full_playlist: bool = False,
 ) -> list[str]:
-    """Expand one YouTube source into ordered direct video URLs.
+    """Turn one YouTube source into ordered direct video URLs.
 
     Parameters
     ----------
@@ -670,7 +669,7 @@ def _get_video_metadata_once(
     logger: logging.Logger,
     cookies_for_attempt: Path | None,
 ) -> tuple[str, str] | None:
-    """Run one metadata fetch attempt for a single video URL."""
+    """Fetch one video's date fields without downloading it."""
     cmd = [
         "yt-dlp",
         "--flat-playlist",
@@ -706,7 +705,7 @@ def get_video_metadata(
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
 ) -> tuple[str, str] | None:
-    """Fetch ``(timestamp_raw, upload_date)`` for one video via ``yt-dlp``.
+    """Fetch ``(timestamp_raw, upload_date)`` for one video with ``yt-dlp``.
 
     Parameters
     ----------

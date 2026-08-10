@@ -1,4 +1,4 @@
-"""Construct the FastAPI web application."""
+"""Build the FastAPI web application and its saved-state dependencies."""
 
 from __future__ import annotations
 
@@ -79,10 +79,10 @@ def create_app(
     if trigger is None:
         trigger = in_process_download_trigger
 
-    # Keep route dependencies together on app.state so every request resolves
-    # the same collaborators created or injected above.
+    # Keep dependencies on app.state so every request uses the same objects
+    # that were created or supplied here.
     app = FastAPI(
-        title="Podcast URL Ingest",
+        title="Podcast Downloader",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,

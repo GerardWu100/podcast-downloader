@@ -1,4 +1,4 @@
-"""Locked archive storage for expanded channel and playlist video URLs."""
+"""Store the URLs of expanded videos that finished successfully."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .file_locks import LockedLineFile, locked_line_file
 
 
 class LockedDownloadedUrlArchive:
-    """Exclusive archive transaction for check-download-write flows.
+    """Exclusive archive transaction for check-download-record flows.
 
     The archive records expanded channel and playlist items that completed
     successfully. Holding one exclusive lock across duplicate detection and the
@@ -64,7 +64,7 @@ class LockedDownloadedUrlArchive:
 
 
 class ArchiveStore:
-    """Read, append, and claim archived expanded URLs under file locks."""
+    """Read and update expanded-URL history under file locks."""
 
     def __init__(self, archive_file: Path, logger: logging.Logger) -> None:
         """Create an archive store for one ``downloaded_urls.txt`` file."""

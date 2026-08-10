@@ -3,16 +3,16 @@
 ## Project scan summary
 
 - Project archetype candidate: `data-pipeline`, with an operations and reliability emphasis.
-- Supporting evidence from files: `src/downloads/service.py` implements queue expansion, download attempts, file-change detection, metadata stamping, publication, and retention; `src/state/` owns locked file-backed state; `src/api.py` adds a small authenticated control plane; `tests/` contains offline behavioral tests for those boundaries.
+- Supporting evidence from files: `src/downloads/service.py` expands the queue, runs downloads, checks changed files, writes tags, publishes files, and cleans up old files; `src/state/` owns locked file-based state; `src/api.py` adds a small signed-in admin screen; `tests/` contains offline behavior tests for those boundaries.
 
 ## Blueprint selection
 
-- Selected blueprint: adapted data-pipeline blueprint.
+- Selected blueprint: adapted data-processing blueprint.
 - Why this blueprint fits this project: the central problem is not audio encoding itself but moving an item safely from an external URL to a local media library while keeping queue and archive state consistent.
 - Planned section order:
   1. The gap between “the command exited” and “the episode exists”
   2. End-to-end pipeline and source-specific policy
-  3. The success invariant: an MP3 must be created or changed
+  3. The success rule: an MP3 must be created or changed
   4. Safe metadata rewriting and library publication
   5. File-backed idempotency under concurrent workers
   6. Evidence from the offline regression suite
@@ -28,12 +28,12 @@
    - Purpose: define success independently of a subprocess return code.
    - Symbols: `B` and `A` are the before and after path sets; `C` is the set of new or changed MP3 paths.
    - Delimiter: display.
-3. Archive transaction invariant:
-   - Purpose: explain why the duplicate check, download, and success append share one exclusive lock.
+3. Archive transaction rule:
+   - Purpose: explain why the duplicate check, download, and success record share one exclusive lock.
    - Symbols: `u` is a normalized URL; `D(u)` is the download action; `H` is the archive set.
    - Delimiter: display.
 4. Durable-success predicate:
-   - Purpose: show that artifact verification, metadata stamping, and publication must all succeed before durable state changes.
+   - Purpose: show that file checks, tag writing, and publication must all succeed before saved state changes.
    - Symbols: `u` is a normalized URL; `r_u` is the subprocess return code; `C_u` is the source-scoped changed-file set; `R_u` is the recovery set; `M(u)` and `P(u)` are metadata and publication success indicators.
    - Delimiter: display.
 
@@ -41,7 +41,7 @@
 
 1. File: `src/downloads/service.py`
    - Function/block: `_detect_changed_audio_files()`.
-   - Why include this excerpt: it is the smallest implementation of the project’s most important success invariant.
+   - Why include this excerpt: it is the smallest implementation of the project’s most important success rule.
 2. File: `src/downloads/service.py`
    - Function/block: the archive-backed branch of `_download_video()`.
    - Why include this excerpt: it shows that duplicate detection and the success append happen inside one transaction.
@@ -50,10 +50,10 @@
 
 1. Graph type: left-to-right pipeline diagram.
    - Source: generated from the code-defined stages and frozen labels in `blog/data/pipeline.json`.
-   - Expected takeaway: external extraction is only one stage; success is established after local verification and metadata publication.
+- Expected takeaway: external extraction is only one stage; success is established after local checks and tag writing.
 2. Graph type: reliability-gates diagram.
    - Source: generated from test-backed invariants in `blog/data/pipeline.json`.
-   - Expected takeaway: each state mutation is conditional, and ambiguous metadata causes retention to keep a file rather than delete it.
+- Expected takeaway: each state change is conditional, and unclear tags cause retention to keep a file rather than delete it.
 
 ## Risks, gaps, and assumptions
 

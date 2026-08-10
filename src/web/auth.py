@@ -1,4 +1,4 @@
-"""Browser authentication and request-security policy."""
+"""Browser sign-in helpers and request-security policy."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from fastapi import Request
 
 
 def security_headers(script_nonce: str | None = None) -> dict[str, str]:
-    """Return hardened headers for browser-facing responses."""
+    """Return restrictive headers for browser-facing responses."""
     content_security_policy = [
         "default-src 'none'",
         "style-src 'unsafe-inline'",
@@ -32,7 +32,7 @@ def security_headers(script_nonce: str | None = None) -> dict[str, str]:
 
 
 def client_ip(request: Request, trust_forwarded_headers: bool) -> str:
-    """Return rate-limit client address under explicit proxy trust policy."""
+    """Return the client address used for login-failure limits."""
     headers = getattr(request, "headers", {})
     if trust_forwarded_headers:
         # Cloudflare provides the original client address in this header.

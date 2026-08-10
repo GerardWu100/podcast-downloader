@@ -1,4 +1,4 @@
-"""Locked concise activity-log storage for the browser UI."""
+"""Store the short activity feed shown in the browser UI."""
 
 from __future__ import annotations
 
@@ -11,8 +11,7 @@ from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from .file_locks import locked_line_file, locked_text_file
 
 DEFAULT_ACTIVITY_LINE_COUNT = 100
-# Upper bound on bytes read when tailing a log. Comfortably larger than the
-# 100 displayed lines while keeping a multi-megabyte download.log cheap to poll.
+# Read a bounded final window so polling a large download.log stays cheap.
 TAIL_READ_BYTES = 256 * 1024
 NO_ACTIVITY_MESSAGE = "No activity yet."
 NO_DOWNLOAD_LOG_MESSAGE = "No log entries yet."
@@ -56,22 +55,20 @@ class ActivityLogStore:
             "r",
             fcntl.LOCK_SH,
         ) as file_handle:
-            # Read only the final window of the file. download.log can reach
-            # several megabytes between rotations and the browser polls this
-            # every 15 seconds, so reading it whole would be wasteful. pread
-            # works on byte offsets, which a text handle cannot seek to
-            # reliably, so the tail is read as bytes and decoded here.
+            # Read only the final window. The browser polls every 15 seconds,
+            # so reading a multi-megabyte log from the beginning is wasteful.
+            # `pread` reads bytes at an offset without moving the file handle.
             descriptor = file_handle.fileno()
             file_size = os.fstat(descriptor).st_size
             read_offset = max(0, file_size - TAIL_READ_BYTES)
             raw_tail = os.pread(descriptor, file_size - read_offset, read_offset)
 
-        # A non-zero offset can land mid-character, so decoding replaces any
-        # broken leading bytes rather than raising.
+        # The window can start in the middle of a character, so replace any
+        # incomplete leading bytes instead of failing.
         text_tail = raw_tail.decode("utf-8", errors="replace")
         lines = text_tail.splitlines()
-        # That same offset can land mid-line; drop the partial first entry so
-        # only whole lines reach the browser.
+        # The window can also start in the middle of a line; drop that partial
+        # line so the browser receives complete entries only.
         if read_offset > 0 and lines:
             lines = lines[1:]
         if not lines:

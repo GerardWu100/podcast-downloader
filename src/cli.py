@@ -1,4 +1,4 @@
-"""Command-line interface for queueing URLs and running downloads."""
+"""Add media URLs to the queue and run downloads from the command line."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _mark_youtube_bypass_urls(
     urls: list[str],
     bypass_age_check_file: Path,
 ) -> None:
-    """Record one-shot age-gate bypasses for direct YouTube video URLs.
+    """Record one-use exceptions to the waiting period for YouTube videos.
 
     Channels, playlists, and non-YouTube URLs are ignored because the bypass
     file only affects direct YouTube videos on the next downloader run.
@@ -48,8 +48,7 @@ def _mark_youtube_bypass_urls(
     """
     bypass_store = BypassStore(bypass_age_check_file, _logger)
 
-    # Store only direct YouTube videos because other source types do not use
-    # the one-shot age-gate policy.
+    # Only direct YouTube videos use this one-use waiting-period exception.
     for raw_url in urls:
         if not is_supported_media_url(raw_url):
             continue
@@ -65,7 +64,7 @@ def build_parser(
     default_output_dir: Path,
     default_channel_count: int,
 ) -> argparse.ArgumentParser:
-    """Build the parser used for queue updates and batch downloads."""
+    """Build the command-line parser for queue edits and downloads."""
     parser = argparse.ArgumentParser(
         description="Podcast downloader with YouTube SponsorBlock cleanup",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -158,7 +157,7 @@ def main() -> int:
         Process exit status: zero after a successful command, otherwise one.
     """
     project_root = Path(__file__).resolve().parents[1]
-    # Docker mounts state in /data; local runs fall back to the project root.
+    # Docker stores state in /data; local runs use the project root.
     data_dir = Path(os.environ.get("PODCAST_DATA_DIR", str(project_root)))
     try:
         config = load_config(data_dir / "config.ini", data_dir)
@@ -206,7 +205,7 @@ def main() -> int:
         )
         return 1
 
-    # yt-dlp needs the work and library folders to exist before it starts writing files.
+    # Create both folders before yt-dlp starts writing files.
     args.output.mkdir(parents=True, exist_ok=True)
     config.intermediate_dir.mkdir(parents=True, exist_ok=True)
 
@@ -228,7 +227,7 @@ def main() -> int:
 
     if not downloader._check_ytdlp():
         print(f"{Colors.RED}Error: yt-dlp not found{Colors.NC}")
-        print("Please install: uv add yt-dlp")
+        print('Install it with: uv pip install "yt-dlp[default]"')
         return 1
 
     print()
