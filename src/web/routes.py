@@ -17,7 +17,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..config import ConfigError, PodcastConfig, load_config
-from ..credentials import CREDENTIALS_FILENAME, load_ui_credentials
+from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
 from ..log_timezone import LOG_TIME_ZONE
 from ..media.urls import is_supported_media_url
 from ..media.youtube import (
@@ -591,19 +591,29 @@ def login_action(
     if len(password) > 1000 or len(username) > 1000:
         return RedirectResponse(url="/login?msg=request", status_code=303)
 
-    credentials = load_ui_credentials(_credentials_file())
-    if credentials is None:
+    accounts = load_ui_accounts(_credentials_file())
+    if not accounts:
         return RedirectResponse(url="/login?msg=unconfigured", status_code=303)
-    expected_username, expected_password_hash = credentials
 
-    # Always run both checks so a wrong username costs the same time as a
-    # wrong password; PBKDF2 stays outside the file lock because it is slow.
-    username_ok = secrets.compare_digest(
-        username.encode("utf-8"), expected_username.encode("utf-8")
+    matched_account = None
+    for account in accounts:
+        if secrets.compare_digest(
+            username.encode("utf-8"), account.username.encode("utf-8")
+        ):
+            matched_account = account
+            break
+
+    # Hash exactly one password either way, using the first account as a decoy
+    # when no name matched, so a wrong username costs the same time as a wrong
+    # password. PBKDF2 stays outside the file lock because it is slow.
+    hash_to_check = (
+        matched_account.password_hash
+        if matched_account is not None
+        else accounts[0].password_hash
     )
-    password_ok = verify_password(password, expected_password_hash)
+    password_ok = verify_password(password, hash_to_check)
 
-    if not (username_ok and password_ok):
+    if matched_account is None or not password_ok:
         with _LOGIN_STATE_LOCK:
             updated_state = _auth_store(request).update_login_state(
                 lambda state: _record_failure(state, ip),

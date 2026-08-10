@@ -262,10 +262,14 @@ def test_login_page_shows_invalid_credentials_message(monkeypatch, tmp_path) -> 
     credentials_file.write_text(
         json.dumps(
             {
-                "username": "alice",
-                "password_hash": hash_password(
-                    "correct-password", salt=b"0123456789abcdef"
-                ),
+                "accounts": [
+                    {
+                        "username": "alice",
+                        "password_hash": hash_password(
+                            "correct-password", salt=b"0123456789abcdef"
+                        ),
+                    }
+                ]
             }
         ),
         encoding="utf-8",

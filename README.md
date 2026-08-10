@@ -58,6 +58,8 @@ cp .env.example .env
 
 On startup the app hashes `UI_PASSWORD` with Password-Based Key Derivation Function 2 (PBKDF2), checks the hash, and stores only the hash in `.ui_credentials.json`. The login form asks for the username and password from `.env`.
 
+Up to three accounts are supported. The extra ones use `UI_USERNAME_2` with `UI_PASSWORD_2` and `UI_USERNAME_3` with `UI_PASSWORD_3`. They all reach the same pages; the point is separate passwords for separate people. `docs/web-ui-security.md` lists the rules startup applies.
+
 Start the downloader:
 
 ```bash

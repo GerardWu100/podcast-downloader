@@ -32,7 +32,7 @@ cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-At startup the app reads `.env`, hashes `UI_PASSWORD` with PBKDF2, checks that the hash matches the password, and writes only the hash to `.ui_credentials.json`. There is no manual hashing step. To change the password, edit `.env` and restart; the app creates and checks the new hash automatically.
+At startup the app reads `.env`, hashes each `UI_PASSWORD` with PBKDF2, checks that the hash matches the password, and writes only the hashes to `.ui_credentials.json`. There is no manual hashing step. To change a password, edit `.env` and restart; the app creates and checks the new hash automatically. A second and third account are optional, through `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
 
 For Docker deployments, create that `.env` file in the repo before you copy the project to the server or run `docker compose up -d`. The image build carries it into `/app/.env`, and the first container start seeds the mounted `/data/.env` from it automatically. After that, `/data/.env` on the host (`$HOME/.containers/podcast-downloader/.env`) is the file to edit.
 

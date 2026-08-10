@@ -14,7 +14,8 @@ all controls that change data require a signed-in session.
 The web UI is intentionally simple:
 
 - The operator sets `UI_USERNAME` and `UI_PASSWORD` in `.env` in the data directory (copy `.env.example` to start).
-- On every startup the app hashes `UI_PASSWORD` with PBKDF2-HMAC-SHA256, checks the hash against the password, and stores the account name plus the hash in `.ui_credentials.json`. Login reads only the hash file.
+- Up to three accounts are allowed. The second and third use `UI_USERNAME_2` with `UI_PASSWORD_2` and `UI_USERNAME_3` with `UI_PASSWORD_3`. Every account reaches the same pages, so the accounts separate people, not permissions.
+- On every startup the app hashes each `UI_PASSWORD` with PBKDF2-HMAC-SHA256, checks each hash against its password, and stores the account names plus their hashes in `.ui_credentials.json`. Login reads only the hash file.
 - The login form asks for both the username and the password.
 - Failed attempts are recorded in `.login_state.json`.
 - After too many failures from the same IP, the client is temporarily banned.
@@ -24,11 +25,18 @@ The web UI is intentionally simple:
 ## Credential setup
 
 1. Copy `.env.example` to `.env`.
-2. Set `UI_USERNAME` and `UI_PASSWORD`.
-3. Start the app (or restart the container). Startup hashes the password, self-tests the hash, and logs the result.
+2. Set `UI_USERNAME` and `UI_PASSWORD`, and optionally the numbered slots for a second and third account.
+3. Start the app (or restart the container). Startup hashes each password, self-tests the hashes, and logs the result.
 
-To change the password later, edit `.env` and restart. The hash is regenerated and re-verified automatically. There is no manual hashing command.
-Changing the credentials revokes remembered sessions. If `.env` is removed or
+Rules startup applies to the account slots:
+
+- A slot with both values set becomes an account; a blank slot is skipped, and slots need not be filled in order.
+- A slot with only one of the two values set is ignored and logged as a warning, because half an account cannot log in.
+- Two slots may not share an account name; the later one is ignored and logged, because it could never be reached.
+- A wrong account name costs the same time as a wrong password, because one password hash is always checked.
+
+To change a password later, edit `.env` and restart. The hash is regenerated and re-verified automatically. There is no manual hashing command.
+Changing, adding, or removing any account revokes remembered sessions. If `.env` is removed or
 becomes invalid, startup removes stale hashed credentials and sessions so the
 old password cannot remain active.
 

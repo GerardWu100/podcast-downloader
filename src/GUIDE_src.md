@@ -32,8 +32,9 @@ URL rules must not edit queue or history files. State stores must not run
 - `config.py`: validated `PodcastConfig` loading.
 - `passwords.py`: Password-Based Key Derivation Function 2 (PBKDF2) hashing and
   verification.
-- `credentials.py`: startup sync that reads `UI_USERNAME` and `UI_PASSWORD`
-  from `.env`, hashes the password, self-tests the hash, and writes
+- `credentials.py`: startup sync that reads up to three account slots from
+  `.env` (`UI_USERNAME`/`UI_PASSWORD` plus the numbered `_2` and `_3` pairs),
+  hashes each password, self-tests the hashes, and writes the account list in
   `.ui_credentials.json` for the login route.
 - `trigger.py`: in-process requests that wake the Docker scheduler.
 - `log_timezone.py`: shared Toronto/Eastern logging timezone.

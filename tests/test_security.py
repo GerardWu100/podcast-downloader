@@ -119,7 +119,14 @@ def test_login_action_accepts_valid_credentials_and_rejects_invalid_password(
     credentials_file = tmp_path / CREDENTIALS_FILENAME
     credentials_file.write_text(
         json.dumps(
-            {"username": "alice", "password_hash": hash_password("correct-password")}
+            {
+                "accounts": [
+                    {
+                        "username": "alice",
+                        "password_hash": hash_password("correct-password"),
+                    }
+                ]
+            }
         ),
         encoding="utf-8",
     )
@@ -184,6 +191,82 @@ def test_login_action_accepts_valid_credentials_and_rejects_invalid_password(
     assert (tmp_path / ".login_state.json").exists()
     assert session_state_file.exists()
     assert api._load_login_state()["127.0.0.1"]["failed"] == 0
+
+
+def test_login_action_accepts_any_configured_account(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """A second .env account should sign in, and only with its own password."""
+    import json
+
+    from src.credentials import CREDENTIALS_FILENAME
+    from src.passwords import hash_password
+    from src.web import routes as api
+
+    credentials_file = tmp_path / CREDENTIALS_FILENAME
+    credentials_file.write_text(
+        json.dumps(
+            {
+                "accounts": [
+                    {
+                        "username": "alice",
+                        "password_hash": hash_password("alice-password"),
+                    },
+                    {
+                        "username": "bob",
+                        "password_hash": hash_password("bob-password"),
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeURL:
+        """Minimal request URL used by cookie security detection."""
+
+        scheme = "http"
+
+    class FakeClient:
+        """Minimal request client used by login rate limiting."""
+
+        host = "127.0.0.1"
+
+    class FakeRequest:
+        """Small request double with the attributes login_action reads."""
+
+        url = FakeURL()
+        client = FakeClient()
+        headers: dict[str, str] = {}
+
+    monkeypatch.setattr(api, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(api, "SESSION_STATE_FILE", tmp_path / ".ui_sessions.json")
+    api.SESSIONS.clear()
+    api.CSRF_TOKENS.clear()
+
+    crossed_session, crossed_token = api._store_login_csrf_token()
+    crossed_response = api.login_action(
+        FakeRequest(),
+        username="bob",
+        password="alice-password",
+        csrf_token=crossed_token,
+        csrf_session=crossed_session,
+    )
+
+    second_session, second_token = api._store_login_csrf_token()
+    second_account_response = api.login_action(
+        FakeRequest(),
+        username="bob",
+        password="bob-password",
+        csrf_token=second_token,
+        csrf_session=second_session,
+    )
+
+    assert crossed_response.headers["location"] == "/login?msg=bad_credentials"
+    assert second_account_response.status_code == 302
+    assert second_account_response.headers["location"] == "/ui"
+    assert api.SESSIONS
 
 
 def test_login_action_rejects_invalid_csrf_token(tmp_path: Path, monkeypatch) -> None:
