@@ -104,10 +104,6 @@ class AuthStore:
         """Return current per-client failure and ban records."""
         return self._read(self.login_state_file)
 
-    def save_login_state(self, state: JsonState) -> None:
-        """Atomically replace current per-client failure and ban records."""
-        self._write(self.login_state_file, state)
-
     def load_sessions(self, max_age_seconds: int) -> JsonState:
         """Return well-formed sessions that have not expired."""
         raw_sessions = self._read(self.session_file)

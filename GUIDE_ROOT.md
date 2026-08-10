@@ -85,3 +85,14 @@ uv run python -m pytest -q
   `download.log` gained rotation and bounded tail reads, `/logs` answers `401`
   instead of redirecting into the log box, and the web header states what the
   app does.
+- 2026-08-10: Removed dead code and stale docs. The scheduler's batch-trigger
+  path (`queue_batch_download`, `pop_batch_download_request`, and the
+  `batch_requested` branch in `start.py`) was unreachable: no production caller
+  ever set the flag, so it could only ever pop `False`. `AuthStore` lost the
+  unreferenced `save_login_state`, and `web/routes.py` lost an `__all__` block
+  that re-exported trigger functions nobody imported from there. Deleted
+  `docs/superpowers/` (a completed 2026-07-26 plan describing three modules that
+  no longer exist) and `docs/review-and-safety.md` (a past review's changelog
+  that still claimed sessions were in-memory and lost on restart, which stopped
+  being true when `AuthStore` began persisting them). The remaining-risk notes
+  worth keeping moved to the README's "Known limits".

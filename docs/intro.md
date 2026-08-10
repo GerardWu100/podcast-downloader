@@ -54,4 +54,3 @@ flowchart TD
 2. [CLI and Config](./cli-and-config.md)
 3. [Web UI and Security](./web-ui-security.md)
 4. [Operations](./operations.md)
-5. [Review and Safety Notes](./review-and-safety.md)

@@ -12,7 +12,6 @@ import uvicorn
 from src.credentials import sync_ui_credentials
 from src.trigger import (
     download_trigger,
-    pop_batch_download_request,
     pop_full_playlist_download_requests,
     pop_single_url_download_requests,
 )
@@ -120,7 +119,6 @@ def _wait_for_post_update_delay_or_ui_trigger() -> bool:
     _run_immediate_downloads(
         pop_single_url_download_requests(),
         pop_full_playlist_download_requests(),
-        pop_batch_download_request(),
     )
     return True
 
@@ -135,7 +133,6 @@ def _wait_for_interval_or_ui_triggers() -> None:
         _run_immediate_downloads(
             pop_single_url_download_requests(),
             pop_full_playlist_download_requests(),
-            pop_batch_download_request(),
         )
 
 
@@ -165,7 +162,6 @@ def run_scheduler() -> None:
 def _run_immediate_downloads(
     single_url_requests: list[str],
     full_playlist_requests: list[str] | None = None,
-    batch_requested: bool = False,
 ) -> None:
     """Run downloads requested by the UI without updating ``yt-dlp`` first.
 
@@ -175,10 +171,6 @@ def _run_immediate_downloads(
         Direct video URLs submitted through the UI single-item path.
     full_playlist_requests:
         Playlist URLs submitted through the UI full-playlist immediate path.
-    batch_requested:
-        Whether an older or internal caller requested a full immediate queue
-        run. This is ignored when single URL requests are present because
-        direct-video submissions mean "download this URL only."
     """
     playlist_requests = full_playlist_requests or []
     if playlist_requests:
@@ -203,10 +195,6 @@ def _run_immediate_downloads(
                 check=False,
                 cwd=str(PROJECT_ROOT),
             )
-    if not single_url_requests and not playlist_requests and batch_requested:
-        print("[scheduler] URL added via UI — starting immediate run...", flush=True)
-        subprocess.run(_cli_command(), check=False, cwd=str(PROJECT_ROOT))
-
     print(
         f"[scheduler] Immediate run complete. Next scheduled run in {INTERVAL_HOURS}h.",
         flush=True,

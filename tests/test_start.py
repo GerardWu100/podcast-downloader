@@ -8,9 +8,7 @@ import pytest
 import src.config as config_module
 import start
 from src.trigger import (
-    pop_batch_download_request,
     pop_single_url_download_requests,
-    queue_batch_download,
     queue_single_url_download,
 )
 
@@ -71,10 +69,10 @@ def test_run_immediate_downloads_processes_full_playlist_requests(monkeypatch) -
     ]
 
 
-def test_run_immediate_downloads_falls_back_to_full_batch_without_payload(
+def test_run_immediate_downloads_without_any_payload_runs_nothing(
     monkeypatch,
 ) -> None:
-    """Internal batch triggers should keep the existing full-queue run behavior."""
+    """An empty wake-up must not fall back to running the whole queue."""
     calls: list[tuple[list[str], str | None]] = []
 
     def fake_run(command: list[str], check: bool, cwd: str | None = None) -> None:
@@ -83,86 +81,31 @@ def test_run_immediate_downloads_falls_back_to_full_batch_without_payload(
     monkeypatch.setattr(start.subprocess, "run", fake_run)
     monkeypatch.setattr(start.sys, "executable", "/python")
 
-    start._run_immediate_downloads([], batch_requested=True)
+    start._run_immediate_downloads([])
 
-    assert calls == [(["/python", "-m", "src.cli"], str(start.PROJECT_ROOT))]
-
-
-def test_run_immediate_downloads_ignores_batch_request_after_single_urls(
-    monkeypatch,
-) -> None:
-    """Checked single payloads should not also run the full queue."""
-    calls: list[tuple[list[str], str | None]] = []
-
-    def fake_run(command: list[str], check: bool, cwd: str | None = None) -> None:
-        calls.append((command, cwd))
-
-    monkeypatch.setattr(start.subprocess, "run", fake_run)
-    monkeypatch.setattr(start.sys, "executable", "/python")
-
-    start._run_immediate_downloads(
-        ["https://www.youtube.com/watch?v=abc123"],
-        batch_requested=True,
-    )
-
-    assert calls == [
-        (
-            [
-                "/python",
-                "-m",
-                "src.cli",
-                "--download-single-url",
-                "https://www.youtube.com/watch?v=abc123",
-            ],
-            str(start.PROJECT_ROOT),
-        )
-    ]
+    assert calls == []
 
 
 def test_post_update_delay_runs_pending_single_url_instead_of_waiting(
     monkeypatch,
 ) -> None:
     """A UI trigger during startup delay should be handled before a full queue run."""
-    handled: list[tuple[list[str], bool]] = []
+    handled: list[list[str]] = []
     pop_single_url_download_requests()
-    pop_batch_download_request()
     queue_single_url_download("https://www.youtube.com/watch?v=abc123")
 
     def fake_run_immediate_downloads(
         single_url_requests: list[str],
         full_playlist_requests: list[str] | None = None,
-        batch_requested: bool = False,
     ) -> None:
-        handled.append((single_url_requests, batch_requested))
+        handled.append(single_url_requests)
 
     monkeypatch.setattr(start, "_run_immediate_downloads", fake_run_immediate_downloads)
 
     triggered = start._wait_for_post_update_delay_or_ui_trigger()
 
     assert triggered is True
-    assert handled == [(["https://www.youtube.com/watch?v=abc123"], False)]
-
-
-def test_post_update_delay_runs_pending_batch_trigger(monkeypatch) -> None:
-    """A pending internal batch trigger during startup delay should still run."""
-    handled: list[tuple[list[str], bool]] = []
-    pop_single_url_download_requests()
-    pop_batch_download_request()
-    queue_batch_download()
-
-    def fake_run_immediate_downloads(
-        single_url_requests: list[str],
-        full_playlist_requests: list[str] | None = None,
-        batch_requested: bool = False,
-    ) -> None:
-        handled.append((single_url_requests, batch_requested))
-
-    monkeypatch.setattr(start, "_run_immediate_downloads", fake_run_immediate_downloads)
-
-    triggered = start._wait_for_post_update_delay_or_ui_trigger()
-
-    assert triggered is True
-    assert handled == [([], True)]
+    assert handled == [["https://www.youtube.com/watch?v=abc123"]]
 
 
 def test_interval_wait_does_not_clear_trigger_after_plain_timeout(monkeypatch) -> None:

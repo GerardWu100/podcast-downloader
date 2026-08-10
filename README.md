@@ -138,11 +138,15 @@ If you want the deeper design and operations details, start with these files:
 - [docs/cli-and-config.md](docs/cli-and-config.md)
 - [docs/web-ui-security.md](docs/web-ui-security.md)
 - [docs/operations.md](docs/operations.md)
-- [docs/review-and-safety.md](docs/review-and-safety.md)
-- [Conservative refactoring plan](docs/superpowers/plans/2026-07-26-conservative-refactoring.md)
 
 ## Notes
 
 - The project is intended for a personal Audiobookshelf workflow, not a public multi-user service.
 - The web UI is intentionally small and uses local files for the queue and login state.
 - Docker deployments seed missing files on first boot so a fresh volume can start without manual setup. Compose keeps runtime cookies in the mounted data directory and only uses repo-root `cookies.txt` as a missing-file seed.
+
+## Known limits
+
+- Downloads depend on `yt-dlp`, `ffmpeg`, and current YouTube behavior. Channel and playlist expansion parses `yt-dlp` output, so an upstream format change can break it.
+- SponsorBlock removal is only as good as the community-submitted segment data for a given video.
+- Login is one shared account from `.env`, not per-user authentication. Suitable for personal admin use, not broad public exposure.

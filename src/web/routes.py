@@ -35,24 +35,12 @@ from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
-from ..trigger import (
-    DownloadTrigger,
-    in_process_download_trigger,
-    pop_full_playlist_download_requests,
-    pop_single_url_download_requests,
-)
+from ..trigger import DownloadTrigger, in_process_download_trigger
 from .auth import client_ip, request_is_secure, security_headers
 from .templates import render_help_page, render_login_page, render_queue_page
 
 _logger = logging.getLogger("api")
 _Dependency = TypeVar("_Dependency")
-
-# Tests and older callers reset pending trigger state through this module.
-__all__ = [
-    "pop_full_playlist_download_requests",
-    "pop_single_url_download_requests",
-    "router",
-]
 
 router = APIRouter()
 

@@ -12,9 +12,8 @@ import src.config as config_module
 from src.credentials import CREDENTIALS_FILENAME
 from src.passwords import hash_password
 from src.trigger import (
-    pop_batch_download_request,
     pop_full_playlist_download_requests,
-    queue_batch_download,
+    pop_single_url_download_requests,
 )
 from src.web import routes as api_module
 
@@ -703,8 +702,7 @@ def test_add_url_with_bypass_enqueues_single_immediate_video(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -727,10 +725,9 @@ def test_add_url_with_bypass_enqueues_single_immediate_video(
         bypass_file.read_text(encoding="utf-8")
         == "https://www.youtube.com/watch?v=abc123\n"
     )
-    assert api_module.pop_single_url_download_requests() == [
+    assert pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=abc123"
     ]
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -766,9 +763,8 @@ def test_add_playlist_with_bypass_enqueues_full_playlist_immediate_run(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
+    pop_single_url_download_requests()
     pop_full_playlist_download_requests()
-    pop_batch_download_request()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -785,9 +781,8 @@ def test_add_playlist_with_bypass_enqueues_full_playlist_immediate_run(
     assert response.headers["location"] == "/ui?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{playlist_url}\n"
     assert not bypass_file.exists()
-    assert api_module.pop_single_url_download_requests() == []
+    assert pop_single_url_download_requests() == []
     assert pop_full_playlist_download_requests() == [playlist_url]
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -823,9 +818,8 @@ def test_add_channel_with_checkbox_does_not_enqueue_immediate_run(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
+    pop_single_url_download_requests()
     pop_full_playlist_download_requests()
-    pop_batch_download_request()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -842,9 +836,8 @@ def test_add_channel_with_checkbox_does_not_enqueue_immediate_run(
     assert response.headers["location"] == "/ui?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{channel_url}\n"
     assert not bypass_file.exists()
-    assert api_module.pop_single_url_download_requests() == []
+    assert pop_single_url_download_requests() == []
     assert pop_full_playlist_download_requests() == []
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -879,8 +872,7 @@ def test_add_direct_url_without_bypass_enqueues_single_immediate_video(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -900,10 +892,9 @@ def test_add_direct_url_without_bypass_enqueues_single_immediate_video(
         == "https://www.youtube.com/watch?v=abc123\n"
     )
     assert not bypass_file.exists()
-    assert api_module.pop_single_url_download_requests() == [
+    assert pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=abc123"
     ]
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -939,8 +930,7 @@ def test_add_non_youtube_direct_url_enqueues_single_immediate_video(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -957,8 +947,7 @@ def test_add_non_youtube_direct_url_enqueues_single_immediate_video(
     assert response.headers["location"] == "/ui?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{non_youtube_url}\n"
     assert not bypass_file.exists()
-    assert api_module.pop_single_url_download_requests() == [non_youtube_url]
-    assert pop_batch_download_request() is False
+    assert pop_single_url_download_requests() == [non_youtube_url]
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -994,8 +983,7 @@ def test_add_non_youtube_direct_url_with_checkbox_does_not_write_bypass_file(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1012,7 +1000,7 @@ def test_add_non_youtube_direct_url_with_checkbox_does_not_write_bypass_file(
     assert response.headers["location"] == "/ui?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{non_youtube_url}\n"
     assert not bypass_file.exists()
-    assert api_module.pop_single_url_download_requests() == [non_youtube_url]
+    assert pop_single_url_download_requests() == [non_youtube_url]
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -1048,8 +1036,7 @@ def test_add_channel_url_does_not_trigger_immediate_batch(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1066,8 +1053,7 @@ def test_add_channel_url_does_not_trigger_immediate_batch(
     assert response.headers["location"] == "/ui?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{channel_url}\n"
     assert not bypass_file.exists()
-    assert api_module.pop_single_url_download_requests() == []
-    assert pop_batch_download_request() is False
+    assert pop_single_url_download_requests() == []
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -1102,9 +1088,7 @@ def test_add_url_with_bypass_clears_pending_batch_trigger(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
-    queue_batch_download()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1119,10 +1103,9 @@ def test_add_url_with_bypass_clears_pending_batch_trigger(
     )
 
     assert response.headers["location"] == "/ui?msg=added"
-    assert api_module.pop_single_url_download_requests() == [
+    assert pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=def456"
     ]
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -1155,8 +1138,7 @@ def test_add_url_without_bypass_enqueues_single_payload_only(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1171,10 +1153,9 @@ def test_add_url_without_bypass_enqueues_single_payload_only(
     )
 
     assert response.headers["location"] == "/ui?msg=added"
-    assert api_module.pop_single_url_download_requests() == [
+    assert pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=abc123"
     ]
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
@@ -1207,8 +1188,7 @@ def test_add_url_accepts_non_youtube_video_url(
         "kind": "session",
         "created_at": time.time(),
     }
-    api_module.pop_single_url_download_requests()
-    pop_batch_download_request()
+    pop_single_url_download_requests()
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1227,10 +1207,9 @@ def test_add_url_accepts_non_youtube_video_url(
         queue_file.read_text(encoding="utf-8")
         == "https://videos.example.com/watch/episode-1\n"
     )
-    assert api_module.pop_single_url_download_requests() == [
+    assert pop_single_url_download_requests() == [
         "https://videos.example.com/watch/episode-1"
     ]
-    assert pop_batch_download_request() is False
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)

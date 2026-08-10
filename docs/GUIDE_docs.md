@@ -12,11 +12,6 @@ The reading order is:
 3. `cli-and-config.md` for commands and settings.
 4. `web-ui-security.md` for sign-in and browser protections.
 5. `operations.md` for local and Docker operation.
-6. `review-and-safety.md` for review findings and remaining risks.
-
-`superpowers/plans/` stores implementation plans as historical engineering
-artifacts. A completed plan may describe modules that existed before its
-refactor; current architecture is documented in `architecture.md`.
 
 ## Part 2: Code Reference
 
@@ -32,3 +27,6 @@ refactor; current architecture is documented in `architecture.md`.
 
 - 2026-07-26: Consolidated stale root overview files into the canonical
   architecture page and updated docs for the extracted module boundaries.
+- 2026-08-10: Removed `superpowers/plans/` and `review-and-safety.md`. Both were
+  point-in-time engineering records rather than current documentation, and both
+  described code that had already changed.
