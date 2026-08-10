@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 import shutil
 import subprocess
 import threading
@@ -13,6 +14,7 @@ import src.downloads.service as downloads_service_module
 from src.downloads.audio_metadata import AudioMetadataWriter
 from src.downloads.service import PodcastDownloadService
 from src.downloads.ytdlp_client import AudioSnapshot, YtDlpResult
+from src.state.bypass_store import BypassStore
 
 
 def write_fake_ffmpeg_output(command: list[str], audio_text: str) -> None:
@@ -1571,6 +1573,38 @@ def test_single_queue_url_removes_successful_direct_url_without_archiving_it(
 
     assert (successful, failed) == (1, 0)
     assert urls_file.read_text(encoding="utf-8") == ""
+    assert not archive_file.exists()
+
+
+def test_single_queue_url_consumes_bypass_even_when_download_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A failed media attempt must not turn a one-use override into a standing rule."""
+    video_url = "https://www.youtube.com/watch?v=abc123"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    bypass_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        min_channel_video_age_hours=24,
+        bypass_age_check_file=bypass_file,
+    )
+    monkeypatch.setattr(
+        downloader,
+        "_download_video",
+        lambda *args, **kwargs: (video_url, False),
+    )
+
+    successful, failed = downloader.download_single_queue_url(video_url)
+
+    assert (successful, failed) == (0, 1)
+    assert BypassStore(bypass_file, logging.getLogger("test")).load() == set()
+    assert urls_file.read_text(encoding="utf-8") == f"{video_url}\n"
 
 
 def test_watch_url_success_removes_matching_live_url_from_queue_without_archiving(
@@ -1744,6 +1778,7 @@ def test_single_queue_url_bypass_downloads_too_new_youtube_video(
     successful, failed = downloader.download_single_queue_url(video_url)
 
     assert (successful, failed) == (1, 0)
+    assert BypassStore(bypass_file, logging.getLogger("test")).load() == set()
 
 
 def test_download_full_playlist_now_downloads_every_expanded_video(

@@ -36,6 +36,13 @@ At startup the app reads `.env`, hashes `UI_PASSWORD` with PBKDF2, checks that t
 
 For Docker deployments, create that `.env` file in the repo before you copy the project to the server or run `docker compose up -d`. The image build carries it into `/app/.env`, and the first container start seeds the mounted `/data/.env` from it automatically. After that, `/data/.env` on the host (`$HOME/.containers/podcast-downloader/.env`) is the file to edit.
 
+Compose expects the shared proxy network named `single`. Create it once when it
+does not exist:
+
+```bash
+docker network inspect single >/dev/null 2>&1 || docker network create single
+```
+
 ## Docker behavior
 
 When the container starts, it:

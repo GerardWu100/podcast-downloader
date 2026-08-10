@@ -37,7 +37,12 @@ def locked_text_file(path: Path, mode: str, lock_type: int) -> Iterator[TextIO]:
         try:
             yield file_handle
         finally:
-            fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
+            # Publish buffered writes before another process can acquire the
+            # lock and read this inode.
+            try:
+                file_handle.flush()
+            finally:
+                fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)
 
 
 class LockedLineFile:

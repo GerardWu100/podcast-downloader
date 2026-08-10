@@ -93,6 +93,8 @@ def create_app(
     app.state.bypass_store = bypass_store
     app.state.activity_store = activity_store
     app.state.auth_store = auth_store
+    app.state.sessions = auth_store.load_sessions(routes.SESSION_MAX_AGE_SECONDS)
+    app.state.csrf_tokens = {}
     app.state.download_trigger = trigger
     app.include_router(routes.router)
     return app

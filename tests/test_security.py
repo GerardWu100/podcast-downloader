@@ -394,6 +394,46 @@ def test_is_channel_or_playlist() -> None:
     )
 
 
+def test_channel_detection_ignores_markers_inside_query_values() -> None:
+    """Only the parsed YouTube path can make a URL a monitored channel."""
+    direct_url = "https://www.youtube.com/watch?v=abc&next=/@other-channel"
+
+    assert youtube.is_channel_or_playlist(direct_url) is False
+
+
+def test_empty_expansion_retries_with_alternate_cookie_mode(
+    monkeypatch, tmp_path
+) -> None:
+    """A successful process with no entries is not a usable expansion result."""
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        if len(commands) == 1:
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="https://www.youtube.com/watch?v=abc\tNA\tNA\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(youtube.subprocess, "run", fake_run)
+
+    expanded = youtube.expand_channel_or_playlist(
+        "https://www.youtube.com/playlist?list=PL123",
+        channel_count=1,
+        min_channel_video_age_hours=0,
+        logger=youtube.logging.getLogger("test"),
+        cookies_file=tmp_path / "cookies.txt",
+        always_use_cookies=True,
+    )
+
+    assert expanded == ["https://www.youtube.com/watch?v=abc"]
+    assert "--cookies" in commands[0]
+    assert "--cookies" not in commands[1]
+
+
 def test_is_youtube_short_url() -> None:
     """Shorts URL detection."""
     assert youtube.is_youtube_short_url("https://www.youtube.com/shorts/abc123")

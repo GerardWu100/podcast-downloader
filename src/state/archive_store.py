@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from .file_locks import LockedLineFile, locked_line_file
+from .file_locks import LockedLineFile, locked_line_file, locked_text_file
 
 
 class LockedDownloadedUrlArchive:
@@ -70,6 +70,20 @@ class ArchiveStore:
         """Create an archive store for one ``downloaded_urls.txt`` file."""
         self.archive_file = archive_file
         self.logger = logger
+
+    @contextmanager
+    def locked_download_claim(self) -> Iterator[None]:
+        """Serialize expanded downloads without blocking archive readers.
+
+        The claim uses a separate stable lock file. The archive itself is then
+        locked only for short reads and writes, so the web UI does not wait for
+        a potentially hour-long media download.
+        """
+        claim_file = self.archive_file.with_name(
+            f".{self.archive_file.name}.download.lock"
+        )
+        with locked_text_file(claim_file, "a+", fcntl.LOCK_EX):
+            yield
 
     @contextmanager
     def locked_transaction(self) -> Iterator[LockedDownloadedUrlArchive]:

@@ -191,6 +191,19 @@ def test_bypass_store_adds_loads_and_removes_normalized_urls(tmp_path) -> None:
     assert store.load() == set()
 
 
+def test_bypass_store_consumes_url_exactly_once(tmp_path: Path) -> None:
+    """A one-use age override should disappear during its first claim."""
+    bypass_file = tmp_path / "bypass_age_check_urls.txt"
+    store = BypassStore(bypass_file, logging.getLogger("test"))
+    store.add("https://youtu.be/abc123")
+
+    first_claim = store.consume("https://www.youtube.com/watch?v=abc123")
+    second_claim = store.consume("https://www.youtube.com/watch?v=abc123")
+
+    assert first_claim is True
+    assert second_claim is False
+
+
 def test_queue_store_remove_deletes_matching_normalized_entry(tmp_path) -> None:
     """Removing from the monitored queue should match normalized YouTube URLs."""
     urls_file = tmp_path / "urls.txt"

@@ -44,6 +44,10 @@ Override the queue file, output folder, or channel depth:
 uv run python main.py -f custom_urls.txt -o ./custom_downloads -n 3
 ```
 
+`-n` must be at least `1`. `--download-single-url` rejects channels and
+playlists, while `--download-full-playlist` requires a dedicated YouTube
+playlist URL. An add command exits with an error when it adds no valid new URL.
+
 ## `config.ini`
 
 The checked-in configuration file is at the project root and has one `[podcast]` section.
@@ -61,7 +65,7 @@ The checked-in configuration file is at the project root and has one `[podcast]`
 | `log_file` | Full runtime log path; browser-facing `activity.log` is written beside it. Rotates at 5 MB keeping three older copies | `download.log` |
 | `downloaded_urls_file` | History of expanded URLs that finished successfully; also prevents duplicate downloads | `downloaded_urls.txt` |
 | `bypass_age_check_file` | File containing one-use exceptions to the YouTube waiting period | `bypass_age_check_urls.txt` |
-| `cookies_file` | Optional Netscape cookie jar path | unset |
+| `cookies_file` | Optional Netscape cookie jar path; the web UI can create an explicitly configured missing file | unset |
 | `always_use_cookies` | When true, try cookies first and retry without them once; when false, try without cookies first and retry with them once | `true` |
 | `trust_x_forwarded_for` | Whether the UI trusts client IP headers from your reverse proxy | `true` |
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import logging
 import re
 import shutil
@@ -32,6 +33,7 @@ from ..media.youtube import (
 from ..state.activity_store import ActivityLogStore, activity_log_file_for
 from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore
+from ..state.file_locks import locked_text_file
 from ..state.queue_store import QueueStore
 from .audio_metadata import AudioMetadataWriter
 from .ytdlp_client import AudioSnapshot, YtDlpClient, YtDlpResult
@@ -767,10 +769,11 @@ class PodcastDownloadService:
         target_work_dir = self._work_dir_for_final_output_dir(target_final_output_dir)
 
         if use_archive:
-            # The exclusive transaction sees writes from other downloader
-            # processes before it checks for a duplicate.
-            with self.archive_store.locked_transaction() as archive:
-                if archive.contains(normalized_url):
+            # A separate claim lock serializes expanded downloads without
+            # holding the archive file lock while yt-dlp runs. Archive readers
+            # in the web UI therefore remain responsive.
+            with self.archive_store.locked_download_claim():
+                if normalized_url in self.archive_store.load():
                     self.logger.info("Already downloaded: %s", normalized_url)
                     return normalized_url, True
 
@@ -782,16 +785,21 @@ class PodcastDownloadService:
                     target_work_dir,
                 )
                 if success:
-                    archive.append_success(normalized_url)
+                    self.archive_store.append(normalized_url)
                 return result_url, success
 
-        return self._download_video_unlocked(
-            normalized_url,
-            index,
-            total,
-            target_final_output_dir,
-            target_work_dir,
-        )
+        # Direct items share the singles scratch folder. Serialize them across
+        # CLI processes so snapshots, metadata stamping, and cleanup cannot
+        # consume another process's files.
+        direct_download_lock = self.intermediate_dir / ".direct-download.lock"
+        with locked_text_file(direct_download_lock, "a+", fcntl.LOCK_EX):
+            return self._download_video_unlocked(
+                normalized_url,
+                index,
+                total,
+                target_final_output_dir,
+                target_work_dir,
+            )
 
     def _download_video_unlocked(
         self,
@@ -884,11 +892,12 @@ class PodcastDownloadService:
     def _youtube_video_is_too_new(
         self,
         url: str,
-        bypass_urls: set[str],
     ) -> bool:
         """Return whether a direct YouTube URL should wait for age gating."""
         normalized_url = normalize_youtube_url(url)
-        if normalized_url in bypass_urls:
+        # Consuming before the attempt makes this a genuine one-use override:
+        # a failed download does not silently retain permission for later runs.
+        if self.bypass_store.consume(normalized_url):
             return False
 
         metadata = get_video_metadata(
@@ -970,7 +979,6 @@ class PodcastDownloadService:
         # run could skip an archived item and make it eligible only afterward.
         self._run_retention_cleanup(retention_dirs)
 
-        bypass_urls = self.bypass_store.load()
         download_targets: list[DownloadTarget] = []
 
         for url in urls:
@@ -979,7 +987,7 @@ class PodcastDownloadService:
                 if (
                     not target.use_archive
                     and is_youtube_url(target.video_url)
-                    and self._youtube_video_is_too_new(target.video_url, bypass_urls)
+                    and self._youtube_video_is_too_new(target.video_url)
                 ):
                     continue
                 download_targets.append(target)
@@ -1021,7 +1029,7 @@ class PodcastDownloadService:
                 "Full-playlist immediate downloads require a playlist URL: %s",
                 normalized_url,
             )
-            return 0, 0
+            return 0, 1
 
         current_queue_urls = self.queue_store.read_urls()
         retention_dirs = self._retention_channel_output_dirs(current_queue_urls)
@@ -1080,11 +1088,10 @@ class PodcastDownloadService:
                 "Single-URL immediate downloads require a video URL: %s",
                 normalized_url,
             )
-            return 0, 0
+            return 0, 1
 
-        bypass_urls = self.bypass_store.load()
         if is_youtube_url(normalized_url) and self._youtube_video_is_too_new(
-            normalized_url, bypass_urls
+            normalized_url
         ):
             return 0, 0
 

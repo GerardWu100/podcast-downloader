@@ -17,6 +17,8 @@ activity.log
 .ui_sessions.json
 .ui_credentials.json
 .ui_sessions.json.lock
+.direct-download.lock
+.downloaded_urls.txt.download.lock
 .login_state.json
 .login_state.json.lock
 

@@ -4,11 +4,34 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
+
+import pytest
 
 import src.cli as cli_module
 from src.config import PodcastConfig
 from src.state.bypass_store import BypassStore
 from src.state.queue_store import QueueStore
+
+
+def _test_config(tmp_path: Path) -> PodcastConfig:
+    """Return a complete temporary configuration for CLI dispatch tests."""
+    return PodcastConfig(
+        urls_file=tmp_path / "urls.txt",
+        output_dir=tmp_path / "downloads",
+        intermediate_dir=tmp_path / "download_work",
+        channel_count=1,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        min_channel_video_age_hours=24,
+        delay_seconds=0.0,
+        retention_days=30,
+        download_timeout_seconds=3600,
+        trust_x_forwarded_for=False,
+        cookies_file=None,
+        always_use_cookies=False,
+        bypass_age_check_file=tmp_path / "bypass_age_check_urls.txt",
+    )
 
 
 def test_cli_skip_age_check_help_names_direct_youtube_urls(tmp_path) -> None:
@@ -152,3 +175,61 @@ def test_cli_module_entrypoint_shows_help() -> None:
 
     assert result.returncode == 0
     assert "Podcast downloader with YouTube SponsorBlock cleanup" in result.stdout
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_cli_rejects_non_positive_channel_count(tmp_path: Path, value: str) -> None:
+    """The CLI override must enforce the same minimum as ``config.ini``."""
+    parser = cli_module.build_parser(
+        default_urls_file=tmp_path / "urls.txt",
+        default_output_dir=tmp_path / "downloads",
+        default_channel_count=1,
+    )
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--number", value])
+
+
+def test_cli_returns_failure_when_no_valid_url_is_added(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An all-invalid add request must not report command success."""
+    monkeypatch.setattr(cli_module, "load_config", lambda *args: _test_config(tmp_path))
+    monkeypatch.setattr(cli_module.sys, "argv", ["main.py", "--add-url", "not-a-url"])
+
+    result = cli_module.main()
+
+    assert result == 1
+    assert "no valid new URLs" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected_message"),
+    [
+        (
+            ["--download-single-url", "https://www.youtube.com/@channel"],
+            "requires one direct media URL",
+        ),
+        (
+            ["--download-full-playlist", "https://videos.example.com/watch/item"],
+            "requires a YouTube playlist URL",
+        ),
+    ],
+)
+def test_cli_rejects_url_kind_that_does_not_match_download_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arguments: list[str],
+    expected_message: str,
+) -> None:
+    """Invalid mode/URL combinations must fail before constructing a downloader."""
+    monkeypatch.setattr(cli_module, "load_config", lambda *args: _test_config(tmp_path))
+    monkeypatch.setattr(cli_module.sys, "argv", ["main.py", *arguments])
+
+    result = cli_module.main()
+
+    assert result == 1
+    assert expected_message in capsys.readouterr().out

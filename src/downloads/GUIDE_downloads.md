@@ -26,6 +26,11 @@ metadata recovery, cleanup, retention, and archive transactions.
 It accepts an injected client and consumes the client's typed result directly,
 so command policy and snapshots are not reconstructed inside the service.
 
+Expanded downloads hold a separate claim lock while external work runs, then
+lock the archive only for short reads and writes. This prevents duplicates
+without making web archive reads wait for a long download. Direct downloads use
+their own cross-process lock because they share the `singles` scratch folder.
+
 Download success requires at least one created or changed MP3 in the active
 source work folder. If `$B$` is the before snapshot, `$A$` is the after
 snapshot, and $s(p)$ is the modification-time/size state of file $p$, file $p$
@@ -55,3 +60,5 @@ $$
   The old five-minute budget could not finish a full-length episode, and a
   timed-out item is never archived, so the same episode failed on every run.
   `download.log` also gained rotation at 5 MB with three retained copies.
+- 2026-08-10: Download claims moved off the archive file, direct scratch work
+  gained a process lock, and age bypasses became consumed before their one run.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import logging
+import math
 import os
 import secrets
 import threading
@@ -54,6 +55,7 @@ SESSIONS: dict[str, dict[str, float | str]] = {}
 CSRF_TOKENS: dict[str, dict[str, float | str]] = {}  # session_id -> token metadata
 _LOGIN_STATE_LOCK = threading.Lock()
 _SESSION_STATE_LOCK = threading.Lock()
+_CSRF_STATE_LOCK = threading.RLock()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # In Docker, PODCAST_DATA_DIR=/data (set in docker-compose.yml). Locally, falls back to PROJECT_ROOT.
@@ -65,6 +67,7 @@ except ConfigError as exc:
 SESSION_STATE_FILE = DATA_DIR / ".ui_sessions.json"
 COOKIE_FILE_PERMISSION_MODE = 0o600
 NETSCAPE_COOKIE_HEADER = "# Netscape HTTP Cookie File"
+MAX_COOKIE_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 def _app_state_value(
@@ -163,9 +166,16 @@ def _normalize_uploaded_cookie_text(raw_cookie_file: bytes) -> str | None:
 
 
 def _write_cookie_file(cookie_file: Path, normalized_cookie_text: str) -> None:
-    """Overwrite the configured cookie file and make it readable only by owner."""
+    """Atomically replace the configured cookie file with owner-only access."""
     cookie_file.parent.mkdir(parents=True, exist_ok=True)
-    cookie_file.write_text(normalized_cookie_text, encoding="utf-8", newline="\n")
+    temporary_file = cookie_file.with_name(f".{cookie_file.name}.tmp")
+    temporary_file.write_text(
+        normalized_cookie_text,
+        encoding="utf-8",
+        newline="\n",
+    )
+    temporary_file.chmod(COOKIE_FILE_PERMISSION_MODE)
+    temporary_file.replace(cookie_file)
     cookie_file.chmod(COOKIE_FILE_PERMISSION_MODE)
 
 
@@ -184,6 +194,20 @@ def _auth_store(request: Request | None = None) -> AuthStore:
     return _app_state_value(request, "auth_store", fallback)
 
 
+def _sessions(request: Request | None = None) -> dict[str, dict[str, float | str]]:
+    """Return the session map owned by this application instance."""
+    if request is None:
+        return SESSIONS
+    return _app_state_value(request, "sessions", SESSIONS)
+
+
+def _csrf_tokens(request: Request | None = None) -> dict[str, dict[str, float | str]]:
+    """Return the CSRF-token map owned by this application instance."""
+    if request is None:
+        return CSRF_TOKENS
+    return _app_state_value(request, "csrf_tokens", CSRF_TOKENS)
+
+
 def _load_login_state(request: Request | None = None) -> dict:
     """Load client failure records through the locked authentication store."""
     return _auth_store(request).load_login_state()
@@ -196,18 +220,21 @@ def _security_headers(script_nonce: str | None = None) -> dict[str, str]:
 def _cleanup_expired_sessions(request: Request | None = None) -> None:
     """Drop expired sessions and their CSRF tokens from memory and disk."""
     with _SESSION_STATE_LOCK:
+        sessions = _sessions(request)
+        csrf_tokens = _csrf_tokens(request)
         expired = [
             sid
-            for sid, s in SESSIONS.items()
+            for sid, s in sessions.items()
             if _session_has_expired(s.get("created_at"))
         ]
         if not expired:
             return
 
         for sid in expired:
-            SESSIONS.pop(sid, None)
-            CSRF_TOKENS.pop(sid, None)
-        _save_session_state(SESSIONS, request)
+            sessions.pop(sid, None)
+            with _CSRF_STATE_LOCK:
+                csrf_tokens.pop(sid, None)
+        _save_session_state(sessions, request)
 
 
 def _cleanup_expired_login_csrf_tokens(
@@ -216,14 +243,16 @@ def _cleanup_expired_login_csrf_tokens(
     """Remove old login tokens so the in-memory map stays small."""
     _cleanup_expired_sessions(request)
     cutoff = time.time() - LOGIN_CSRF_TTL_SECONDS
-    expired_session_ids = [
-        session_id
-        for session_id, token_data in CSRF_TOKENS.items()
-        if str(token_data.get("kind", "")) == "login"
-        and float(token_data.get("created_at", 0)) < cutoff
-    ]
-    for session_id in expired_session_ids:
-        CSRF_TOKENS.pop(session_id, None)
+    with _CSRF_STATE_LOCK:
+        csrf_tokens = _csrf_tokens(request)
+        expired_session_ids = [
+            session_id
+            for session_id, token_data in csrf_tokens.items()
+            if str(token_data.get("kind", "")) == "login"
+            and float(token_data.get("created_at", 0)) < cutoff
+        ]
+        for session_id in expired_session_ids:
+            csrf_tokens.pop(session_id, None)
 
 
 def _store_login_csrf_token(
@@ -233,11 +262,12 @@ def _store_login_csrf_token(
     _cleanup_expired_login_csrf_tokens(request)
     csrf_session_id = secrets.token_urlsafe(16)
     csrf_token = secrets.token_urlsafe(32)
-    CSRF_TOKENS[csrf_session_id] = {
-        "token": csrf_token,
-        "kind": "login",
-        "created_at": time.time(),
-    }
+    with _CSRF_STATE_LOCK:
+        _csrf_tokens(request)[csrf_session_id] = {
+            "token": csrf_token,
+            "kind": "login",
+            "created_at": time.time(),
+        }
     return csrf_session_id, csrf_token
 
 
@@ -259,9 +289,11 @@ def _invalidate_session(
     """Remove a session and its CSRF token."""
     if session_id:
         with _SESSION_STATE_LOCK:
-            SESSIONS.pop(session_id, None)
-            CSRF_TOKENS.pop(session_id, None)
-            _save_session_state(SESSIONS, request)
+            sessions = _sessions(request)
+            sessions.pop(session_id, None)
+            with _CSRF_STATE_LOCK:
+                _csrf_tokens(request).pop(session_id, None)
+            _save_session_state(sessions, request)
 
 
 def _session_has_expired(created_at_raw: float | str | None) -> bool:
@@ -270,7 +302,10 @@ def _session_has_expired(created_at_raw: float | str | None) -> bool:
         created_at = float(created_at_raw or 0)
     except (TypeError, ValueError):
         return True
-    return time.time() - created_at > SESSION_MAX_AGE_SECONDS
+    session_age_seconds = time.time() - created_at
+    return not math.isfinite(created_at) or not (
+        0 <= session_age_seconds <= SESSION_MAX_AGE_SECONDS
+    )
 
 
 def _load_session_state(
@@ -292,7 +327,7 @@ SESSIONS = _load_session_state()
 def _require_login(request: Request) -> RedirectResponse | None:
     """Check the current session and redirect to login when it has expired."""
     session_id = request.cookies.get(SESSION_COOKIE)
-    session = SESSIONS.get(session_id)
+    session = _sessions(request).get(session_id)
     if not session:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -312,25 +347,28 @@ def _has_valid_session(request: Request) -> bool:
     return _require_login(request) is None
 
 
-def _get_csrf_token(session_id: str) -> str:
+def _get_csrf_token(session_id: str, request: Request | None = None) -> str:
     """Return the CSRF token for a session, creating one if needed."""
-    token_data = CSRF_TOKENS.get(session_id)
-    token = str(token_data.get("token", "")) if token_data else ""
-    if not token:
-        token = secrets.token_urlsafe(32)
-        CSRF_TOKENS[session_id] = {
-            "token": token,
-            "kind": "session",
-            "created_at": time.time(),
-        }
-    return token
+    with _CSRF_STATE_LOCK:
+        csrf_tokens = _csrf_tokens(request)
+        token_data = csrf_tokens.get(session_id)
+        token = str(token_data.get("token", "")) if token_data else ""
+        if not token:
+            token = secrets.token_urlsafe(32)
+            csrf_tokens[session_id] = {
+                "token": token,
+                "kind": "session",
+                "created_at": time.time(),
+            }
+        return token
 
 
 def _verify_csrf_token(request: Request, csrf_token: str) -> bool:
     """Check that the submitted CSRF token matches the stored session token."""
     session_id = request.cookies.get(SESSION_COOKIE)
-    token_data = CSRF_TOKENS.get(session_id, {})
-    expected = str(token_data.get("token", ""))
+    with _CSRF_STATE_LOCK:
+        token_data = _csrf_tokens(request).get(session_id, {})
+        expected = str(token_data.get("token", ""))
     if not expected:
         return False
     return secrets.compare_digest(csrf_token, expected)
@@ -358,7 +396,12 @@ def _delete_session_cookie(response: RedirectResponse) -> None:
 def _is_banned(state: dict, ip: str) -> tuple[bool, float]:
     """Return whether an IP is banned and when that ban ends."""
     record = state.get(ip, {})
-    banned_until = float(record.get("banned_until", 0))
+    try:
+        banned_until = float(record.get("banned_until", 0))
+    except (TypeError, ValueError):
+        banned_until = 0.0
+    if not math.isfinite(banned_until):
+        banned_until = 0.0
     return time.time() < banned_until, banned_until
 
 
@@ -374,8 +417,15 @@ def _record_failure(state: dict, ip: str) -> None:
     """
     now = time.time()
     record = state.get(ip, {})
-    last_failed = float(record.get("last_failed", 0))
-    failed = int(record.get("failed", 0))
+    try:
+        last_failed = float(record.get("last_failed", 0))
+        failed = int(record.get("failed", 0))
+    except (TypeError, ValueError):
+        last_failed = 0.0
+        failed = 0
+    if not math.isfinite(last_failed) or failed < 0:
+        last_failed = 0.0
+        failed = 0
 
     # A failure outside the rolling window starts a fresh count.
     if now - last_failed > FAIL_WINDOW_SECONDS:
@@ -516,7 +566,8 @@ def login_action(
         Redirect to the queue after success or to a login status after failure.
     """
     # Validate the CSRF token before reading password state or updating bans.
-    token_data = CSRF_TOKENS.pop(csrf_session, {})
+    with _CSRF_STATE_LOCK:
+        token_data = _csrf_tokens(request).pop(csrf_session, {})
     expected_csrf = str(token_data.get("token", ""))
     issued_at = float(token_data.get("created_at", 0) or 0)
     token_age_seconds = time.time() - issued_at
@@ -568,8 +619,9 @@ def login_action(
 
     session_id = secrets.token_urlsafe(32)
     with _SESSION_STATE_LOCK:
-        SESSIONS[session_id] = {"created_at": time.time()}
-        _save_session_state(SESSIONS, request)
+        sessions = _sessions(request)
+        sessions[session_id] = {"created_at": time.time()}
+        _save_session_state(sessions, request)
     response = RedirectResponse(url="/ui", status_code=302)
     _set_session_cookie(response, request, session_id)
     return response
@@ -627,7 +679,7 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         return redirect
 
     session_id = request.cookies.get(SESSION_COOKIE, "")
-    csrf_token = _get_csrf_token(session_id)
+    csrf_token = _get_csrf_token(session_id, request)
     safe_token = html.escape(csrf_token)
     script_nonce = secrets.token_urlsafe(16)
 
@@ -703,6 +755,8 @@ async def upload_cookies_form(
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     raw_cookie_file = await cookie_file.read()
+    if len(raw_cookie_file) > MAX_COOKIE_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Cookie file is too large")
     normalized_cookie_text = _normalize_uploaded_cookie_text(raw_cookie_file)
     if normalized_cookie_text is None:
         return RedirectResponse(url="/ui?msg=cookies_invalid", status_code=303)
@@ -796,10 +850,11 @@ def add_url_form(
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     # Reject malformed or non-web URLs before touching the queue.
-    if not is_supported_media_url(url):
+    cleaned_url = url.strip()
+    if not is_supported_media_url(cleaned_url):
         return RedirectResponse(url="/ui?msg=invalid", status_code=303)
 
-    normalized = normalize_youtube_url(url)
+    normalized = normalize_youtube_url(cleaned_url)
 
     # Avoid re-queuing anything already archived as downloaded.
     downloaded = _archive_store(request).load()

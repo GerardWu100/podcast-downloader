@@ -35,7 +35,7 @@ exports the production app created by `create_app()`.
    - YouTube Shorts are skipped.
    - Videos newer than `min_channel_video_age_hours` are skipped when upload age is known, including when `yt-dlp` reports a timestamp placeholder but still provides an upload date.
 7. Each selected video is downloaded as audio. SponsorBlock removal is enabled only for YouTube URLs.
-8. YouTube cookie usage follows `always_use_cookies`: the app either uses cookies first or tries without them first, then makes one attempt with the other choice if needed.
+8. YouTube cookie usage follows `always_use_cookies`: the app either uses cookies first or tries without them first, then makes one attempt with the other choice after a failure, timeout, empty result, or placeholder-only metadata.
 9. MP3 output goes under the configured download directory: channel and playlist sources each get their own folder, while direct individual videos go into `singles/`. Each filename contains the channel or uploader, title, and extractor media ID.
 10. A download counts as successful only when an MP3 file was created or changed inside the active source work folder.
 11. Successful MP3 files get an embedded MP3 date tag set to the local download completion time and a comment tag containing the source URL.
@@ -119,7 +119,7 @@ The same lock protects `downloaded_urls.txt`, which the downloader writes and th
 The lock and file-mutation rules are owned by `src/state/` stores:
 
 - `QueueStore` owns `urls.txt` reads, appends, and removals.
-- `ArchiveStore` owns `downloaded_urls.txt` reads, appends, claims, and long transactions.
+- `ArchiveStore` owns `downloaded_urls.txt` reads and writes plus the separate download-claim lock.
 - `BypassStore` owns one-shot age-bypass entries.
 - `ActivityLogStore` owns `activity.log` appends and tail reads.
 
@@ -127,7 +127,7 @@ Callers use these stores directly. The former `src/url_utils.py` and `src/activi
 
 `activity.log` and `download.log` timestamps both use `America/Toronto` through a shared `LOG_TIME_ZONE` setting and omit seconds for easier browser scanning. Docker Compose also sets `TZ=America/Toronto` so other process timestamps stay aligned.
 
-Channel and playlist downloads also hold the archive lock during the duplicate check, the download, and the success append. This is intentional: a second scheduler waits instead of downloading the same video at the same time. The URL is added only after success, so failed attempts can run again.
+Channel and playlist downloads hold a separate download-claim lock during the duplicate check, download, and success append. The archive file itself is locked only for each short read or write, so a second downloader still waits without blocking the web UI from checking archive entries for up to an hour. The URL is added only after success, so failed attempts can run again. Direct downloads use a separate process lock because all one-off items share the `singles` scratch folder.
 
 ## Deployment modes
 

@@ -38,6 +38,11 @@ it by accident.
   `test_docker_entrypoint.py`, `test_passwords.py`, `test_credentials.py`: entry
   and boundary behavior, including the `.env` to `.ui_credentials.json` sync.
 
+Regression coverage also includes non-finite configuration, strict CLI URL
+modes, parsed-path YouTube classification, empty-result cookie fallback,
+one-use age bypasses, stale credential removal, private authentication files,
+and isolated factory sessions.
+
 Run all offline checks from the project root:
 
 ```bash

@@ -19,7 +19,7 @@ The web UI is intentionally simple:
 - Failed attempts are recorded in `.login_state.json`.
 - After too many failures from the same IP, the client is temporarily banned.
 - Successful login creates a persistent session cookie stored in `.ui_sessions.json`.
-- Both JSON files use process-safe locks and temporary files, then replace the old file in one step.
+- Both JSON files use process-safe locks and owner-only (`600`) temporary files, then replace the old file in one step.
 
 ## Credential setup
 
@@ -28,6 +28,9 @@ The web UI is intentionally simple:
 3. Start the app (or restart the container). Startup hashes the password, self-tests the hash, and logs the result.
 
 To change the password later, edit `.env` and restart. The hash is regenerated and re-verified automatically. There is no manual hashing command.
+Changing the credentials revokes remembered sessions. If `.env` is removed or
+becomes invalid, startup removes stale hashed credentials and sessions so the
+old password cannot remain active.
 
 If `.env` already exists in the repo when you build the Docker image, first boot copies that file into the mounted data directory automatically. That means the server-side flow can be:
 

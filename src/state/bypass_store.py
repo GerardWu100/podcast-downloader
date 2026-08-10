@@ -84,3 +84,39 @@ class BypassStore:
                     self.logger.debug("Removed from bypass age check file: %s", url)
         except Exception as exc:
             self.logger.warning("Could not remove from bypass age check file: %s", exc)
+
+    def consume(self, url: str) -> bool:
+        """Atomically remove and acknowledge one matching bypass URL."""
+        from ..media.youtube import normalize_youtube_url
+
+        if not self.bypass_file.exists():
+            return False
+
+        normalized_target = normalize_youtube_url(url.strip())
+        try:
+            with locked_text_file(
+                self.bypass_file,
+                "r+",
+                fcntl.LOCK_EX,
+            ) as file_handle:
+                lines = file_handle.readlines()
+                kept_lines: list[str] = []
+                consumed = False
+                for line in lines:
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("#"):
+                        kept_lines.append(line)
+                        continue
+                    if normalize_youtube_url(stripped) == normalized_target:
+                        consumed = True
+                        continue
+                    kept_lines.append(line)
+
+                if consumed:
+                    file_handle.seek(0)
+                    file_handle.writelines(kept_lines)
+                    file_handle.truncate()
+                return consumed
+        except Exception as exc:
+            self.logger.warning("Could not consume bypass age check URL: %s", exc)
+            return False

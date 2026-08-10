@@ -49,7 +49,6 @@ class QueueStore:
 
     def create_sample_file(self) -> None:
         """Create a starter queue file when the configured queue is missing."""
-        self.urls_file.parent.mkdir(parents=True, exist_ok=True)
         sample_content = """# Podcast URLs
 # Add one web video URL per line. Lines starting with # are comments.
 #
@@ -66,7 +65,13 @@ class QueueStore:
 # https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf
 # https://videos.example.com/watch/episode-1
 """
-        self.urls_file.write_text(sample_content, encoding="utf-8")
+        # The exclusive lock makes a concurrent append and first-time sample
+        # creation observe one another instead of overwriting the winner.
+        with locked_text_file(self.urls_file, "a+", fcntl.LOCK_EX) as file_handle:
+            file_handle.seek(0, 2)
+            if file_handle.tell() > 0:
+                return
+            file_handle.write(sample_content)
         self.logger.info("Created sample URLs file: %s", self.urls_file)
         self.logger.info("Add media URLs to the file, then run the downloader again.")
 

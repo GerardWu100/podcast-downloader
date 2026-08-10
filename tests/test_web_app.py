@@ -52,6 +52,8 @@ def test_create_app_returns_independent_fastapi_instances() -> None:
 
     assert first_app is not second_app
     assert len(first_app.routes) == len(second_app.routes)
+    assert first_app.state.sessions is not second_app.state.sessions
+    assert first_app.state.csrf_tokens is not second_app.state.csrf_tokens
 
 
 def test_create_app_uses_injected_temporary_collaborators(tmp_path: Path) -> None:
@@ -101,6 +103,7 @@ def test_routes_use_collaborators_injected_by_create_app(tmp_path: Path) -> None
         downloaded_urls_file=tmp_path / "injected_downloaded_urls.txt",
         bypass_age_check_file=tmp_path / "injected_bypass_urls.txt",
         log_file=tmp_path / "injected_download.log",
+        cookies_file=tmp_path / "injected_cookies.txt",
     )
     logger = logging.getLogger("test.web.app.routes")
     queue_store = QueueStore(config.urls_file, logger)
@@ -124,8 +127,8 @@ def test_routes_use_collaborators_injected_by_create_app(tmp_path: Path) -> None
 
     session_id = "injected-app-session"
     csrf_token = "injected-app-csrf"
-    routes.SESSIONS[session_id] = {"created_at": time.time()}
-    routes.CSRF_TOKENS[session_id] = {
+    app.state.sessions[session_id] = {"created_at": time.time()}
+    app.state.csrf_tokens[session_id] = {
         "token": csrf_token,
         "kind": "session",
         "created_at": time.time(),
@@ -137,31 +140,44 @@ def test_routes_use_collaborators_injected_by_create_app(tmp_path: Path) -> None
         cookies={routes.SESSION_COOKIE: session_id},
     )
 
-    try:
-        response = routes.add_url_form(
-            request,
-            url="https://youtu.be/injected123",
-            csrf_token=csrf_token,
-            skip_age_check="1",
-        )
+    response = routes.add_url_form(
+        request,
+        url="https://youtu.be/injected123",
+        csrf_token=csrf_token,
+        skip_age_check="1",
+    )
 
-        normalized_url = "https://www.youtube.com/watch?v=injected123"
-        assert response.headers["location"] == "/ui?msg=added"
-        assert queue_store.read_urls() == [normalized_url]
-        assert bypass_store.load() == {normalized_url}
-        assert trigger.single_urls == [normalized_url]
-        assert trigger.playlist_urls == []
-        assert routes._configured_cookie_file(request) == tmp_path / "cookies.txt"
+    normalized_url = "https://www.youtube.com/watch?v=injected123"
+    assert response.headers["location"] == "/ui?msg=added"
+    assert queue_store.read_urls() == [normalized_url]
+    assert bypass_store.load() == {normalized_url}
+    assert trigger.single_urls == [normalized_url]
+    assert trigger.playlist_urls == []
+    assert routes._configured_cookie_file(request) == tmp_path / "injected_cookies.txt"
 
-        activity_store.write_event("Injected activity event")
-        log_response = routes.view_logs(request)
-        assert "Injected activity event" in log_response.body.decode("utf-8")
+    activity_store.write_event("Injected activity event")
+    log_response = routes.view_logs(request)
+    assert "Injected activity event" in log_response.body.decode("utf-8")
 
-        logout_response = routes.logout(request, csrf_token)
-        assert logout_response.headers["location"] == "/login"
-        persisted_sessions = auth_store.load_sessions(routes.SESSION_MAX_AGE_SECONDS)
-        assert auth_store.session_file.exists()
-        assert session_id not in persisted_sessions
-    finally:
-        routes.SESSIONS.pop(session_id, None)
-        routes.CSRF_TOKENS.pop(session_id, None)
+    logout_response = routes.logout(request, csrf_token)
+    assert logout_response.headers["location"] == "/login"
+    persisted_sessions = auth_store.load_sessions(routes.SESSION_MAX_AGE_SECONDS)
+    assert auth_store.session_file.exists()
+    assert session_id not in persisted_sessions
+
+
+def test_create_app_loads_sessions_from_injected_auth_store(tmp_path: Path) -> None:
+    """A factory app should authenticate against its own persisted sessions."""
+    auth_store = AuthStore(
+        session_file=tmp_path / "sessions.json",
+        login_state_file=tmp_path / "login.json",
+    )
+    session_id = "persisted-injected-session"
+    auth_store.save_sessions({session_id: {"created_at": time.time()}})
+    app = create_app(auth_store=auth_store)
+    request = SimpleNamespace(
+        app=app,
+        cookies={routes.SESSION_COOKIE: session_id},
+    )
+
+    assert routes._require_login(request) is None

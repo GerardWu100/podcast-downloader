@@ -773,7 +773,7 @@ def test_add_playlist_with_bypass_enqueues_full_playlist_immediate_run(
 
     response = api_module.add_url_form(
         request,
-        url=playlist_url,
+        url=f"  {playlist_url}  ",
         csrf_token="csrf-token",
         skip_age_check="1",
     )

@@ -5,7 +5,7 @@ DATA_DIR="${PODCAST_DATA_DIR:-/app}"
 DOWNLOAD_DIR="${PODCAST_DOWNLOAD_DIR:-$DATA_DIR/downloads}"
 INTERMEDIATE_DIR="${PODCAST_INTERMEDIATE_DIR:-$DATA_DIR/download_work}"
 AUTO_UPDATE="${YT_DLP_AUTO_UPDATE:-true}"
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)"
 
 # The mounted data directory owns .env (UI account name and password). A
 # repo-root .env baked into the image seeds it on first boot; without one,

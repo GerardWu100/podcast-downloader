@@ -17,7 +17,12 @@ Every `yt-dlp` metadata command places `--` immediately before the
 user-controlled URL, preventing it from being parsed as an option.
 YouTube metadata operations derive one ordered cookie-attempt sequence: plain
 then authenticated in fallback mode, or authenticated then plain in always-use
-mode.
+mode. An empty result, placeholder-only metadata, or a timed-out attempt is not
+usable and therefore advances to the alternate cookie mode.
+
+Channel and playlist classification examines parsed path and query fields.
+Channel-looking text inside an unrelated query value cannot change a direct
+video into a monitored source.
 
 ## Part 2: Code Reference
 
@@ -30,3 +35,5 @@ mode.
 
 - 2026-07-26: Split generic URL validation from YouTube policy and removed all
   queue/archive/bypass adapters from the media layer.
+- 2026-08-10: Parsed-path source classification replaced whole-URL substring
+  matching, and unusable metadata attempts began using cookie fallback.

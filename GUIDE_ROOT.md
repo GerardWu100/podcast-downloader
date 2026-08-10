@@ -96,3 +96,6 @@ uv run python -m pytest -q
   that still claimed sessions were in-memory and lost on restart, which stopped
   being true when `AuthStore` began persisting them). The remaining-risk notes
   worth keeping moved to the README's "Known limits".
+- 2026-08-10: A full correctness and security audit tightened command
+  validation, cookie fallback, one-use bypasses, state locking, credential
+  invalidation, private authentication files, and per-application sessions.

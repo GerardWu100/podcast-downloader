@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+import math
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -14,6 +15,7 @@ from .file_locks import locked_text_file
 JsonScalar: TypeAlias = float | int | str
 JsonRecord: TypeAlias = dict[str, JsonScalar]
 JsonState: TypeAlias = dict[str, JsonRecord]
+AUTH_STATE_FILE_PERMISSION_MODE = 0o600
 
 
 class AuthStore:
@@ -30,6 +32,9 @@ class AuthStore:
     def __init__(self, session_file: Path, login_state_file: Path) -> None:
         self.session_file = session_file
         self.login_state_file = login_state_file
+        for state_file in (session_file, login_state_file):
+            if state_file.exists():
+                state_file.chmod(AUTH_STATE_FILE_PERMISSION_MODE)
 
     @staticmethod
     def _lock_file(state_file: Path) -> Path:
@@ -65,7 +70,9 @@ class AuthStore:
             json.dumps(state, indent=2),
             encoding="utf-8",
         )
+        temporary_file.chmod(AUTH_STATE_FILE_PERMISSION_MODE)
         temporary_file.replace(state_file)
+        state_file.chmod(AUTH_STATE_FILE_PERMISSION_MODE)
 
     def _read(self, state_file: Path) -> JsonState:
         """Read state while holding a shared process lock."""
@@ -114,7 +121,11 @@ class AuthStore:
                 created_at = float(session.get("created_at", 0))
             except (TypeError, ValueError):
                 continue
-            if current_time - created_at <= max_age_seconds:
+            session_age_seconds = current_time - created_at
+            if (
+                math.isfinite(created_at)
+                and 0 <= session_age_seconds <= max_age_seconds
+            ):
                 valid_sessions[session_id] = {"created_at": created_at}
         return valid_sessions
 

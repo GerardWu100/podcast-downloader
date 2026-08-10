@@ -78,6 +78,8 @@ def test_sync_rehashes_when_env_password_changes(tmp_path: Path) -> None:
     _write_env(tmp_path, "alice", "old-password")
     sync_ui_credentials(tmp_path)
 
+    session_file = tmp_path / ".ui_sessions.json"
+    session_file.write_text('{"old-session": {"created_at": 1}}', encoding="utf-8")
     _write_env(tmp_path, "alice", "new-password")
     sync_ui_credentials(tmp_path)
 
@@ -85,6 +87,7 @@ def test_sync_rehashes_when_env_password_changes(tmp_path: Path) -> None:
     assert stored is not None
     assert verify_password("new-password", stored[1]) is True
     assert verify_password("old-password", stored[1]) is False
+    assert not session_file.exists()
 
 
 def test_sync_without_env_file_reports_unconfigured(tmp_path: Path) -> None:
@@ -125,3 +128,29 @@ def test_load_ui_credentials_rejects_malformed_files(tmp_path: Path) -> None:
 
     credentials_file.write_text(json.dumps({"username": "alice"}), encoding="utf-8")
     assert load_ui_credentials(credentials_file) is None
+
+    credentials_file.write_text("[]", encoding="utf-8")
+    assert load_ui_credentials(credentials_file) is None
+
+
+def test_missing_env_disables_previously_valid_credentials(tmp_path: Path) -> None:
+    """Deleting ``.env`` must not leave the old password active."""
+    env_file = _write_env(tmp_path, "alice", "correct-password")
+    sync_ui_credentials(tmp_path)
+    env_file.unlink()
+
+    message = sync_ui_credentials(tmp_path)
+
+    assert "unconfigured" in message
+    assert not (tmp_path / CREDENTIALS_FILENAME).exists()
+
+
+def test_blank_env_disables_previously_valid_credentials(tmp_path: Path) -> None:
+    """Invalid replacement settings must fail closed instead of using stale data."""
+    _write_env(tmp_path, "alice", "correct-password")
+    sync_ui_credentials(tmp_path)
+    _write_env(tmp_path, "", "replacement-password")
+
+    sync_ui_credentials(tmp_path)
+
+    assert not (tmp_path / CREDENTIALS_FILENAME).exists()

@@ -22,7 +22,9 @@ the current request, so tests use the stores they supplied.
 
 `auth.py` interprets proxy trust and builds browser security headers.
 `AuthStore` in `state/` saves sessions and login failures. Route code owns the
-login flow and Cross-Site Request Forgery (CSRF) tokens.
+login flow and Cross-Site Request Forgery (CSRF) tokens. Each factory-created
+application loads and owns its own session and token maps, so injected stores
+and separate application instances do not share authentication state.
 Templates do not mutate queue or authentication state.
 
 The Content Security Policy (CSP) blocks resource loading by default and allows
@@ -57,3 +59,5 @@ would appear as log lines.
   was being followed by `fetch`, so an expired session filled the log box with
   the escaped HTML of the login page. The header also carries a one-line
   description of what the app does.
+- 2026-08-10: Application instances stopped sharing session state; cookie
+  uploads became bounded and atomically replaced with owner-only access.

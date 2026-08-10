@@ -9,7 +9,12 @@ import secrets
 
 PASSWORD_HASH_SCHEME = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 600_000
+MINIMUM_PBKDF2_ITERATIONS = 100_000
+MAXIMUM_PBKDF2_ITERATIONS = 1_000_000
 SALT_BYTES = 16
+MINIMUM_SALT_BYTES = 8
+MAXIMUM_SALT_BYTES = 64
+SHA256_BYTES = 32
 
 
 def _b64encode(raw_bytes: bytes) -> str:
@@ -81,12 +86,18 @@ def verify_password(password: str, stored_value: str) -> bool:
     try:
         _, iterations_text, salt_text, expected_hash_text = stored_value.split("$", 3)
         iterations = int(iterations_text)
-        if iterations < 100_000:
-            # Reject unusually weak hashes instead of accepting them silently.
+        if not MINIMUM_PBKDF2_ITERATIONS <= iterations <= MAXIMUM_PBKDF2_ITERATIONS:
+            # Reject weak hashes and corrupted values that could demand
+            # unbounded CPU work during a login attempt.
             return False
         salt_bytes = _b64decode(salt_text)
         expected_hash = _b64decode(expected_hash_text)
     except (ValueError, binascii.Error):
+        return False
+
+    if not MINIMUM_SALT_BYTES <= len(salt_bytes) <= MAXIMUM_SALT_BYTES:
+        return False
+    if len(expected_hash) != SHA256_BYTES:
         return False
 
     candidate_hash = hashlib.pbkdf2_hmac(

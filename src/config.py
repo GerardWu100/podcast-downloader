@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import configparser
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -95,6 +96,8 @@ def _get_float(
 
 def _require_minimum_float(value: float, key: str, minimum: float) -> float:
     """Validate that a floating-point setting is not below its accepted minimum."""
+    if not math.isfinite(value):
+        raise ConfigError(f"{key} must be a finite number")
     if value < minimum:
         minimum_text = str(int(minimum)) if minimum.is_integer() else str(minimum)
         raise ConfigError(f"{key} must be at least {minimum_text}")
@@ -140,14 +143,18 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
     # Docker can put downloads on a separate mount, so let the environment win.
     if "PODCAST_DOWNLOAD_DIR" in os.environ:
         env_download_dir = os.environ.get("PODCAST_DOWNLOAD_DIR", "")
-        output_dir = Path(_require_non_blank(env_download_dir, "PODCAST_DOWNLOAD_DIR"))
+        output_dir = _resolve_path(
+            _require_non_blank(env_download_dir, "PODCAST_DOWNLOAD_DIR"),
+            project_root,
+        )
     else:
         output_dir = _get_path(section, "output_dir", "downloads", project_root)
 
     if "PODCAST_INTERMEDIATE_DIR" in os.environ:
         env_intermediate_dir = os.environ.get("PODCAST_INTERMEDIATE_DIR", "")
-        intermediate_dir = Path(
-            _require_non_blank(env_intermediate_dir, "PODCAST_INTERMEDIATE_DIR")
+        intermediate_dir = _resolve_path(
+            _require_non_blank(env_intermediate_dir, "PODCAST_INTERMEDIATE_DIR"),
+            project_root,
         )
     else:
         intermediate_dir = _get_path(
@@ -215,8 +222,9 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
             section.get("cookies_file", ""), "cookies_file"
         )
         candidate = _resolve_path(explicit_cookies, project_root)
-        if candidate.is_file():
-            cookies_file = candidate
+        # Preserve an explicit path even before the file exists. The web UI can
+        # then create that exact file, and later downloader processes use it.
+        cookies_file = candidate
     else:
         auto_candidate = project_root / "cookies.txt"
         if auto_candidate.is_file():

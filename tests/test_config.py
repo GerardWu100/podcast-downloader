@@ -188,3 +188,39 @@ def test_download_timeout_seconds_rejects_value_below_minimum(tmp_path) -> None:
 
     with pytest.raises(ConfigError, match="download_timeout_seconds must be at least"):
         load_config(config_file, tmp_path)
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+def test_load_config_rejects_non_finite_delay(tmp_path: Path, value: str) -> None:
+    """A delay must be a real finite duration that ``time.sleep`` can accept."""
+    config_file = tmp_path / "config.ini"
+    write_config(config_file, f"delay_seconds = {value}")
+
+    with pytest.raises(ConfigError, match="delay_seconds must be a finite number"):
+        load_config(config_file, tmp_path)
+
+
+def test_relative_environment_paths_resolve_from_data_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Relative Docker overrides must not depend on the terminal directory."""
+    config_file = tmp_path / "config.ini"
+    write_config(config_file, "channel_count = 1")
+    monkeypatch.setenv("PODCAST_DOWNLOAD_DIR", "library")
+    monkeypatch.setenv("PODCAST_INTERMEDIATE_DIR", "scratch")
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.output_dir == tmp_path / "library"
+    assert config.intermediate_dir == tmp_path / "scratch"
+
+
+def test_explicit_cookie_path_is_preserved_before_file_exists(tmp_path: Path) -> None:
+    """The web upload must be able to create the configured cookie path."""
+    config_file = tmp_path / "config.ini"
+    write_config(config_file, "cookies_file = private/cookies.txt")
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.cookies_file == tmp_path / "private" / "cookies.txt"

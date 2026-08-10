@@ -13,6 +13,7 @@ from .downloads.service import PodcastDownloadService
 from .media.urls import is_supported_media_url
 from .media.youtube import (
     is_channel_or_playlist,
+    is_youtube_playlist,
     is_youtube_url,
     normalize_youtube_url,
 )
@@ -28,6 +29,14 @@ class Colors:
     RED = "\033[0;31m"
     BLUE = "\033[0;34m"
     NC = "\033[0m"
+
+
+def _positive_int(raw_value: str) -> int:
+    """Parse a command-line integer that must be at least one."""
+    value = int(raw_value)
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
 
 
 def _mark_youtube_bypass_urls(
@@ -96,7 +105,7 @@ Examples:
     parser.add_argument(
         "-n",
         "--number",
-        type=int,
+        type=_positive_int,
         default=default_channel_count,
         help=(
             f"Number of latest videos from channels (default: {DEFAULT_CHANNEL_VIDEO_COUNT})"
@@ -179,6 +188,9 @@ def main() -> int:
 
     if urls_to_add:
         added = QueueStore(args.file, _logger).append_urls(urls_to_add)
+        if added == 0:
+            print(f"{Colors.RED}Error: no valid new URLs were added{Colors.NC}")
+            return 1
         if args.skip_age_check:
             _mark_youtube_bypass_urls(urls_to_add, config.bypass_age_check_file)
         print(f"Added {added} URL(s) to {args.file}")
@@ -199,9 +211,21 @@ def main() -> int:
         )
         return 1
 
+    if single_url and is_channel_or_playlist(single_url):
+        print(
+            f"{Colors.RED}Error: --download-single-url requires one direct media URL{Colors.NC}"
+        )
+        return 1
+
     if full_playlist_url and not is_supported_media_url(full_playlist_url):
         print(
             f"{Colors.RED}Error: --download-full-playlist must be a web media URL{Colors.NC}"
+        )
+        return 1
+
+    if full_playlist_url and not is_youtube_playlist(full_playlist_url):
+        print(
+            f"{Colors.RED}Error: --download-full-playlist requires a YouTube playlist URL{Colors.NC}"
         )
         return 1
 

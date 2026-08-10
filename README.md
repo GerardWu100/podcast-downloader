@@ -16,8 +16,12 @@ Podcast Downloader is a small, self-hosted tool for [Audiobookshelf](https://www
 The project is designed to run cleanly in Docker for the common Audiobookshelf workflow.
 
 ```bash
+docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
+
+Compose joins the Docker network named `single` so a reverse proxy can reach
+the service. The first command creates that network when it is missing.
 
 On startup, the container creates missing runtime files. It also copies the repo-root `.env` (or `.env.example` when no `.env` exists) into the mounted data directory the first time that directory is used. The app hashes the `.env` password into `.ui_credentials.json` and checks the hash automatically; no separate hashing command is needed. Runtime cookies live at `$HOME/.containers/podcast-downloader/cookies.txt` on the host and are mounted as `/data/cookies.txt` in the container. A repo-root Netscape-format `cookies.txt` is used only to seed a missing mounted cookie file.
 
@@ -79,7 +83,7 @@ uv run python scripts/sponsorblock_smoke_check.py
 
 Open [http://127.0.0.1:8000/login](http://127.0.0.1:8000/login) after starting the API with `uv run uvicorn src.api:app --host 127.0.0.1 --port 8000`.
 
-The UI lets you add sources, remove entries from `urls.txt`, upload a replacement YouTube `cookies.txt`, and view recent activity or the end of `download.log`. Its status row shows whether the service is online, how many sources are monitored, and when activity was last recorded. A short usage and cookie-export guide is available at [http://127.0.0.1:8000/help](http://127.0.0.1:8000/help). Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`.
+The UI lets you add sources, remove entries from `urls.txt`, upload a replacement YouTube `cookies.txt`, and view recent activity or the end of `download.log`. Its status row shows whether the service is online, how many sources are monitored, and when activity was last recorded. A short usage and cookie-export guide is available at [http://127.0.0.1:8000/help](http://127.0.0.1:8000/help). Remembered sessions can survive restarts for up to 30 days, and failed logins are tracked in `.login_state.json`. Changing or removing valid `.env` credentials revokes remembered sessions and disables stale credentials.
 
 ## Getting YouTube Cookies
 

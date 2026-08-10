@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
 
-from .urls import normalized_hostname
+from .urls import is_supported_media_url, normalized_hostname
 
 YTDLP_MISSING_VALUE_PLACEHOLDERS = {"", "NA", "N/A", "None", "none", "null"}
 YOUTUBE_CHANNEL_CONTENT_TABS = {"streams", "videos"}
@@ -66,7 +66,10 @@ def is_youtube_playlist(url: str) -> bool:
     if not is_youtube_url(url):
         return False
 
-    return "/playlist?" in url.rstrip("/")
+    parsed = urlparse(url)
+    return parsed.path.rstrip("/") == "/playlist" and bool(
+        parse_qs(parsed.query).get("list", [""])[0]
+    )
 
 
 def is_channel_or_playlist(url: str) -> bool:
@@ -74,9 +77,15 @@ def is_channel_or_playlist(url: str) -> bool:
     if not is_youtube_url(url):
         return False
 
-    url_clean = url.rstrip("/")
-    return any(
-        x in url_clean for x in ["/@", "/c/", "/channel/", "/user/", "/playlist?"]
+    if is_youtube_playlist(url):
+        return True
+
+    path_parts = [part for part in urlparse(url).path.split("/") if part]
+    if not path_parts:
+        return False
+    first_part = path_parts[0]
+    return first_part.startswith("@") or (
+        first_part in {"c", "channel", "user"} and len(path_parts) >= 2
     )
 
 
@@ -179,7 +188,9 @@ def _fetch_ytdlp_print_line(
                 check=False,
             )
             if result.returncode == 0 and result.stdout.strip():
-                return result.stdout.strip().splitlines()[0]
+                metadata_line = result.stdout.strip().splitlines()[0]
+                if _metadata_line_has_usable_value(metadata_line):
+                    return metadata_line
 
             logger.warning(
                 "yt-dlp metadata print failed for %s: %s",
@@ -324,6 +335,11 @@ def _metadata_value_is_present(raw_value: str) -> bool:
     return normalized_value not in YTDLP_MISSING_VALUE_PLACEHOLDERS
 
 
+def _metadata_line_has_usable_value(metadata_line: str) -> bool:
+    """Return whether a tab-delimited metadata line has any real value."""
+    return any(_metadata_value_is_present(part) for part in metadata_line.split("\t"))
+
+
 def is_old_enough(
     timestamp_raw: str,
     upload_date: str,
@@ -365,7 +381,15 @@ def is_old_enough(
 
 def _is_channel_url(url_clean: str) -> bool:
     """Return whether a cleaned YouTube URL points at a channel-like source."""
-    return any(marker in url_clean for marker in ["/@", "/c/", "/channel/", "/user/"])
+    if not is_youtube_url(url_clean):
+        return False
+    path_parts = [part for part in urlparse(url_clean).path.split("/") if part]
+    if not path_parts:
+        return False
+    first_part = path_parts[0]
+    return first_part.startswith("@") or (
+        first_part in {"c", "channel", "user"} and len(path_parts) >= 2
+    )
 
 
 def _channel_identity_part_count(path_parts: list[str]) -> int:
@@ -546,20 +570,32 @@ def _expand_channel_or_playlist_once(
         if full_playlist and not _is_channel_url(url_clean)
         else YTDLP_METADATA_TIMEOUT_SECONDS
     )
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        timeout=expansion_timeout_seconds,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=expansion_timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.error("Timeout expanding URL: %s", url_clean)
+        return None
 
     if result.returncode != 0:
         logger.error(f"Failed to expand URL: {result.stderr}")
         return None
 
-    all_entries = [line.strip() for line in result.stdout.split("\n") if line.strip()]
-    logger.info("Fetched %s entries from channel/playlist", len(all_entries))
+    raw_entries = [line.strip() for line in result.stdout.split("\n") if line.strip()]
+    all_entries = [
+        entry
+        for entry in raw_entries
+        if is_supported_media_url(_split_expanded_entry(entry)[0])
+    ]
+    logger.info("Fetched %s usable entries from channel/playlist", len(all_entries))
+    if not all_entries:
+        logger.warning("yt-dlp returned no usable entries for %s", url_clean)
+        return None
 
     if _is_channel_url(url_clean):
         return _filter_channel_entries(
@@ -682,18 +718,27 @@ def _get_video_metadata_once(
         cmd.extend(["--cookies", str(cookies_for_attempt)])
     cmd.extend(["--", url])
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=YTDLP_METADATA_TIMEOUT_SECONDS,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=YTDLP_METADATA_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("get_video_metadata timed out for %s", url)
+        return None
     if result.returncode == 0 and result.stdout.strip():
         first_line = result.stdout.strip().splitlines()[0]
         parts = first_line.split("\t")
-        return (parts[0] if parts else "", parts[1] if len(parts) > 1 else "")
+        timestamp_raw = parts[0] if parts else ""
+        upload_date = parts[1] if len(parts) > 1 else ""
+        if _metadata_value_is_present(timestamp_raw) or _metadata_value_is_present(
+            upload_date
+        ):
+            return timestamp_raw, upload_date
 
     logger.warning("get_video_metadata failed for %s: %s", url, result.stderr)
     return None
