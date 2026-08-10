@@ -434,6 +434,25 @@ def test_youtube_live_url_normalizes_to_watch_url() -> None:
     )
 
 
+def test_youtube_trailing_slash_gives_the_same_identity_as_the_clean_url() -> None:
+    """A pasted trailing slash must not create a second identity for one video.
+
+    The queue, the one-shot bypass file, and the downloaded-URL archive all
+    compare normalized URLs. If ``youtu.be/ID/`` normalized to a watch URL whose
+    video id still carried the slash, the same video could sit in the queue
+    twice and be downloaded twice.
+    """
+    canonical = "https://www.youtube.com/watch?v=hPwmCl_nLiQ"
+
+    assert normalize_youtube_url("https://youtu.be/hPwmCl_nLiQ/") == canonical
+    assert normalize_youtube_url("https://www.youtube.com/watch/?v=hPwmCl_nLiQ") == (
+        canonical
+    )
+    assert normalize_youtube_url("https://www.youtube.com/live/hPwmCl_nLiQ/") == (
+        canonical
+    )
+
+
 def test_non_youtube_host_is_not_misclassified_as_youtube() -> None:
     """A lookalike domain should stay a normal direct URL."""
     url = "https://notyoutube.com/watch?v=abc123"

@@ -36,12 +36,20 @@ def normalize_youtube_url(url: str) -> str:
     the normal ``/watch?v=VIDEO_ID`` route. Both routes refer to the same media
     item, so they must share one queue identity. Leaves channel/playlist URLs
     as-is.
+
+    Trailing slashes are ignored on every route. A share link pasted as
+    ``https://youtu.be/VIDEO_ID/`` names the same video as
+    ``https://youtu.be/VIDEO_ID``, so both have to collapse to the same watch
+    URL; otherwise the queue, the bypass file, and the downloaded-URL archive
+    would each hold two identities for one video.
     """
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").lower()
+    # Empty parts drop the leading slash and any trailing slash in one step.
+    path_parts = [part for part in parsed.path.split("/") if part]
 
     if hostname == "youtu.be":
-        video_id = parsed.path.lstrip("/")
+        video_id = path_parts[0] if path_parts else ""
         return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
 
     if hostname in {
@@ -49,12 +57,11 @@ def normalize_youtube_url(url: str) -> str:
         "youtube.com",
         "m.youtube.com",
     }:
-        if parsed.path == "/watch":
+        if path_parts[:1] == ["watch"] and len(path_parts) == 1:
             query = parse_qs(parsed.query)
             video_id = query.get("v", [""])[0]
             return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
-        if parsed.path.startswith("/live/"):
-            path_parts = [part for part in parsed.path.split("/") if part]
+        if path_parts[:1] == ["live"]:
             video_id = path_parts[1] if len(path_parts) > 1 else ""
             return f"https://www.youtube.com/watch?v={video_id}" if video_id else url
 
