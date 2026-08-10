@@ -25,29 +25,28 @@ Run the API locally:
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
-Generate a `.ui_password` hash manually:
+Set the web UI login by copying `.env.example` to `.env` and editing both values:
 
 ```bash
-uv run python -c 'from src.passwords import hash_password; import getpass; print(hash_password(getpass.getpass("Password: ")))' > .ui_password
+cp .env.example .env
+# edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-This prompts for the real password in the terminal and writes only the PBKDF2 hash into `.ui_password`.
+On startup the app reads `.env`, hashes `UI_PASSWORD` with PBKDF2, verifies the hash against the plain password (a self-test), and writes only the hash into `.ui_credentials.json`. No manual hashing command exists or is needed. To change the password, edit `.env` and restart; the hash is regenerated and re-verified automatically.
 
-For Docker deployments, create that `.ui_password` file in the repo before you copy the project to the server or run `docker compose up -d`. The image build carries it into `/app/.ui_password`, and the first container start seeds the mounted `/data/.ui_password` from it automatically.
+For Docker deployments, create that `.env` file in the repo before you copy the project to the server or run `docker compose up -d`. The image build carries it into `/app/.env`, and the first container start seeds the mounted `/data/.env` from it automatically. After that, `/data/.env` on the host (`$HOME/.containers/podcast-downloader/.env`) is the file to edit.
 
 ## Docker behavior
 
 The container bootstrap path does the following:
 
 1. Copies the repo `config.ini` into the mounted data directory if that file is missing.
-2. Copies an image-bundled `.ui_password` into the mounted data directory when that file exists in the repo at build time and no mounted password file exists yet.
+2. Copies an image-bundled `.env` (or `.env.example` when the repo has no `.env`) into the mounted data directory when no mounted `.env` exists yet, and sets its permissions to owner-only.
 3. Uses an existing `/data/cookies.txt` when present, fixes its permissions to owner-only, and only seeds it from image-bundled repo-root `cookies.txt` when the mounted data directory has no cookie file.
-4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, `.login_state.json`, and `.ui_password`.
-5. Stores a PBKDF2 hash for the default password `.ui_password` if no password file exists.
-6. Rewrites legacy `CHANGE_ME` files and other plain-text password files into hashes in place.
-7. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
+4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, and `.login_state.json`.
+5. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
 
-If you already have a plain-text password in `.ui_password`, the Docker entrypoint will rewrite it as a hash automatically on the next container start.
+`start.py` then hashes the `.env` password into `.ui_credentials.json` and self-tests the hash before the web server starts. When `.env` still holds the example password `changeme`, startup logs a warning.
 
 ## YouTube cookies
 
@@ -129,7 +128,8 @@ Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files old
 | `download.log` | Main runtime log |
 | `activity.log` | Concise browser activity feed, created on first activity event |
 | `.login_state.json` | Failed-login counters and temporary bans |
-| `.ui_password` | Stored PBKDF2 hash for the shared UI password |
+| `.env` | Operator-set UI account name and plain password |
+| `.ui_credentials.json` | UI account name and PBKDF2 password hash generated from `.env` |
 
 ## Manual smoke check
 

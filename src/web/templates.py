@@ -322,6 +322,7 @@ def render_login_page(
     .sub {{ font-size:.82rem; color:var(--muted); margin-bottom:24px; }}
     label {{ display:block; font-size:.72rem; font-weight:700; text-transform:uppercase;
              letter-spacing:.05em; color:var(--muted); margin-bottom:6px; }}
+    #username {{ margin-bottom:14px; }}
     .btn {{ margin-top:14px; width:100%; padding:10px; }}
     .help-link {{ display:block; margin-top:18px; text-align:center; font-size:.78rem; }}
       </style>
@@ -335,10 +336,14 @@ def render_login_page(
     <form method="post" action="/login">
       <input type="hidden" name="csrf_token" value="{safe_token}" />
       <input type="hidden" name="csrf_session" value="{safe_csrf_session}" />
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text"
+        autocomplete="username" autocapitalize="none"
+        spellcheck="false" required autofocus />
       <label for="password">Password</label>
       <input id="password" name="password" type="password"
         autocomplete="current-password" autocapitalize="none"
-        spellcheck="false" required autofocus />
+        spellcheck="false" required />
       <button type="submit" class="btn">Sign in</button>
     </form>
     <a class="help-link text-link" href="/help">How it works</a>

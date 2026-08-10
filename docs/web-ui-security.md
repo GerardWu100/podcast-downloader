@@ -13,41 +13,29 @@ uploads, and all state-changing controls remain behind the authenticated UI.
 
 The web UI is intentionally simple:
 
-- Password is read from `.ui_password`.
-- In Docker, `.ui_password` stores a PBKDF2-HMAC-SHA256 hash instead of the clear-text password.
-- The default first-boot password is `.ui_password`.
-- Legacy `CHANGE_ME` files are migrated automatically and are still treated as invalid if they somehow reach the API unchanged.
+- The operator sets `UI_USERNAME` and `UI_PASSWORD` in `.env` in the data directory (copy `.env.example` to start).
+- On every startup the app hashes `UI_PASSWORD` with PBKDF2-HMAC-SHA256, verifies the hash against the plain password (a self-test), and stores the account name plus the hash in `.ui_credentials.json`. The login check reads only the hash file.
+- The login form asks for both the username and the password.
 - Failed attempts are recorded in `.login_state.json`.
 - After too many failures from the same IP, the client is temporarily banned.
 - Successful login creates a persistent session cookie stored in `.ui_sessions.json`.
-- Both JSON files use interprocess locks and sibling temporary files followed by atomic replacement.
+- Both JSON state files use interprocess locks and sibling temporary files followed by atomic replacement.
 
-## Manual password setup
+## Credential setup
 
-To generate the stored password hash manually from the terminal and write it into `.ui_password`, run:
+1. Copy `.env.example` to `.env`.
+2. Set `UI_USERNAME` and `UI_PASSWORD`.
+3. Start the app (or restart the container). Startup hashes the password, self-tests the hash, and logs the result.
 
-```bash
-uv run python -c 'from src.passwords import hash_password; import getpass; print(hash_password(getpass.getpass("Password: ")))' > .ui_password
-```
+To change the password later, edit `.env` and restart. The hash is regenerated and re-verified automatically. There is no manual hashing command.
 
-Workflow:
+If `.env` already exists in the repo when you build the Docker image, first boot copies that file into the mounted data directory automatically. That means the server-side flow can be:
 
-1. Run the command.
-2. Type the real password at the `Password:` prompt.
-3. Press Enter.
-4. The command writes only the PBKDF2 hash to `.ui_password`.
-
-That means the true password is entered interactively and the file on disk stores only the hash.
-
-If you prefer, in Docker you can place a plain-text password in `.ui_password` and restart the container once. The entrypoint will convert it to the hashed format automatically.
-
-If `.ui_password` already exists in the repo when you build the Docker image, first boot copies that file into the mounted data directory automatically. That means the server-side flow can be:
-
-1. Create `.ui_password` locally.
-2. Copy the project, including the hidden `.ui_password` file, to the server.
+1. Create `.env` locally.
+2. Copy the project, including the hidden `.env` file, to the server.
 3. Run `docker compose up -d`.
 
-No extra password-generation step is required on the server.
+Both `.env` and `.ui_credentials.json` are written with owner-only (600) file permissions. Note that `.env` keeps the plain password on disk; the hash in `.ui_credentials.json` protects the login check itself, but anyone who can read the data directory can read `.env`. Keep the data directory private.
 
 ## Session rules
 
@@ -78,7 +66,7 @@ HTML responses include:
 
 The queue UI now uses a per-response script nonce instead of inline event handlers. This keeps the activity viewer working without weakening the Content Security Policy to allow arbitrary inline JavaScript.
 
-Failed login attempts now redirect back to the HTML login form with an inline error message such as `Invalid password.` instead of returning a raw JSON error response.
+Failed login attempts redirect back to the HTML login form with an inline error message such as `Invalid username or password.` instead of returning a raw JSON error response. Wrong usernames and wrong passwords produce the same message and take the same time to check, so responses do not reveal which half was wrong.
 
 ## Proxy trust
 
@@ -98,5 +86,6 @@ If you expose the app directly, set it to `false`. Otherwise clients can spoof `
 
 - This is still a personal-use admin surface, not a full internet-facing multi-user application.
 - Sessions are persisted across restarts, but they still expire after 30 days and remain single-user in scope.
-- Password authentication is single-factor.
+- Authentication is a single account with a username and password, no second factor.
+- The plain password lives in `.env` on disk. This is a deliberate convenience trade-off; file permissions (600) and a private data directory are the protection.
 - The queue UI trusts any logged-in user with full queue and cookie-file update access.

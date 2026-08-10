@@ -105,16 +105,24 @@ def test_youtube_channel_streams_tab_expands_from_streams_tab(monkeypatch) -> No
     )
 
 
-def test_login_action_accepts_valid_password_and_rejects_invalid_password(
+def test_login_action_accepts_valid_credentials_and_rejects_invalid_password(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
     """Login should authenticate by behavior without relying on implementation text."""
+    import json
+
+    from src.credentials import CREDENTIALS_FILENAME
     from src.passwords import hash_password
     from src.web import routes as api
 
-    password_file = tmp_path / ".ui_password"
-    password_file.write_text(f"{hash_password('correct-password')}\n", encoding="utf-8")
+    credentials_file = tmp_path / CREDENTIALS_FILENAME
+    credentials_file.write_text(
+        json.dumps(
+            {"username": "alice", "password_hash": hash_password("correct-password")}
+        ),
+        encoding="utf-8",
+    )
     session_state_file = tmp_path / ".ui_sessions.json"
 
     class FakeURL:
@@ -136,28 +144,40 @@ def test_login_action_accepts_valid_password_and_rejects_invalid_password(
 
     monkeypatch.setattr(api, "DATA_DIR", tmp_path)
     monkeypatch.setattr(api, "SESSION_STATE_FILE", session_state_file)
-    monkeypatch.setattr(api, "_password_file", lambda: password_file)
     api.SESSIONS.clear()
     api.CSRF_TOKENS.clear()
 
     bad_csrf_session, bad_csrf_token = api._store_login_csrf_token()
     bad_response = api.login_action(
         FakeRequest(),
+        username="alice",
         password="wrong-password",
         csrf_token=bad_csrf_token,
         csrf_session=bad_csrf_session,
     )
 
+    wrong_user_csrf_session, wrong_user_csrf_token = api._store_login_csrf_token()
+    wrong_user_response = api.login_action(
+        FakeRequest(),
+        username="mallory",
+        password="correct-password",
+        csrf_token=wrong_user_csrf_token,
+        csrf_session=wrong_user_csrf_session,
+    )
+
     good_csrf_session, good_csrf_token = api._store_login_csrf_token()
     good_response = api.login_action(
         FakeRequest(),
+        username="alice",
         password="correct-password",
         csrf_token=good_csrf_token,
         csrf_session=good_csrf_session,
     )
 
     assert bad_response.status_code == 303
-    assert bad_response.headers["location"] == "/login?msg=bad_password"
+    assert bad_response.headers["location"] == "/login?msg=bad_credentials"
+    assert wrong_user_response.status_code == 303
+    assert wrong_user_response.headers["location"] == "/login?msg=bad_credentials"
     assert good_response.status_code == 302
     assert good_response.headers["location"] == "/ui"
     assert api.SESSIONS
@@ -167,11 +187,8 @@ def test_login_action_accepts_valid_password_and_rejects_invalid_password(
 
 
 def test_login_action_rejects_invalid_csrf_token(tmp_path: Path, monkeypatch) -> None:
-    """Login should reject a mismatched CSRF token before checking the password."""
+    """Login should reject a mismatched CSRF token before checking credentials."""
     from src.web import routes as api
-
-    password_file = tmp_path / ".ui_password"
-    password_file.write_text("unused-password\n", encoding="utf-8")
 
     class FakeURL:
         """Minimal request URL used by cookie security detection."""
@@ -190,12 +207,13 @@ def test_login_action_rejects_invalid_csrf_token(tmp_path: Path, monkeypatch) ->
         client = FakeClient()
         headers: dict[str, str] = {}
 
-    monkeypatch.setattr(api, "_password_file", lambda: password_file)
+    monkeypatch.setattr(api, "DATA_DIR", tmp_path)
     api.CSRF_TOKENS.clear()
     csrf_session, _csrf_token = api._store_login_csrf_token()
 
     response = api.login_action(
         FakeRequest(),
+        username="unused-user",
         password="unused-password",
         csrf_token="wrong-token",
         csrf_session=csrf_session,
@@ -213,14 +231,6 @@ def test_timing_safe_password_comparison() -> None:
 
     assert verify_password("correct-password", stored_hash)
     assert not verify_password("correct-passw0rd", stored_hash)
-
-
-def test_plain_text_password_comparison() -> None:
-    """Legacy plain-text password files should still compare exact values only."""
-    from src.passwords import verify_password
-
-    assert verify_password("correct-password", "correct-password")
-    assert not verify_password("correct-passw0rd", "correct-password")
 
 
 def test_session_expiry() -> None:

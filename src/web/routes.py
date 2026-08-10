@@ -24,7 +24,8 @@ from ..media.youtube import (
     is_youtube_url,
     normalize_youtube_url,
 )
-from ..passwords import LEGACY_PASSWORD_PLACEHOLDER, verify_password
+from ..credentials import CREDENTIALS_FILENAME, load_ui_credentials
+from ..passwords import verify_password
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
@@ -180,8 +181,8 @@ def _write_cookie_file(cookie_file: Path, normalized_cookie_text: str) -> None:
     cookie_file.chmod(COOKIE_FILE_PERMISSION_MODE)
 
 
-def _password_file() -> Path:
-    return DATA_DIR / ".ui_password"
+def _credentials_file() -> Path:
+    return DATA_DIR / CREDENTIALS_FILENAME
 
 
 def _auth_store(request: Request | None = None) -> AuthStore:
@@ -250,14 +251,6 @@ def _store_login_csrf_token(
         "created_at": time.time(),
     }
     return csrf_session_id, csrf_token
-
-
-def _password_is_configured(password_text: str) -> bool:
-    """Reject blank passwords and the legacy placeholder value."""
-    normalized_password = password_text.strip()
-    return (
-        bool(normalized_password) and normalized_password != LEGACY_PASSWORD_PLACEHOLDER
-    )
 
 
 def _client_ip(request: Request) -> str:
@@ -465,8 +458,12 @@ def login_form(request: Request) -> Response:
     message_map = {
         "csrf": ("msg-err", "Your login form expired. Try again."),
         "banned": ("msg-err", "Too many failed attempts. Try again later."),
-        "bad_password": ("msg-err", "Invalid password."),
-        "unconfigured": ("msg-err", "Password not configured."),
+        "bad_credentials": ("msg-err", "Invalid username or password."),
+        "unconfigured": (
+            "msg-err",
+            "Login not configured. Set UI_USERNAME and UI_PASSWORD in .env "
+            "and restart.",
+        ),
         "request": ("msg-err", "Invalid request."),
     }
     message_class, message_text = message_map.get(raw_message, ("", ""))
@@ -503,6 +500,7 @@ def login_form(request: Request) -> Response:
 @router.post("/login")
 def login_action(
     request: Request,
+    username: str = Form(...),
     password: str = Form(...),
     csrf_token: str = Form(...),
     csrf_session: str = Form(...),
@@ -514,6 +512,9 @@ def login_action(
     request:
         Current FastAPI request carrying application dependencies and client
         network information.
+    username:
+        Account name submitted by the browser, compared against the value
+        stored in ``.ui_credentials.json``.
     password:
         Plain-text password submitted by the browser.
     csrf_token:
@@ -547,22 +548,23 @@ def login_action(
     if banned:
         return RedirectResponse(url="/login?msg=banned", status_code=303)
 
-    # Keep obviously bogus password submissions from reaching the file read.
-    if len(password) > 1000:
+    # Keep obviously bogus submissions from reaching the file read.
+    if len(password) > 1000 or len(username) > 1000:
         return RedirectResponse(url="/login?msg=request", status_code=303)
 
-    password_file = _password_file()
-    if not password_file.exists():
+    credentials = load_ui_credentials(_credentials_file())
+    if credentials is None:
         return RedirectResponse(url="/login?msg=unconfigured", status_code=303)
+    expected_username, expected_password_hash = credentials
 
-    expected_password = password_file.read_text(encoding="utf-8").strip()
-    if not _password_is_configured(expected_password):
-        return RedirectResponse(url="/login?msg=unconfigured", status_code=303)
+    # Always run both checks so a wrong username costs the same time as a
+    # wrong password; PBKDF2 stays outside the file lock because it is slow.
+    username_ok = secrets.compare_digest(
+        username.encode("utf-8"), expected_username.encode("utf-8")
+    )
+    password_ok = verify_password(password, expected_password_hash)
 
-    # PBKDF2 is slow enough to justify keeping it outside the file lock.
-    password_ok = verify_password(password, expected_password)
-
-    if not password_ok:
+    if not (username_ok and password_ok):
         with _LOGIN_STATE_LOCK:
             updated_state = _auth_store(request).update_login_state(
                 lambda state: _record_failure(state, ip),
@@ -570,7 +572,7 @@ def login_action(
             is_now_banned, _ban_deadline = _is_banned(updated_state, ip)
         if is_now_banned:
             return RedirectResponse(url="/login?msg=banned", status_code=303)
-        return RedirectResponse(url="/login?msg=bad_password", status_code=303)
+        return RedirectResponse(url="/login?msg=bad_credentials", status_code=303)
 
     _auth_store(request).update_login_state(
         lambda state: _clear_failures(state, ip),

@@ -34,7 +34,8 @@ The live SponsorBlock smoke script lives at
 - `test_archive_locking.py`: archive-store concurrency.
 - `test_activity_log.py`: activity-store path and locked tail behavior.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,
-  `test_docker_entrypoint.py`, `test_passwords.py`: entry and boundary behavior.
+  `test_docker_entrypoint.py`, `test_passwords.py`, `test_credentials.py`: entry
+  and boundary behavior, including the `.env` to `.ui_credentials.json` sync.
 
 Run all offline checks from the project root:
 

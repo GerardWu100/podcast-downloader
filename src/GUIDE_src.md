@@ -33,6 +33,9 @@ their low-level rules.
 - `config.py`: validated `PodcastConfig` loading.
 - `passwords.py`: Password-Based Key Derivation Function 2 (PBKDF2) hashing and
   verification.
+- `credentials.py`: startup sync that reads `UI_USERNAME` and `UI_PASSWORD`
+  from `.env`, hashes the password, self-tests the hash, and writes
+  `.ui_credentials.json` for the login route.
 - `trigger.py`: in-process requests that wake the Docker scheduler.
 - `log_timezone.py`: shared Toronto/Eastern logging timezone.
 - `media/GUIDE_media.md`: generic URL validation and YouTube policy.

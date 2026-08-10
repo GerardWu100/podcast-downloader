@@ -19,7 +19,7 @@ The project is designed to run cleanly in Docker for the common Audiobookshelf w
 docker compose up --build -d
 ```
 
-On startup, the container seeds missing runtime files, copies a repo-root `.ui_password` into the mounted data directory when present and missing, and accepts both hashed and legacy plain-text password files. Runtime cookies live at `$HOME/.containers/podcast-downloader/cookies.txt` on the host, mounted as `/data/cookies.txt` in the container. A repo-root Netscape-format `cookies.txt` is only copied into `/data/cookies.txt` when the mounted data directory does not already have a cookie file.
+On startup, the container seeds missing runtime files and copies a repo-root `.env` (or `.env.example` when no `.env` exists) into the mounted data directory when that directory has no `.env` yet. The app then hashes the `.env` password into `.ui_credentials.json` and verifies the hash automatically; you never run a hashing command. Runtime cookies live at `$HOME/.containers/podcast-downloader/cookies.txt` on the host, mounted as `/data/cookies.txt` in the container. A repo-root Netscape-format `cookies.txt` is only copied into `/data/cookies.txt` when the mounted data directory does not already have a cookie file.
 
 Finished MP3 files are written to the configured download directory. Point Audiobookshelf at that folder so it can scan the completed audio library.
 
@@ -45,13 +45,14 @@ uv pip install "yt-dlp[default]"
 
 3. Add one source URL per line to `urls.txt`.
 4. Review `config.ini` for output paths, delay settings, channel polling depth, retention, and proxy behavior.
-5. If you plan to use the web UI, create `.ui_password`.
-
-Generate a hashed UI password from the terminal:
+5. If you plan to use the web UI, copy `.env.example` to `.env` and set `UI_USERNAME` and `UI_PASSWORD`:
 
 ```bash
-uv run python -c 'from src.passwords import hash_password; import getpass; print(hash_password(getpass.getpass("Password: ")))' > .ui_password
+cp .env.example .env
+# edit .env: set UI_USERNAME and UI_PASSWORD
 ```
+
+On startup the app hashes `UI_PASSWORD` with PBKDF2, self-tests the hash, and stores only the hash in `.ui_credentials.json`. The login form asks for the username and password from `.env`.
 
 Start the downloader:
 

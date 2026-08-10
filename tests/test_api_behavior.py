@@ -6,9 +6,12 @@ import asyncio
 import time
 from dataclasses import replace
 
+import json
+
 import pytest
 import src.config as config_module
-from src.passwords import DEFAULT_UI_PASSWORD, hash_password
+from src.credentials import CREDENTIALS_FILENAME
+from src.passwords import hash_password
 from src.trigger import (
     pop_batch_download_request,
     pop_full_playlist_download_requests,
@@ -232,26 +235,42 @@ def test_secure_cookie_respects_cf_visitor(monkeypatch) -> None:
     assert "Secure" in response.headers.get("set-cookie", "")
 
 
-def test_password_configuration_accepts_hashed_default_and_rejects_legacy_placeholder() -> (
-    None
-):
-    """The hashed default is usable, but the legacy placeholder remains invalid."""
-    assert api_module._password_is_configured("CHANGE_ME") is False
-    assert api_module._password_is_configured("") is False
-    assert (
-        api_module._password_is_configured(
-            hash_password(DEFAULT_UI_PASSWORD, salt=b"0123456789abcdef")
-        )
-        is True
+def test_login_redirects_to_unconfigured_when_credentials_missing(
+    monkeypatch, tmp_path
+) -> None:
+    """A missing credentials file should send the browser to the unconfigured message."""
+    monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
+    api_module.CSRF_TOKENS.clear()
+    api_module.CSRF_TOKENS["csrf-session"] = {
+        "token": "csrf-token",
+        "kind": "login",
+        "created_at": time.time(),
+    }
+
+    redirect = api_module.login_action(
+        _FakeRequest(client_host="127.0.0.1"),
+        username="alice",
+        password="any-password",
+        csrf_token="csrf-token",
+        csrf_session="csrf-session",
     )
-    assert api_module._password_is_configured("real-password") is True
+
+    assert redirect.headers["location"] == "/login?msg=unconfigured"
 
 
-def test_login_page_shows_invalid_password_message(monkeypatch, tmp_path) -> None:
+def test_login_page_shows_invalid_credentials_message(monkeypatch, tmp_path) -> None:
     """Failed login attempts should return the HTML login page with an inline error."""
-    password_file = tmp_path / ".ui_password"
-    password_file.write_text(
-        hash_password("correct-password", salt=b"0123456789abcdef"), encoding="utf-8"
+    credentials_file = tmp_path / CREDENTIALS_FILENAME
+    credentials_file.write_text(
+        json.dumps(
+            {
+                "username": "alice",
+                "password_hash": hash_password(
+                    "correct-password", salt=b"0123456789abcdef"
+                ),
+            }
+        ),
+        encoding="utf-8",
     )
     monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
     api_module.CSRF_TOKENS.clear()
@@ -264,18 +283,19 @@ def test_login_page_shows_invalid_password_message(monkeypatch, tmp_path) -> Non
     request = _FakeRequest(client_host="127.0.0.1")
     redirect = api_module.login_action(
         request,
+        username="alice",
         password="wrong-password",
         csrf_token="csrf-token",
         csrf_session="csrf-session",
     )
 
-    assert redirect.headers["location"] == "/login?msg=bad_password"
+    assert redirect.headers["location"] == "/login?msg=bad_credentials"
 
     login_response = api_module.login_form(
-        _FakeRequest(client_host="127.0.0.1", query_params={"msg": "bad_password"})
+        _FakeRequest(client_host="127.0.0.1", query_params={"msg": "bad_credentials"})
     )
     assert login_response.status_code == 200
-    assert "Invalid password." in login_response.body.decode("utf-8")
+    assert "Invalid username or password." in login_response.body.decode("utf-8")
 
 
 def test_logs_endpoint_reads_concise_activity_log(monkeypatch, tmp_path) -> None:

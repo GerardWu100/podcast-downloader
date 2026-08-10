@@ -51,7 +51,7 @@ interrupted process does not leave partial JSON.
 - `start.py`: Docker process supervisor. It runs Uvicorn in the main process and
   invokes `python -m src.cli` in scheduler subprocesses.
 - `config.ini`: checked-in runtime defaults.
-- `docker-entrypoint.sh`: initializes mounted state, password and cookie files,
+- `docker-entrypoint.sh`: initializes mounted state, `.env` and cookie files,
   then performs the best-effort `yt-dlp` update.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.

@@ -23,9 +23,9 @@ RUN uv sync --frozen --no-dev \
 # Unbuffered output so all logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1
 
-# Copy application files. This intentionally includes a repo-root `.ui_password`
-# when present so first-boot Docker deploys can seed `/data/.ui_password`
-# from a pre-generated hash without extra server-side steps.
+# Copy application files. This intentionally includes a repo-root `.env`
+# when present so first-boot Docker deploys can seed `/data/.env` with the
+# UI account name and password without extra server-side steps.
 COPY . .
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh

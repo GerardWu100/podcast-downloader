@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 
 import uvicorn
+from src.credentials import sync_ui_credentials
 from src.trigger import (
     download_trigger,
     pop_batch_download_request,
@@ -17,6 +18,9 @@ from src.trigger import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+# In Docker, PODCAST_DATA_DIR=/data holds .env and all runtime state. Local
+# runs keep those files at the repo root.
+DATA_DIR = Path(os.environ.get("PODCAST_DATA_DIR", str(PROJECT_ROOT)))
 
 
 def _cli_command() -> list[str]:
@@ -224,6 +228,8 @@ def start_web() -> None:
 
 
 if __name__ == "__main__":
+    # Hash the .env password into .ui_credentials.json before serving logins.
+    print(f"[startup] {sync_ui_credentials(DATA_DIR)}", flush=True)
     # Keep the web server as PID 1 so Docker can restart the container if it exits.
     scheduler_thread = threading.Thread(target=run_scheduler_in_background, daemon=True)
     scheduler_thread.start()

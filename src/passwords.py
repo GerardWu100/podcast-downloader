@@ -1,4 +1,4 @@
-"""PBKDF2 helpers for the web UI password file."""
+"""PBKDF2 hashing and verification for the web UI credentials file."""
 
 from __future__ import annotations
 
@@ -7,8 +7,6 @@ import binascii
 import hashlib
 import secrets
 
-DEFAULT_UI_PASSWORD = "changeme"
-LEGACY_PASSWORD_PLACEHOLDER = "CHANGE_ME"
 PASSWORD_HASH_SCHEME = "pbkdf2_sha256"
 PBKDF2_ITERATIONS = 600_000
 SALT_BYTES = 16
@@ -26,7 +24,7 @@ def _b64decode(raw_text: str) -> bytes:
 
 
 def hash_password(password: str, *, salt: bytes | None = None) -> str:
-    """Hash a plain-text password for storage in ``.ui_password``.
+    """Hash a plain-text password for storage in ``.ui_credentials.json``.
 
     Args:
         password: Plain-text password that should be protected at rest.
@@ -67,20 +65,18 @@ def is_password_hash(stored_value: str) -> bool:
 
 
 def verify_password(password: str, stored_value: str) -> bool:
-    """Verify a password against a PBKDF2 hash or a legacy plain-text value.
+    """Verify a password against a serialized PBKDF2 hash.
 
     Args:
         password: Password submitted by the operator.
-        stored_value: Serialized hash or legacy plain-text password from disk.
+        stored_value: Serialized hash from disk. Anything that is not a
+            valid ``pbkdf2_sha256$...`` value is rejected.
 
     Returns:
-        True when the password matches the stored value.
+        True when the password matches the stored hash.
     """
-    if not stored_value:
-        return False
-
     if not is_password_hash(stored_value):
-        return secrets.compare_digest(password, stored_value)
+        return False
 
     try:
         _, iterations_text, salt_text, expected_hash_text = stored_value.split("$", 3)

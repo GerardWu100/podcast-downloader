@@ -19,7 +19,7 @@ coverage.xml
 .venv
 
 # Secrets and auth state
-.ui_password
+.ui_credentials.json
 .ui_sessions.json
 .ui_sessions.json.lock
 .login_state.json

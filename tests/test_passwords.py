@@ -20,3 +20,9 @@ def test_hash_password_rejects_blank_values() -> None:
     """Whitespace-only passwords must not be serialized into hashes."""
     with pytest.raises(ValueError):
         hash_password("   ")
+
+
+def test_verify_password_rejects_non_hash_stored_values() -> None:
+    """Stored values that are not serialized hashes must never verify."""
+    assert verify_password("plain-password", "plain-password") is False
+    assert verify_password("anything", "") is False

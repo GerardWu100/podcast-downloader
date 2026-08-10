@@ -7,13 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from src.passwords import (
-    DEFAULT_UI_PASSWORD,
-    hash_password,
-    is_password_hash,
-    verify_password,
-)
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -80,45 +73,46 @@ def _run_entrypoint(
     )
 
 
-def test_entrypoint_seeds_default_password_hash(tmp_path: Path) -> None:
-    """First boot should create a hashed default password in the mounted data directory."""
+def test_entrypoint_seeds_env_from_example_when_repo_env_missing(
+    tmp_path: Path,
+) -> None:
+    """First boot without a repo .env should seed data/.env from .env.example."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
-    repo_password_file = PROJECT_ROOT / ".ui_password"
+    repo_env_file = PROJECT_ROOT / ".env"
     original_contents = (
-        repo_password_file.read_text(encoding="utf-8")
-        if repo_password_file.exists()
-        else None
+        repo_env_file.read_text(encoding="utf-8") if repo_env_file.exists() else None
     )
 
     try:
-        repo_password_file.unlink(missing_ok=True)
+        repo_env_file.unlink(missing_ok=True)
 
         result = _run_entrypoint(data_dir, download_dir)
 
         assert result.returncode == 0, result.stderr
-        stored_value = (data_dir / ".ui_password").read_text(encoding="utf-8").strip()
-        assert is_password_hash(stored_value) is True
-        assert verify_password(DEFAULT_UI_PASSWORD, stored_value) is True
+        seeded_env_file = data_dir / ".env"
+        example_text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
+        assert seeded_env_file.read_text(encoding="utf-8") == example_text
+        assert oct(seeded_env_file.stat().st_mode & 0o777) == "0o600"
+        assert "[startup] Seeded" in result.stdout
     finally:
         if original_contents is not None:
-            repo_password_file.write_text(original_contents, encoding="utf-8")
+            repo_env_file.write_text(original_contents, encoding="utf-8")
 
 
-def test_entrypoint_rewrites_plaintext_password_as_hash(tmp_path: Path) -> None:
-    """A legacy plain-text password file should be migrated to a hash in place."""
+def test_entrypoint_preserves_existing_data_env(tmp_path: Path) -> None:
+    """An existing mounted .env must never be overwritten by the entrypoint."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
     data_dir.mkdir()
-    (data_dir / ".ui_password").write_text("custom-password\n", encoding="utf-8")
+    mounted_env_text = "UI_USERNAME=alice\nUI_PASSWORD=mounted-password\n"
+    (data_dir / ".env").write_text(mounted_env_text, encoding="utf-8")
 
     result = _run_entrypoint(data_dir, download_dir)
 
     assert result.returncode == 0, result.stderr
-    stored_value = (data_dir / ".ui_password").read_text(encoding="utf-8").strip()
-    assert stored_value != "custom-password"
-    assert is_password_hash(stored_value) is True
-    assert verify_password("custom-password", stored_value) is True
+    assert (data_dir / ".env").read_text(encoding="utf-8") == mounted_env_text
+    assert oct((data_dir / ".env").stat().st_mode & 0o777) == "0o600"
 
 
 def test_entrypoint_seeds_image_bundled_cookies_when_data_cookies_missing(
@@ -229,31 +223,25 @@ def test_entrypoint_preserves_existing_data_cookies_without_image_bundle(
             repo_cookie_file.write_text(original_contents, encoding="utf-8")
 
 
-def test_entrypoint_prefers_image_bundled_hash_when_data_password_missing(
-    tmp_path: Path,
-) -> None:
-    """A repo-root .ui_password copied into the image should seed the mounted data dir."""
+def test_entrypoint_prefers_repo_env_when_data_env_missing(tmp_path: Path) -> None:
+    """A repo-root .env copied into the image should seed the mounted data dir."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
-    repo_password_file = PROJECT_ROOT / ".ui_password"
+    repo_env_file = PROJECT_ROOT / ".env"
     original_contents = (
-        repo_password_file.read_text(encoding="utf-8")
-        if repo_password_file.exists()
-        else None
+        repo_env_file.read_text(encoding="utf-8") if repo_env_file.exists() else None
     )
+    bundled_env_text = "UI_USERNAME=server-user\nUI_PASSWORD=server-password\n"
 
     try:
-        bundled_hash = hash_password("server-password", salt=b"fedcba9876543210")
-        repo_password_file.write_text(f"{bundled_hash}\n", encoding="utf-8")
+        repo_env_file.write_text(bundled_env_text, encoding="utf-8")
 
         result = _run_entrypoint(data_dir, download_dir)
 
         assert result.returncode == 0, result.stderr
-        stored_value = (data_dir / ".ui_password").read_text(encoding="utf-8").strip()
-        assert stored_value == bundled_hash
-        assert verify_password("server-password", stored_value) is True
+        assert (data_dir / ".env").read_text(encoding="utf-8") == bundled_env_text
     finally:
         if original_contents is None:
-            repo_password_file.unlink(missing_ok=True)
+            repo_env_file.unlink(missing_ok=True)
         else:
-            repo_password_file.write_text(original_contents, encoding="utf-8")
+            repo_env_file.write_text(original_contents, encoding="utf-8")

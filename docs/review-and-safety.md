@@ -66,7 +66,7 @@ MP3 snapshots and zero-delta metadata recovery now inspect only the current sour
 ### Security
 
 - The web UI is appropriate for personal admin use, not broad public exposure.
-- Password auth is still single shared secret authentication.
+- Login is still one shared account (username and password from `.env`), not per-user authentication.
 - In-memory sessions mean a process restart logs everyone out.
 
 ### Product behavior

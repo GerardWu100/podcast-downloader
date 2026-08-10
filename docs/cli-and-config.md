@@ -68,7 +68,7 @@ The checked-in configuration file lives at the project root and uses a single `[
 
 | Variable | Purpose |
 |---|---|
-| `PODCAST_DATA_DIR` | Alternate directory for `config.ini`, queue files, password file, and login state |
+| `PODCAST_DATA_DIR` | Alternate directory for `config.ini`, queue files, `.env`, credentials, and login state |
 | `PODCAST_DOWNLOAD_DIR` | Finished MP3 library directory, mainly for Docker volume separation |
 | `PODCAST_INTERMEDIATE_DIR` | Scratch download directory; Compose maps `$HOME/downloads/temporary` to `/temporary` |
 | `DOWNLOAD_INTERVAL_HOURS` | Scheduler interval in Docker mode |

@@ -7,7 +7,7 @@ __pycache__/
 # Runtime state. The Dockerfile uses "COPY . ." and the entrypoint creates these
 # under the mounted data directory, so copying a developer's live queue, logs and
 # sessions into the image would both leak them and be immediately overwritten.
-# .ui_password is deliberately not listed: the Dockerfile seeds it on first boot.
+# .env is deliberately not listed: the Dockerfile seeds /data/.env from it on first boot.
 downloads/
 urls.txt
 downloaded_urls.txt
@@ -15,6 +15,7 @@ bypass_age_check_urls.txt
 download.log
 activity.log
 .ui_sessions.json
+.ui_credentials.json
 .ui_sessions.json.lock
 .login_state.json
 .login_state.json.lock
