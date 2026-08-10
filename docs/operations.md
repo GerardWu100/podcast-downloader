@@ -125,7 +125,7 @@ Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files old
 |---|---|
 | `urls.txt` | Pending queue of user-supplied URLs |
 | `downloaded_urls.txt` | Archive of expanded channel and playlist items |
-| `download.log` | Main runtime log |
+| `download.log` | Main runtime log; rotates at 5 MB keeping `download.log.1` through `download.log.3` |
 | `activity.log` | Concise browser activity feed, created on first activity event |
 | `.login_state.json` | Failed-login counters and temporary bans |
 | `.env` | Operator-set UI account name and plain password |

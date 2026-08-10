@@ -11,6 +11,15 @@ DEFAULT_CHANNEL_VIDEO_COUNT = 2
 DEFAULT_MIN_CHANNEL_VIDEO_AGE_HOURS = 24
 DEFAULT_DELAY_SECONDS = 2.0
 DEFAULT_RETENTION_DAYS = 30
+# Wall-clock budget for one yt-dlp attempt, covering the media download plus
+# the MP3 extraction, SponsorBlock pass, and thumbnail embed that follow it. A
+# full-length podcast episode is routinely one to three hours of audio, and a
+# throttled YouTube download of that size can take well over ten minutes, so
+# this default is deliberately generous.
+DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 3600
+# One minute is the smallest budget that can plausibly finish a real download,
+# so anything lower is treated as a configuration mistake.
+MINIMUM_DOWNLOAD_TIMEOUT_SECONDS = 60
 
 
 class ConfigError(ValueError):
@@ -30,6 +39,7 @@ class PodcastConfig:
     min_channel_video_age_hours: int
     delay_seconds: float
     retention_days: int
+    download_timeout_seconds: int
     trust_x_forwarded_for: bool
     cookies_file: Path | None
     always_use_cookies: bool
@@ -185,6 +195,15 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         "retention_days",
         1,
     )
+    download_timeout_seconds = _require_minimum_int(
+        _get_int(
+            section,
+            "download_timeout_seconds",
+            DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+        ),
+        "download_timeout_seconds",
+        MINIMUM_DOWNLOAD_TIMEOUT_SECONDS,
+    )
     trust_x_forwarded_for = _get_bool(
         parser,
         "podcast",
@@ -232,6 +251,7 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         min_channel_video_age_hours=min_channel_video_age_hours,
         delay_seconds=delay_seconds,
         retention_days=retention_days,
+        download_timeout_seconds=download_timeout_seconds,
         trust_x_forwarded_for=trust_x_forwarded_for,
         cookies_file=cookies_file,
         always_use_cookies=always_use_cookies,

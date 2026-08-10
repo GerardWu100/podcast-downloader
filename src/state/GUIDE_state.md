@@ -11,7 +11,7 @@ worker and one scheduler thread.
 | `QueueStore` | `urls.txt` | URLs are validated and normalized under a lock |
 | `ArchiveStore` | `downloaded_urls.txt` | Check/download/append can share one exclusive transaction |
 | `BypassStore` | `bypass_age_check_urls.txt` | Overrides are normalized and consumed once |
-| `ActivityLogStore` | `activity.log` or `download.log` | Appends and tail reads see whole lines |
+| `ActivityLogStore` | `activity.log` or `download.log` | Appends and tail reads see whole lines; tails read only the final 256 KB |
 | `AuthStore` | `.ui_sessions.json`, `.login_state.json` | JSON updates are locked and atomically replaced |
 
 `locked_text_file()` uses `fcntl`, the Unix file-locking interface. A shared
@@ -54,3 +54,7 @@ and zero-content lock files are not line-per-entry.
   `ActivityLogStore.write_event`, which was still merging events onto a
   hand-edited final line; it is now covered too. `BypassStore.add` also stopped
   treating commented-out URLs as duplicates, matching `BypassStore.load`.
+- 2026-08-10: `read_tail` stopped loading the whole file. It now reads only the
+  final 256 KB through `os.pread` and drops the partial first line, because the
+  browser polls `download.log` every 15 seconds and that file can reach several
+  megabytes between rotations.

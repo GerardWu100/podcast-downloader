@@ -57,6 +57,8 @@ download.log
 activity.log
 downloaded_urls.txt
 /downloads/
+# Scratch tree for in-progress yt-dlp and metadata passes (intermediate_dir).
+/download_work/
 
 # OS files
 .DS_Store

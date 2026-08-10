@@ -110,7 +110,8 @@ All runtime settings live in `config.ini`.
 - `min_channel_video_age_hours`: minimum age for YouTube direct videos and channel uploads.
 - `delay_seconds`: sleep between downloads.
 - `retention_days`: how long to keep channel MP3 files before cleanup.
-- `log_file`: full runtime log path.
+- `download_timeout_seconds`: time limit for one `yt-dlp` attempt, covering the download plus the MP3 conversion. Defaults to 3600 (one hour). Raise it if long episodes time out.
+- `log_file`: full runtime log path. The file rotates at 5 MB and keeps three older copies.
 - `downloaded_urls_file`: archive for expanded URLs.
 - `bypass_age_check_file`: one-shot age-gate overrides.
 - `cookies_file`: optional Netscape-format cookie file for YouTube.

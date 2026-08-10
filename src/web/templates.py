@@ -331,7 +331,7 @@ def render_login_page(
       <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
       <div class="card">
     <h1>Podcast Downloader</h1>
-    <p class="sub">Sign in to manage your queue.</p>
+    <p class="sub">Turns YouTube channels, playlists, and videos into MP3 files with sponsor segments removed.</p>
     {message_html}
     <form method="post" action="/login">
       <input type="hidden" name="csrf_token" value="{safe_token}" />
@@ -398,9 +398,12 @@ def render_queue_page(
     .page {{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }}
     header {{
       display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:2px; padding:0 2px;
+      gap:16px; margin-bottom:2px; padding:0 2px;
     }}
-    .header-actions {{ display:flex; align-items:center; gap:8px; }}
+    /* The brand may shrink and wrap its description; the controls may not, so
+       a long description never squeezes the Help, theme, and Logout buttons. */
+    .brand {{ min-width:0; }}
+    .header-actions {{ display:flex; align-items:center; gap:8px; flex-shrink:0; }}
     .brand h1 {{ font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }}
     .brand p  {{ font-size:.78rem; color:var(--muted); }}
     .theme-toggle {{
@@ -565,7 +568,7 @@ def render_queue_page(
     <header>
       <div class="brand">
         <h1>Podcast Downloader</h1>
-        <p>YouTube to MP3</p>
+        <p>Turns YouTube channels, playlists, and videos into MP3 files with sponsor segments removed.</p>
       </div>
       <div class="header-actions">
         <a class="nav-link" href="/help">Help</a>
@@ -779,6 +782,13 @@ def render_queue_page(
       try {{
         const source = logSourceSelect.value;
         const r = await fetch('/logs?source=' + encodeURIComponent(source));
+        // An expired session answers 401. Reload so the server can send the
+        // login page instead of leaving a stale queue on screen.
+        if (r.status === 401) {{
+          clearInterval(timer);
+          window.location.reload();
+          return;
+        }}
         if (!r.ok) return;
         const text = await r.text();
         const box = document.getElementById('log-box');

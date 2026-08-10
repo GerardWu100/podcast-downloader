@@ -57,7 +57,8 @@ The checked-in configuration file lives at the project root and uses a single `[
 | `min_channel_video_age_hours` | Minimum age before a YouTube direct video or channel upload is eligible when age is known; must be at least `0` | `24` |
 | `delay_seconds` | Sleep between downloads; must be at least `0` | `60` |
 | `retention_days` | How many days to keep YouTube channel MP3 files, measured from embedded download-date metadata; must be at least `1` | `30` |
-| `log_file` | Full runtime log path; browser-facing `activity.log` is written beside it | `download.log` |
+| `download_timeout_seconds` | Time limit for one `yt-dlp` attempt, covering the media download plus the MP3 conversion, SponsorBlock pass, and thumbnail embed; must be at least `60` | `3600` |
+| `log_file` | Full runtime log path; browser-facing `activity.log` is written beside it. Rotates at 5 MB keeping three older copies | `download.log` |
 | `downloaded_urls_file` | Archive path for expanded URLs, also used for duplicate detection | `downloaded_urls.txt` |
 | `bypass_age_check_file` | File that records one-shot direct-video age-gate bypasses | `bypass_age_check_urls.txt` |
 | `cookies_file` | Optional Netscape cookie jar path | unset |
@@ -96,7 +97,7 @@ In Docker Compose, the runtime cookie file is `$HOME/.containers/podcast-downloa
 ## Validation behavior
 
 - Invalid integer and float values in `config.ini` now fail fast with a `ConfigError` that names the bad key.
-- Out-of-range numeric values fail too: `channel_count < 1`, `min_channel_video_age_hours < 0`, `delay_seconds < 0`, and `retention_days < 1`.
+- Out-of-range numeric values fail too: `channel_count < 1`, `min_channel_video_age_hours < 0`, `delay_seconds < 0`, `retention_days < 1`, and `download_timeout_seconds < 60`.
 - Blank configured paths fail fast instead of resolving to the data directory.
 - Invalid `DOWNLOAD_INTERVAL_HOURS` values do not fall back. Docker startup fails fast instead.
 - Missing `urls.txt` causes the project to create a sample queue file with comments and example URLs.

@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from src.config import ConfigError, load_config
+from src.config import (
+    DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+    ConfigError,
+    load_config,
+)
 
 
 def write_config(config_file: Path, body: str) -> None:
@@ -148,3 +152,39 @@ def test_load_config_reads_always_use_cookies(tmp_path: Path) -> None:
     config = load_config(config_file, tmp_path)
 
     assert config.always_use_cookies is True
+
+
+def test_download_timeout_seconds_defaults_to_generous_budget(tmp_path) -> None:
+    """A full-length podcast needs far more than a few minutes to finish."""
+    config_file = tmp_path / "config.ini"
+    config_file.write_text("[podcast]\n", encoding="utf-8")
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.download_timeout_seconds == DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
+    assert config.download_timeout_seconds >= 3600
+
+
+def test_download_timeout_seconds_is_configurable(tmp_path) -> None:
+    """Operators on slow links must be able to raise the per-attempt budget."""
+    config_file = tmp_path / "config.ini"
+    config_file.write_text(
+        "[podcast]\ndownload_timeout_seconds = 5400\n",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.download_timeout_seconds == 5400
+
+
+def test_download_timeout_seconds_rejects_value_below_minimum(tmp_path) -> None:
+    """A budget too short to finish any real download is a config mistake."""
+    config_file = tmp_path / "config.ini"
+    config_file.write_text(
+        "[podcast]\ndownload_timeout_seconds = 5\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="download_timeout_seconds must be at least"):
+        load_config(config_file, tmp_path)

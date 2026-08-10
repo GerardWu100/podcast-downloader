@@ -78,3 +78,10 @@ uv run python -m pytest -q
   smoke script moved from the root to `scripts/`; a superseded 2025 blog draft
   under `content/` was deleted in favour of `blog/`. `.dockerignore` now excludes
   runtime state and session files that `COPY . .` was baking into the image.
+- 2026-08-10: Bug-fix pass. The per-attempt download timeout became the
+  configurable `download_timeout_seconds` with a one-hour default, replacing a
+  hard-coded 300 seconds that could not finish a full-length episode; because a
+  timed-out item is never archived, those episodes failed on every run.
+  `download.log` gained rotation and bounded tail reads, `/logs` answers `401`
+  instead of redirecting into the log box, and the web header states what the
+  app does.

@@ -189,7 +189,7 @@ class QueueStore:
                 if not url:
                     continue
                 if not is_supported_media_url(url):
-                    print(f"Skipping invalid URL: {url}")
+                    self.logger.warning("Skipping invalid URL: %s", url)
                     continue
 
                 normalized = normalize_youtube_url(url)

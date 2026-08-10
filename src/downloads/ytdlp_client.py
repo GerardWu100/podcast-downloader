@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..config import DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
 from ..media.youtube import is_youtube_url
 
-DOWNLOAD_TIMEOUT_SECONDS = 300
 SPONSORBLOCK_CATEGORIES = "sponsor,selfpromo"
 YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
 
@@ -76,6 +76,8 @@ class YtDlpClient:
         Destination for retry messages.
     run_command:
         Subprocess-compatible callable; tests may inject a deterministic fake.
+    download_timeout_seconds:
+        Wall-clock limit for one ``yt-dlp`` attempt.
     """
 
     def __init__(
@@ -85,11 +87,13 @@ class YtDlpClient:
         always_use_cookies: bool,
         logger: logging.Logger,
         run_command: RunCommand = subprocess.run,
+        download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
     ) -> None:
         self.cookies_file = cookies_file
         self.always_use_cookies = always_use_cookies
         self.logger = logger
         self.run_command = run_command
+        self.download_timeout_seconds = download_timeout_seconds
 
     def snapshot_audio(self, work_dir: Path) -> AudioSnapshot:
         """Capture recursive MP3 modification time and size state."""
@@ -165,7 +169,7 @@ class YtDlpClient:
             command,
             capture_output=True,
             text=True,
-            timeout=DOWNLOAD_TIMEOUT_SECONDS,
+            timeout=self.download_timeout_seconds,
             check=False,
         )
 

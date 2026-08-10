@@ -15,6 +15,7 @@ import src.state.activity_store as activity_store_module
 from src.downloads.service import PodcastDownloadService
 from src.state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
+    TAIL_READ_BYTES,
     ActivityLogStore,
     activity_log_file_for,
 )
@@ -221,3 +222,40 @@ def test_activity_store_read_tail_returns_whole_lines_during_write(
         if writer.is_alive():
             writer.terminate()
             writer.join(timeout=5)
+
+
+def test_read_tail_returns_last_lines_from_a_log_larger_than_the_read_window(
+    tmp_path: Path,
+) -> None:
+    """Tailing must stay correct once download.log outgrows the read window.
+
+    The browser polls this every 15 seconds, so the reader only pulls the final
+    window of bytes instead of the whole file. That offset can land mid-line,
+    which must not leak a partial entry or shift the returned lines.
+    """
+    log_file = tmp_path / "download.log"
+    padding = "x" * 200
+    log_file.write_text(
+        "".join(
+            f"[2026-08-10 12:00] line {index} {padding}\n" for index in range(6000)
+        ),
+        encoding="utf-8",
+    )
+    assert log_file.stat().st_size > TAIL_READ_BYTES
+
+    tail = ActivityLogStore(log_file).read_tail(line_count=100)
+    lines = tail.splitlines()
+
+    assert len(lines) == 100
+    assert lines[-1] == f"[2026-08-10 12:00] line 5999 {padding}"
+    assert lines[0] == f"[2026-08-10 12:00] line 5900 {padding}"
+
+
+def test_read_tail_reads_a_small_log_completely(tmp_path: Path) -> None:
+    """A log below the read window keeps its very first line."""
+    log_file = tmp_path / "download.log"
+    log_file.write_text("first entry\nsecond entry\n", encoding="utf-8")
+
+    tail = ActivityLogStore(log_file).read_tail(line_count=100)
+
+    assert tail == "first entry\nsecond entry"

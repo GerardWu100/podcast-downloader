@@ -16,6 +16,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..config import ConfigError, PodcastConfig, load_config
+from ..credentials import CREDENTIALS_FILENAME, load_ui_credentials
 from ..log_timezone import LOG_TIME_ZONE
 from ..media.urls import is_supported_media_url
 from ..media.youtube import (
@@ -24,7 +25,6 @@ from ..media.youtube import (
     is_youtube_url,
     normalize_youtube_url,
 )
-from ..credentials import CREDENTIALS_FILENAME, load_ui_credentials
 from ..passwords import verify_password
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
@@ -731,10 +731,20 @@ _LOG_SOURCES = frozenset({"activity", "download"})
 
 @router.get("/logs")
 def view_logs(request: Request, source: str = "activity") -> Response:
-    """Return a tail of ``activity.log`` or ``download.log`` as plain text."""
-    redirect = _require_login(request)
-    if redirect:
-        return redirect
+    """Return a tail of ``activity.log`` or ``download.log`` as plain text.
+
+    This endpoint is polled by the queue page's auto-refresh rather than opened
+    by the browser directly, so an expired session answers ``401`` instead of
+    redirecting. A redirect would be followed by ``fetch`` and hand the script
+    the login page's HTML, which it would then render as log lines.
+    """
+    if _require_login(request) is not None:
+        return Response(
+            content="Session expired.",
+            media_type="text/plain",
+            status_code=401,
+            headers=_security_headers(),
+        )
 
     log_source = source if source in _LOG_SOURCES else "activity"
     error_message = (

@@ -223,6 +223,7 @@ def main() -> int:
         cookies_file=config.cookies_file,
         always_use_cookies=config.always_use_cookies,
         bypass_age_check_file=config.bypass_age_check_file,
+        download_timeout_seconds=config.download_timeout_seconds,
     )
 
     if not downloader._check_ytdlp():
@@ -231,7 +232,7 @@ def main() -> int:
         return 1
 
     print()
-    print(f"{Colors.BLUE}🎵 Podcast Downloader 🎵{Colors.NC}")
+    print(f"{Colors.BLUE}Podcast Downloader{Colors.NC}")
     print(f"{Colors.BLUE}={'=' * 35}{Colors.NC}")
     print()
 

@@ -14,9 +14,11 @@ concrete URL
   -> queue/archive/bypass stores record the state transition
 ```
 
-`YtDlpClient` owns audio command construction, the 300-second subprocess
+`YtDlpClient` owns audio command construction, the per-attempt subprocess
 timeout, SponsorBlock flags, cookie/plain retry order, recursive MP3 snapshots,
-and changed-file detection. It returns `YtDlpResult`, whose named fields include
+and changed-file detection. The timeout comes from `download_timeout_seconds`
+in `config.ini` and defaults to one hour, because it has to cover the media
+download plus the MP3 conversion for episodes that run one to three hours. It returns `YtDlpResult`, whose named fields include
 the final exit status, output, snapshots, changed files, and attempt count.
 
 The service owns use-case decisions: age checks, expansion orchestration,
@@ -48,3 +50,8 @@ $$
 - 2026-07-26: Audio subprocess execution, cookie retry policy, and snapshots
   moved into an injectable typed `YtDlpClient`; the service consumes its result
   directly.
+- 2026-08-10: The per-attempt download timeout became the configurable
+  `download_timeout_seconds` and its default rose from 300 seconds to one hour.
+  The old five-minute budget could not finish a full-length episode, and a
+  timed-out item is never archived, so the same episode failed on every run.
+  `download.log` also gained rotation at 5 MB with three retained copies.

@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from dataclasses import replace
-
-import json
 
 import pytest
 import src.config as config_module
@@ -1379,3 +1378,21 @@ def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> Non
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_logs_endpoint_returns_401_for_expired_session() -> None:
+    """An expired session must not answer the log poll with a redirect.
+
+    The queue page fetches this endpoint every 15 seconds. ``fetch`` follows
+    redirects transparently, so a redirect to ``/login`` would arrive as a
+    successful HTML response and be rendered as log lines inside the log box.
+    """
+    from src.web import routes as api
+
+    request = _FakeRequest(cookies={api.SESSION_COOKIE: "not-a-real-session"})
+
+    response = api.view_logs(request)
+
+    assert response.status_code == 401
+    assert response.media_type == "text/plain"
+    assert "<html" not in response.body.decode("utf-8").lower()

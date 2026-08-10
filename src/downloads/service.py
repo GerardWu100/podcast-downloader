@@ -8,11 +8,12 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..config import DEFAULT_CHANNEL_VIDEO_COUNT
+from ..config import DEFAULT_CHANNEL_VIDEO_COUNT, DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..media.youtube import (
     expand_channel_or_playlist,
@@ -45,6 +46,10 @@ INTERMEDIATE_ROOT_TEMP_SUFFIXES = (
     ".tmp",
 )
 INVALID_FOLDER_CHARACTER_PATTERN = re.compile(r'[<>:"/\\|?*\x00-\x1f]+')
+# download.log rotation: five megabytes per file, three older files retained,
+# so diagnostics stay available without growing without bound.
+LOG_FILE_MAX_BYTES = 5 * 1024 * 1024
+LOG_FILE_BACKUP_COUNT = 3
 
 
 @dataclass(frozen=True)
@@ -85,6 +90,7 @@ class PodcastDownloadService:
         cookies_file: Path | None = None,
         always_use_cookies: bool = False,
         bypass_age_check_file: Path | None = None,
+        download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
         ytdlp_client: YtDlpClient | None = None,
     ) -> None:
         """Create a downloader service for one queue/archive location.
@@ -121,6 +127,9 @@ class PodcastDownloadService:
             When false, try without cookies first and retry once with the file.
         bypass_age_check_file:
             One-shot file of direct YouTube videos allowed to skip the age gate.
+        download_timeout_seconds:
+            Wall-clock limit for one ``yt-dlp`` attempt, covering the download
+            and the MP3 extraction that follows it.
         """
         self.urls_file = urls_file
         self.downloads_dir = downloads_dir
@@ -137,6 +146,7 @@ class PodcastDownloadService:
         self.retention_days = max(1, retention_days)
         self.cookies_file = cookies_file
         self.always_use_cookies = always_use_cookies
+        self.download_timeout_seconds = download_timeout_seconds
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
         )
@@ -160,6 +170,7 @@ class PodcastDownloadService:
             always_use_cookies=self.always_use_cookies,
             logger=self.logger,
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
+            download_timeout_seconds=self.download_timeout_seconds,
         )
 
         if self.cookies_file:
@@ -459,7 +470,15 @@ class PodcastDownloadService:
         )
 
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(self.log_file, encoding="utf-8")
+        # Rotate rather than append forever. This log runs unattended for months
+        # on a small host, and the web UI tails it every 15 seconds while the
+        # queue page is open, so an unbounded file costs both disk and reads.
+        file_handler = RotatingFileHandler(
+            self.log_file,
+            maxBytes=LOG_FILE_MAX_BYTES,
+            backupCount=LOG_FILE_BACKUP_COUNT,
+            encoding="utf-8",
+        )
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(logging.DEBUG)
 
