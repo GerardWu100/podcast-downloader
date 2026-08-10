@@ -48,10 +48,22 @@ class _FakeUploadFile:
     def __init__(self, filename: str, content: bytes) -> None:
         self.filename = filename
         self._content = content
+        # Largest number of bytes the route asked for, so a test can prove the
+        # route never pulls a whole oversized upload into memory.
+        self.largest_read_request = -1
 
-    async def read(self) -> bytes:
-        """Return the uploaded bytes once, like FastAPI's UploadFile."""
-        return self._content
+    async def read(self, size: int = -1) -> bytes:
+        """Return up to ``size`` bytes, like FastAPI's UploadFile.
+
+        Parameters
+        ----------
+        size:
+            Byte count to return. A negative value means the whole upload.
+        """
+        self.largest_read_request = max(self.largest_read_request, size)
+        if size < 0:
+            return self._content
+        return self._content[:size]
 
 
 def test_client_ip_ignores_forwarded_header_by_default(monkeypatch) -> None:
@@ -586,6 +598,59 @@ def test_upload_cookies_overwrites_existing_cookie_file(
         "\r\n", "\n"
     )
     assert oct(cookie_file.stat().st_mode & 0o777) == "0o600"
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
+def test_upload_cookies_refuses_oversized_file_without_buffering_it(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """An oversized upload must be rejected without reading the whole body."""
+    session_id = "test-upload-cookies-oversized"
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text("# Netscape HTTP Cookie File\nold\n", encoding="utf-8")
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, cookies_file=cookie_file),
+    )
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+    api_module.CSRF_TOKENS[session_id] = {
+        "token": "csrf-token",
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    oversized_upload = _FakeUploadFile(
+        "cookies.txt",
+        b"# Netscape HTTP Cookie File\n"
+        + b"x" * (api_module.MAX_COOKIE_UPLOAD_BYTES * 2),
+    )
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    with pytest.raises(api_module.HTTPException) as raised:
+        asyncio.run(
+            api_module.upload_cookies_form(
+                request,
+                csrf_token="csrf-token",
+                cookie_file=oversized_upload,
+            )
+        )
+
+    assert raised.value.status_code == 413
+    assert oversized_upload.largest_read_request == (
+        api_module.MAX_COOKIE_UPLOAD_BYTES + 1
+    )
+    assert (
+        cookie_file.read_text(encoding="utf-8") == "# Netscape HTTP Cookie File\nold\n"
+    )
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)

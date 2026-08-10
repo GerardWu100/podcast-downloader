@@ -764,7 +764,10 @@ async def upload_cookies_form(
     if not _verify_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
-    raw_cookie_file = await cookie_file.read()
+    # Read one byte past the limit rather than the whole upload. Reading it all
+    # first would pull a multi-gigabyte body into memory before the size check
+    # could reject it, so an oversized file is refused here instead.
+    raw_cookie_file = await cookie_file.read(MAX_COOKIE_UPLOAD_BYTES + 1)
     if len(raw_cookie_file) > MAX_COOKIE_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Cookie file is too large")
     normalized_cookie_text = _normalize_uploaded_cookie_text(raw_cookie_file)
