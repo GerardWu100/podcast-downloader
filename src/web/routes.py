@@ -651,7 +651,9 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
 
     config = _request_config(request)
     if config.min_channel_video_age_hours > 0:
-        bypass_label = html.escape("Run now (skip the wait or download a full playlist)")
+        bypass_label = html.escape(
+            "Run now (skip the wait or download a full playlist)"
+        )
     else:
         bypass_label = html.escape("Run now (download a full playlist)")
     bypass_row_html = f"""
