@@ -23,7 +23,7 @@ docker compose up --build -d
 Compose joins the Docker network named `single` so a reverse proxy can reach
 the service. The first command creates that network when it is missing.
 
-On startup, the container creates missing runtime files. It also copies the repo-root `.env` (or `.env.example` when no `.env` exists) into the mounted data directory the first time that directory is used. The app hashes the `.env` password into `.ui_credentials.json` and checks the hash automatically; no separate hashing command is needed. Runtime cookies live at `$HOME/.containers/podcast-downloader/cookies.txt` on the host and are mounted as `/data/cookies.txt` in the container. A repo-root Netscape-format `cookies.txt` is used only to seed a missing mounted cookie file.
+On startup, the container creates missing runtime files. It also copies the repo-root `.env` (or `.env.example` when no `.env` exists) into the mounted data directory the first time that directory is used. The app hashes the `.env` password into `.ui_credentials.json` and checks the hash automatically; no separate hashing command is needed. Runtime cookies live at `$HOME/.containers/podcast-downloader/cookies.txt` on the host and are mounted as `/data/cookies.txt` in the container. That host folder, and the two download folders, are set by `PODCAST_DATA_HOST_DIR`, `PODCAST_DOWNLOADS_HOST_DIR`, and `PODCAST_TEMP_HOST_DIR` in the repo-root `.env`; leaving them blank uses the defaults named here. A repo-root Netscape-format `cookies.txt` is used only to seed a missing mounted cookie file.
 
 Finished MP3 files are written to the configured download directory. Point Audiobookshelf at that folder so it can scan the completed audio library.
 

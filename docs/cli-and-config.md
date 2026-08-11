@@ -75,9 +75,22 @@ The checked-in configuration file is at the project root and has one `[podcast]`
 |---|---|
 | `PODCAST_DATA_DIR` | Alternate directory for `config.ini`, queue files, `.env`, credentials, and login state |
 | `PODCAST_DOWNLOAD_DIR` | Finished MP3 library directory, mainly for Docker volume separation |
-| `PODCAST_INTERMEDIATE_DIR` | Scratch download directory; Compose maps `$HOME/downloads/temporary` to `/temporary` |
+| `PODCAST_INTERMEDIATE_DIR` | Scratch download directory; Compose maps `/temporary` to it |
 | `DOWNLOAD_INTERVAL_HOURS` | Scheduler interval in Docker mode |
 | `YT_DLP_AUTO_UPDATE` | Enables or disables Docker-time `yt-dlp` upgrades; only the `yt-dlp` package is targeted |
+
+The three variables above name paths **inside** the container and do not
+change. The matching folders **on the host** are chosen in the repo-root
+`.env`, which only Docker Compose reads:
+
+| Variable | Container path | Default host folder |
+|---|---|---|
+| `PODCAST_DATA_HOST_DIR` | `/data` | `$HOME/.containers/podcast-downloader` |
+| `PODCAST_DOWNLOADS_HOST_DIR` | `/downloads` | `$HOME/downloads/podcasts` |
+| `PODCAST_TEMP_HOST_DIR` | `/temporary` | `$HOME/downloads/temporary` |
+
+Leave a value blank to accept its default. Give a full path rather than one
+starting with `~`, because Docker Compose does not expand `~` in a mount.
 
 `yt-dlp` is not listed in `uv.lock`. After `uv sync`, install the current release and its default YouTube challenge-solving dependencies with `uv pip install "yt-dlp[default]"`. Docker does this during the image build and at container startup. The image includes Deno for YouTube JavaScript challenges.
 

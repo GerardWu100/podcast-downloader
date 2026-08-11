@@ -17,7 +17,15 @@ def test_compose_uses_separate_temporary_download_volume() -> None:
     compose_text = compose_file.read_text(encoding="utf-8")
 
     assert "PODCAST_INTERMEDIATE_DIR=/temporary" in compose_text
-    assert "$HOME/downloads/temporary:/temporary" in compose_text
+    # The host folder is an operator setting, so the mount must carry both the
+    # variable and the default that applies when it is left blank.
+    assert (
+        "${PODCAST_TEMP_HOST_DIR:-${HOME}/downloads/temporary}:/temporary"
+        in compose_text
+    )
+    # Scratch work must not land inside the finished library mount.
+    assert "}:/downloads" in compose_text
+    assert "/downloads/temporary}:/downloads\n" not in compose_text
 
 
 def test_compose_keeps_cookies_in_data_volume_only() -> None:
@@ -26,7 +34,10 @@ def test_compose_keeps_cookies_in_data_volume_only() -> None:
 
     compose_text = compose_file.read_text(encoding="utf-8")
 
-    assert "$HOME/.containers/podcast-downloader:/data" in compose_text
+    assert (
+        "${PODCAST_DATA_HOST_DIR:-${HOME}/.containers/podcast-downloader}:/data"
+        in compose_text
+    )
     assert ":/data/cookies.txt" not in compose_text
 
 
