@@ -13,13 +13,12 @@ services:
       - DOWNLOAD_INTERVAL_HOURS=48
       - YT_DLP_AUTO_UPDATE=true
     volumes:
-      # Left of each colon is the folder on your machine, set in .env and
-      # falling back to the default shown. Right of the colon is the path
-      # inside the container, which the environment block above names and
-      # which must not change.
-      - ${PODCAST_DATA_HOST_DIR:-${HOME}/.containers/podcast-downloader}:/data
-      - ${PODCAST_DOWNLOADS_HOST_DIR:-${HOME}/downloads/podcasts}:/downloads
-      - ${PODCAST_TEMP_HOST_DIR:-${HOME}/downloads/temporary}:/temporary
+      # Folder on your machine, then the path inside the container. Edit the
+      # left side to keep files somewhere else; the right sides pair with the
+      # three directory settings above and must stay as they are.
+      - $HOME/.containers/podcast-downloader:/data
+      - $HOME/downloads/podcasts/:/downloads
+      - $HOME/downloads/temporary:/temporary
     networks:
       - single
 
