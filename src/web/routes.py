@@ -48,6 +48,9 @@ router = APIRouter()
 MAX_FAILED_ATTEMPTS = 5
 FAIL_WINDOW_SECONDS = 10 * 60
 BAN_SECONDS = 15 * 60
+# A failure record is useless once its window has passed and its ban has
+# expired, so records older than this are dropped on the next failed login.
+FAILURE_RECORD_LIFETIME_SECONDS = FAIL_WINDOW_SECONDS + BAN_SECONDS
 LOGIN_CSRF_TTL_SECONDS = 10 * 60
 SESSION_COOKIE = "podcast_session"
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -405,6 +408,61 @@ def _is_banned(state: dict, ip: str) -> tuple[bool, float]:
     return time.time() < banned_until, banned_until
 
 
+def _failure_record_is_stale(record: dict, now: float) -> bool:
+    """Return whether one failure record can no longer affect any decision.
+
+    Parameters
+    ----------
+    record:
+        One address's stored ``failed``, ``last_failed``, and ``banned_until``
+        values.
+    now:
+        Current Unix time in seconds.
+
+    Returns
+    -------
+    bool
+        ``True`` when the address is outside the rolling failure window and is
+        not still banned, or when the record cannot be read at all.
+    """
+    try:
+        last_failed = float(record.get("last_failed", 0) or 0)
+        banned_until = float(record.get("banned_until", 0) or 0)
+    except (TypeError, ValueError):
+        # A record that cannot be read is a record that cannot be trusted.
+        return True
+    if not math.isfinite(last_failed) or not math.isfinite(banned_until):
+        return True
+    if banned_until > now:
+        return False
+    return now - last_failed > FAILURE_RECORD_LIFETIME_SECONDS
+
+
+def _drop_stale_failure_records(state: dict, now: float) -> None:
+    """Remove failure records that no longer change any login decision.
+
+    Without this, one row per address that ever failed a login stays in
+    .login_state.json forever, and every later failure has to read and rewrite
+    the whole file. A caller with no password could therefore grow that file
+    from many addresses and make each login slower. A record matters only while
+    its address is inside the rolling failure window or still banned.
+
+    Parameters
+    ----------
+    state:
+        Mapping of client addresses to failure records, edited in place.
+    now:
+        Current Unix time in seconds.
+    """
+    stale_addresses = [
+        address
+        for address, record in state.items()
+        if not isinstance(record, dict) or _failure_record_is_stale(record, now)
+    ]
+    for address in stale_addresses:
+        del state[address]
+
+
 def _record_failure(state: dict, ip: str) -> None:
     """Update the failure counters and ban deadline for one IP address.
 
@@ -416,6 +474,7 @@ def _record_failure(state: dict, ip: str) -> None:
         Client IP address whose failed attempt should be recorded.
     """
     now = time.time()
+    _drop_stale_failure_records(state, now)
     record = state.get(ip, {})
     try:
         last_failed = float(record.get("last_failed", 0))

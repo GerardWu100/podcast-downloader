@@ -193,6 +193,36 @@ def test_login_action_accepts_valid_credentials_and_rejects_invalid_password(
     assert api._load_login_state()["127.0.0.1"]["failed"] == 0
 
 
+def test_failed_login_records_do_not_accumulate_forever() -> None:
+    """Old failure rows must be dropped so the login-state file stays bounded."""
+    from src.web import routes as api
+
+    now = time.time()
+    state = {
+        # Far outside the window and no ban left: nothing depends on it.
+        "10.0.0.1": {
+            "failed": 3,
+            "last_failed": now - api.FAILURE_RECORD_LIFETIME_SECONDS - 60,
+            "banned_until": 0,
+        },
+        # Still banned, so it must survive.
+        "10.0.0.2": {
+            "failed": 5,
+            "last_failed": now - 60,
+            "banned_until": now + api.BAN_SECONDS,
+        },
+        # Recent failure inside the rolling window.
+        "10.0.0.3": {"failed": 1, "last_failed": now - 30, "banned_until": 0},
+        # Unreadable record.
+        "10.0.0.4": {"failed": "many", "last_failed": "yesterday"},
+    }
+
+    api._record_failure(state, "10.0.0.5")
+
+    assert sorted(state) == ["10.0.0.2", "10.0.0.3", "10.0.0.5"]
+    assert state["10.0.0.5"]["failed"] == 1
+
+
 def test_login_action_accepts_any_configured_account(
     monkeypatch,
     tmp_path: Path,
