@@ -166,24 +166,24 @@
 </head><body>
 <div class="wrap">
 
-<p class="eyebrow"><span class="dot"></span>Podcast Downloader &middot; whole project &middot; code walkthrough</p>
+<p class="eyebrow"><span class="dot"></span>Podcast Downloader &middot; whole project &middot; code guide</p>
 <h1>Podcast Downloader: reading the code</h1>
-<p class="lede">What this program does, how its pieces fit together, and the handful of decisions that make the difference between a clean MP3 library and a pile of duplicates.</p>
+<p class="lede">What the program does, how its parts connect, and which choices keep the MP3 library free of duplicates.</p>
 
 <div class="box def">
   <span class="k">How to use this</span>
-  <p>Sections follow the order in which a download actually happens: settings, queue, URL rules, expansion, the age gate, the external download, proof of success, tagging, publishing, cleanup, then the browser interface and the scheduler that drives it all. Every code snippet is copied from the file named above it. Coloured boxes flag design choices and traps. The page is aimed at someone who has never opened this repository.</p>
-  <p class="fnote">Snippets are verbatim, with one exception: in the two command-building functions, the long lists of flag-and-value pairs are shown two per line so they fit the page. Nothing else is reformatted and nothing is abridged without saying so.</p>
+  <p>Sections follow a download from settings through the queue, URL rules, expansion, age check, download, verification, tagging, publishing, cleanup, the browser interface, and the scheduler. Each snippet comes from the file named above it. Coloured boxes mark design choices and traps. The intended reader is new to this repository.</p>
+  <p class="fnote">Snippets are verbatim, except that the two long command lists are shown two entries per line so they fit the page. Nothing else is reformatted or shortened without saying so.</p>
 </div>
 
 <div class="box why">
   <span class="k">The process in plain English</span>
-  <p>You keep a plain text file, <code>urls.txt</code>, holding YouTube channels, YouTube playlists, and one-off video links. On a schedule, the program turns each channel or playlist into a list of individual videos, skips the ones that are too new or are Shorts, and hands the rest to <code>yt-dlp</code>, which downloads the audio and converts it to MP3. For YouTube it also asks SponsorBlock to cut out sponsor and self-promotion segments. Each finished MP3 gets a date and a source link written into its tags, is moved into a folder named after the channel, and its URL is written to a history file so it is never fetched twice. A small web page lets you add and remove sources from a browser.</p>
+  <p><code>urls.txt</code> lists YouTube channels, playlists, and individual videos. On schedule, the program turns each channel or playlist into video URLs, skips Shorts and videos that are too new, then gives the rest to <code>yt-dlp</code>. That program downloads the audio and converts it to MP3. For YouTube, SponsorBlock removes marked sponsor and self-promotion segments. The program writes a date and source link into each finished file's tags, moves it into a channel folder, and records its URL in a history file so it is not downloaded twice. A small web page lets you edit the source list.</p>
 </div>
 
 <div class="box def">
   <span class="k">Words used on this page</span>
-  <p><b>yt-dlp</b> is the external command-line program that actually talks to YouTube and downloads media; this project never speaks HTTP to YouTube itself. <b>ffmpeg</b> and <b>ffprobe</b> are the external audio tools that convert and inspect files. <b>SponsorBlock</b> is a community database of timestamps marking sponsor reads inside YouTube videos. <b>Audiobookshelf</b> is the self-hosted audio library this project feeds. A <b>file lock</b> is an operating-system marker that makes two processes take turns on the same file instead of overwriting each other.</p>
+  <p><b>yt-dlp</b> is the command-line program that talks to YouTube and downloads media; this project does not make HTTP requests to YouTube itself. <b>ffmpeg</b> and <b>ffprobe</b> convert and inspect audio files. <b>SponsorBlock</b> is a community database of timestamps for sponsor reads in YouTube videos. <b>Audiobookshelf</b> is the self-hosted audio library this project feeds. A <b>file lock</b> is an operating-system control that makes processes take turns using a file.</p>
 </div>
 
 <h2 id="map"><span class="sec-no">00</span>Map</h2>
@@ -203,7 +203,7 @@ flowchart LR
   meta --> out[("output_dir MP3 files")]
   service --> arch[("downloaded_urls.txt")]
 </div>
-<p class="fnote">Boxes are code; cylinders are files on disk or external programs. Arrows are the direction data moves. The browser page and the scheduler both end up calling the same download service, which is why there is only one copy of the download rules.</p>
+<p class="fnote">Boxes are code; cylinders are files or external programs. Arrows show the direction of data. The browser and scheduler call the same download service, so the download rules live in one place.</p>
 
 <div class="toc">
   <div class="rk">Contents</div>
@@ -230,12 +230,12 @@ flowchart LR
   </ol>
 </div>
 
-<div class="box warn"><span class="k">What could and could not be run</span>
-<p><code>yt-dlp</code> is not installed in this checkout, so <b>no live download was performed and nothing on this page reports a real network result</b>. Every command shown below is the exact argument list the code builds, printed by calling the builder functions directly. Everything else on this page &mdash; configuration values, queue file contents, URL normalization, the age gate, file snapshots, the MP3 tag round trip, the activity log, password hashing &mdash; comes from running the real code in this repository offline. <code>ffmpeg</code> and <code>ffprobe</code> are installed, so the MP3 tagging section in step 08 is a genuine end-to-end result on a real audio file.</p></div>
+<div class="box warn"><span class="k">What was and was not run</span>
+<p><code>yt-dlp</code> is not installed in this checkout, so <b>no live download was performed and this page reports no real network result</b>. Each command below is the exact argument list built by the code, printed by calling the builder functions directly. The other examples come from running the repository code offline: configuration, queue handling, URL normalization, the age check, file snapshots, MP3 tags, the activity log, and password hashing. <code>ffmpeg</code> and <code>ffprobe</code> are installed, so step 08 uses a real audio file.</p></div>
 
 <h2 id="s01"><span class="sec-no">01</span>Settings &mdash; <code>config.ini</code> and <code>load_config()</code></h2>
 
-<p>Everything tunable lives in one file at the project root. <code>src/config.py</code> reads it, checks it, and hands the rest of the program a single frozen object.</p>
+<p>All adjustable settings live in one file at the project root. <code>src/config.py</code> reads and checks it, then gives the rest of the program one fixed settings object.</p>
 
 <pre>@dataclass(frozen=True)
 class PodcastConfig:
@@ -257,10 +257,10 @@ class PodcastConfig:
     bypass_age_check_file: Path</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p><code>load_config</code> reads the settings file once, rejects nonsense values immediately with a clear message, turns every relative path into an absolute one, and lets a few environment variables win so the same code works inside Docker.</p></div>
+<p><code>load_config</code> reads the settings once, rejects invalid values with a clear message, converts relative paths to absolute paths, and lets selected environment variables override them for Docker.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> the path to <code>config.ini</code> and the folder that relative paths are measured from. <b>Output:</b> one <code>PodcastConfig</code> object, or a <code>ConfigError</code> naming the bad setting. <b>Role:</b> the command line, the web application and the download service all start by calling it, so there is exactly one interpretation of the settings.</p></div>
+<p><b>Input:</b> the path to <code>config.ini</code> and the base folder for relative paths. <b>Output:</b> one <code>PodcastConfig</code> object, or a <code>ConfigError</code> naming the invalid setting. <b>Role:</b> the command line, web application, and download service all call it, so they interpret settings the same way.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io stack">
@@ -293,7 +293,7 @@ cookies_file                = .../podcast-downloader/cookies.txt
 always_use_cookies          = True
 bypass_age_check_file       = .../bypass_age_check_urls.txt</pre></div>
 </div>
-<p>Bad values were also exercised. <code>channel_count = 0</code> raises <code>ConfigError: channel_count must be at least 1</code>; <code>delay_seconds = -1</code> raises <code>delay_seconds must be at least 0</code>; <code>download_timeout_seconds = 10</code> raises <code>download_timeout_seconds must be at least 60</code>; a blank <code>urls_file</code> raises <code>urls_file must not be blank</code>. A missing file, or a file with no <code>[podcast]</code> section, falls back to every default without raising.</p></div>
+<p>Invalid values were also tested. <code>channel_count = 0</code> raises <code>ConfigError: channel_count must be at least 1</code>; <code>delay_seconds = -1</code> raises <code>delay_seconds must be at least 0</code>; <code>download_timeout_seconds = 10</code> raises <code>download_timeout_seconds must be at least 60</code>; a blank <code>urls_file</code> raises <code>urls_file must not be blank</code>. A missing file or a file without <code>[podcast]</code> uses all defaults without raising.</p></div>
 
 <div class="box def"><span class="k">What each setting changes</span>
 <div class="scroll">
@@ -313,12 +313,12 @@ bypass_age_check_file       = .../bypass_age_check_urls.txt</pre></div>
 </div>
 </div>
 
-<div class="box why"><span class="k">Why the checks reject rather than clamp</span>
-<p>A silently clamped setting is a setting that lies to its operator. If you write <code>channel_count = 0</code>, the program stops and tells you, instead of quietly behaving as if you had written <code>1</code>. The one exception is a malformed true/false value, which falls back to the default, because <code>configparser</code> already accepts <code>yes</code>, <code>no</code>, <code>on</code> and <code>off</code> and there is no useful third state.</p></div>
+<div class="box why"><span class="k">Why invalid settings stop the run</span>
+<p>If you set <code>channel_count = 0</code>, the program reports the error instead of quietly using <code>1</code>. The exception is a malformed true/false value, which uses the default. <code>configparser</code> already accepts <code>yes</code>, <code>no</code>, <code>on</code>, and <code>off</code>, so there is no useful third state.</p></div>
 
 <h2 id="s02"><span class="sec-no">02</span>The queue file &mdash; <code>QueueStore</code> and the file locks</h2>
 
-<p>Two processes edit <code>urls.txt</code>: the downloader removes finished one-off videos, and the browser page adds new sources. Both go through <code>src/state/queue_store.py</code>, and every read and write holds an operating-system file lock.</p>
+<p>Two processes edit <code>urls.txt</code>: the downloader removes finished one-off videos, while the browser adds sources. Both use <code>src/state/queue_store.py</code>, and every read and write holds an operating-system file lock.</p>
 
 <pre>@contextmanager
 def locked_text_file(path: Path, mode: str, lock_type: int) -&gt; Iterator[TextIO]:
@@ -337,7 +337,7 @@ def locked_text_file(path: Path, mode: str, lock_type: int) -&gt; Iterator[TextI
                 fcntl.flock(file_handle.fileno(), fcntl.LOCK_UN)</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>The queue store is the only code allowed to touch <code>urls.txt</code>. It adds URLs without creating duplicates, reads out the valid ones, and removes one when its download finishes &mdash; each time holding a lock so the other process has to wait its turn.</p></div>
+<p>The queue store is the only code that touches <code>urls.txt</code>. It adds URLs without duplicates, returns valid URLs, and removes a URL after its download finishes. Each operation holds a lock so the other process waits.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
 <p><b>Input:</b> a path to the queue file, plus a list of candidate URLs for <code>append_urls</code>. <b>Output:</b> <code>append_urls</code> returns how many lines were actually written; <code>read_urls</code> returns the valid URLs in file order; <code>remove_url</code> returns whether it found anything to remove. <b>Role:</b> the single owner of the queue file format, so no other module has to know that comments start with <code>#</code>.</p></div>
@@ -362,19 +362,19 @@ https://www.youtube.com/watch?v=dQw4w9WgXcQ
 read_urls() -&gt;
 ['https://www.youtube.com/@examplechannel',
  'https://www.youtube.com/watch?v=dQw4w9WgXcQ']</pre>
-<p class="fnote">Only one line was added from four candidates: the short link and the watch link are the same video, the channel was already listed, and the <code>javascript:</code> string is not an http address.</p></div>
+<p class="fnote">Only one of four candidates was added: the short and watch links identify the same video, the channel was already present, and <code>javascript:</code> is not an HTTP address.</p></div>
 </div>
-<p>Then <code>remove_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")</code> returned <code>True</code> and left the comment line and the channel line untouched. Comments are never rewritten away.</p></div>
+<p>Then <code>remove_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")</code> returned <code>True</code> and left the comment and channel lines untouched. Comments are never removed.</p></div>
 
 <div class="box warn"><span class="k">Trap: the missing final newline</span>
-<p>An operator who edits <code>urls.txt</code> by hand can leave the last line without a newline at the end. Appending straight to that file would glue the new URL onto the end of the old one and destroy both entries. <code>LockedLineFile</code> checks the file's final byte before its first append and writes the missing newline first. It reads exactly one byte with <code>os.pread</code>, so appending to a log with thousands of lines does not mean reading the whole file.</p></div>
+<p>A hand-edited <code>urls.txt</code> may have no newline after its last line. Appending then would join the new URL to the old one. <code>LockedLineFile</code> checks the final byte before the first append and writes the missing newline. It reads one byte with <code>os.pread</code>, so it does not read an entire large file.</p></div>
 
-<div class="box why"><span class="k">Why a lock and not a database</span>
-<p>The whole point of this project is that its state is readable and editable with a text editor. A file lock buys the safety of a transaction without giving that up. Without it, the sequence &quot;downloader reads, browser appends, downloader writes its older copy back&quot; silently loses the newly added URL.</p></div>
+<div class="box why"><span class="k">Why a lock instead of a database</span>
+<p>The project's state should stay readable and editable in a text editor. A file lock adds safe updates without changing that. Without it, the downloader could read the file, the browser could append a URL, and the downloader could write its older copy back over the new URL.</p></div>
 
 <h2 id="s03"><span class="sec-no">03</span>Reading a URL &mdash; <code>media/urls.py</code> and <code>media/youtube.py</code></h2>
 
-<p>Two files, deliberately separate. <code>urls.py</code> knows nothing about YouTube; it only answers &quot;is this an http address at all&quot;. <code>youtube.py</code> holds every YouTube-specific rule.</p>
+<p>The two files have separate jobs. <code>urls.py</code> only checks whether a string is an HTTP address. <code>youtube.py</code> contains the YouTube-specific rules.</p>
 
 <pre>def normalize_youtube_url(url: str) -&gt; str:
     <span class="c">"""Normalize a YouTube video URL to the canonical watch format."""</span>
@@ -403,10 +403,10 @@ read_urls() -&gt;
     return url</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>YouTube shows you the same video through several different addresses. This function rewrites all of them into one canonical form so the program can tell whether two links are really the same video.</p></div>
+<p>YouTube can show one video at several addresses. This function rewrites them into one standard form so the program can recognise duplicates.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> any URL string. <b>Output:</b> the canonical <code>watch?v=ID</code> form for a YouTube video, or the URL unchanged for anything else, including channels and playlists. <b>Role:</b> this is the identity function for the whole system. The queue, the one-shot bypass file and the downloaded history all compare normalized URLs, so if this function gets it wrong, the same episode is downloaded twice.</p></div>
+<p><b>Input:</b> any URL string. <b>Output:</b> a YouTube video in the standard <code>watch?v=ID</code> form, or the unchanged URL for anything else, including channels and playlists. <b>Role:</b> this defines URL identity for the system. The queue, one-shot bypass file, and download history compare normalized URLs, so an error here can download one episode twice.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io stack">
@@ -421,17 +421,17 @@ read_urls() -&gt;
 'https://www.youtube.com/playlist?list=PLrAX...'             -&gt; unchanged (a playlist)
 'https://videos.example.com/watch/episode-1'                 -&gt; unchanged (not YouTube)</pre></div>
 </div>
-<p>Classification, from the same run: <code>is_channel_or_playlist</code> is true for <code>/@examplechannel</code>, <code>/@examplechannel/streams</code>, <code>/channel/UC...</code> and <code>/playlist?list=...</code>, and false for <code>watch?v=abc&amp;list=PL123</code> &mdash; a video that merely happens to be inside a playlist is treated as one video, not as a playlist.</p></div>
+<p>The same run showed that <code>is_channel_or_playlist</code> is true for <code>/@examplechannel</code>, <code>/@examplechannel/streams</code>, <code>/channel/UC...</code>, and <code>/playlist?list=...</code>. It is false for <code>watch?v=abc&amp;list=PL123</code>, which remains a video even when it appears in a playlist.</p></div>
 
-<div class="box why"><span class="k">Why the query string is thrown away</span>
-<p>Share links carry tracking and position parameters: <code>?si=</code>, <code>&amp;t=42</code>, <code>&amp;list=</code>. Keeping them would mean the same episode pasted from a phone and from a desktop looked like two different episodes. Only the video identifier survives.</p></div>
+<div class="box why"><span class="k">Why extra query parameters are removed</span>
+<p>Share links can include tracking and position parameters such as <code>?si=</code>, <code>&amp;t=42</code>, and <code>&amp;list=</code>. Keeping them would make the same episode look different when copied from different devices. Only the video identifier remains.</p></div>
 
-<div class="box warn"><span class="k">Trap: a lookalike hostname</span>
-<p><code>is_youtube_url</code> compares the parsed hostname against an exact set. It does not check whether the host merely <em>ends with</em> <code>youtube.com</code>, which is why <code>https://notyoutube.com/watch?v=abc123</code> is correctly treated as an ordinary direct link and never gets your cookies attached. There is a test for exactly this.</p></div>
+<div class="box warn"><span class="k">Trap: a similar-looking hostname</span>
+<p><code>is_youtube_url</code> compares the parsed hostname with an exact set. It does not accept any host that merely <em>ends with</em> <code>youtube.com</code>. Therefore <code>https://notyoutube.com/watch?v=abc123</code> stays an ordinary direct link and never receives your cookies. A test covers this case.</p></div>
 
 <h2 id="s04"><span class="sec-no">04</span>Turning a channel into videos &mdash; <code>expand_channel_or_playlist()</code></h2>
 
-<p>A channel URL is not something you can download. It has to be turned into a list of individual video URLs first, and this project does that by asking <code>yt-dlp</code> to print a list rather than download anything.</p>
+<p>A channel URL is not a video to download. The project first asks <code>yt-dlp</code> for a list of video URLs without downloading them.</p>
 
 <pre>def _build_expansion_command(url_clean, channel_count, cookies_file, *, full_playlist=False):
     is_channel = _is_channel_url(url_clean)
@@ -452,10 +452,10 @@ read_urls() -&gt;
     return command</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Ask <code>yt-dlp</code> for a plain list of the channel's recent videos with their upload dates, one per line, then throw away the Shorts and anything too new, and keep the first few that survive.</p></div>
+<p>Ask <code>yt-dlp</code> for recent videos and upload dates, one per line. Remove Shorts and videos that are too new, then keep the first few that remain.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> one channel or playlist URL, how many videos are wanted, the minimum age, and the cookie policy. <b>Output:</b> an ordered list of individual video URLs, or an empty list if both attempts failed. <b>Role:</b> the only place that converts a monitored source into concrete work items.</p></div>
+<p><b>Input:</b> a channel or playlist URL, the requested count, the minimum age, and the cookie policy. <b>Output:</b> an ordered list of video URLs, or an empty list if both attempts fail. <b>Role:</b> the one place that turns a monitored source into download items.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io stack">
@@ -475,20 +475,20 @@ read_urls() -&gt;
  '--', 'https://www.youtube.com/playlist?list=PL123']</pre>
 <p class="fnote">No <code>--playlist-end</code> at all, so the whole playlist is listed. That mode is only reachable from the &quot;run now&quot; checkbox in the browser page.</p></div>
 </div>
-<p>Which channel tab gets asked, from the same run: <code>/@examplechannel</code> becomes <code>/@examplechannel/videos</code>; an explicit <code>/streams</code> is preserved; <code>/@examplechannel/shorts</code> is redirected back to <code>/videos</code>; and <code>/channel/UC.../videos</code> is left alone.</p></div>
+<p>The same run chose these channel tabs: <code>/@examplechannel</code> became <code>/@examplechannel/videos</code>; <code>/streams</code> stayed unchanged; <code>/@examplechannel/shorts</code> became <code>/videos</code>; and <code>/channel/UC.../videos</code> stayed unchanged.</p></div>
 
-<div class="box why"><span class="k">Why it asks for six times as many videos</span>
-<p>The count in the settings is how many episodes you want, not how many rows YouTube should return. Shorts and videos published in the last day are dropped after the list comes back. If the program asked for exactly two and both were Shorts, it would come away with nothing. Asking for twelve and stopping once two survive costs one listing request either way, because <code>--flat-playlist</code> does not fetch each video's page.</p></div>
+<div class="box why"><span class="k">Why it asks for six times the requested count</span>
+<p>The setting is the number of episodes to keep, not the number of rows YouTube should return. Shorts and videos from the last day are removed after the list arrives. Asking for twelve when the target is two gives the filter enough candidates, while <code>--flat-playlist</code> still uses one listing request instead of opening every video.</p></div>
 
-<div class="box why"><span class="k">Why a bare channel URL is rewritten to the videos tab</span>
-<p>A bare channel address renders differently depending on YouTube's current layout and can mix uploads, Shorts and livestreams. Pinning the request to <code>/videos</code> makes the result predictable. Anyone who genuinely wants livestreams writes <code>/streams</code> in <code>urls.txt</code>, and that choice is respected.</p></div>
+<div class="box why"><span class="k">Why a bare channel URL becomes the videos tab</span>
+<p>A bare channel address can mix uploads, Shorts, and livestreams, depending on YouTube's layout. Using <code>/videos</code> makes the result predictable. Anyone who wants livestreams can write <code>/streams</code> in <code>urls.txt</code>.</p></div>
 
-<div class="box warn"><span class="k">Trap: the retry is not a retry for network trouble</span>
-<p>When the first attempt fails, the code tries again exactly once and the only thing it changes is whether cookies are attached. There is no backoff, no second attempt at the same settings, and no attempt number three. A transient network failure simply means the channel is skipped this run and picked up on the next scheduled one. That is a deliberate choice for a program that runs every 48 hours, but it is worth knowing before you go hunting for retry logic that is not there.</p></div>
+<div class="box warn"><span class="k">Trap: the retry only changes cookies</span>
+<p>After a failed first attempt, the code tries once more with the opposite cookie choice. It does not retry the same settings, wait before retrying, or make a third attempt. A temporary network failure skips the channel this run; the next scheduled run tries it again. This suits a program that runs every 48 hours, but there is no general network-retry logic.</p></div>
 
 <h2 id="s05"><span class="sec-no">05</span>The waiting period &mdash; <code>is_old_enough()</code></h2>
 
-<p>A brand-new YouTube video has no SponsorBlock data yet, so downloading it immediately means keeping the sponsor reads. The program therefore waits.</p>
+<p>A new YouTube video may not have SponsorBlock data yet. The program waits before downloading it so sponsor reads can be marked.</p>
 
 <pre>def is_old_enough(timestamp_raw, upload_date, min_channel_video_age_hours) -&gt; bool | None:
     <span class="c">"""True if old enough, False if too new, None if age is unknown."""</span>
@@ -516,14 +516,14 @@ read_urls() -&gt;
     return None</pre>
 
 <div class="box def"><span class="k">The formula</span>
-<p>When <code>yt-dlp</code> gives an exact publication instant $t_{\text{pub}}$ in seconds since 1970, the test is simply</p>
+<p>When <code>yt-dlp</code> gives the exact publication time $t_{\text{pub}}$ in seconds since 1970, the test is</p>
 <p>$$t_{\text{now}} - t_{\text{pub}} \ \ge\ 3600\,h_{\min}$$</p>
-<p>When only a date <code>YYYYMMDD</code> is available, the exact instant is unknown, so the code assumes the worst case &mdash; the very end of that day &mdash; and waits from midnight after it:</p>
+<p>When only a <code>YYYYMMDD</code> date is available, the exact time is unknown. The code assumes the video was published at the end of that day and starts the wait at midnight after it:</p>
 <p>$$t_{\text{now}} \ \ge\ \text{midnight}(d_{\text{upload}} + 1\ \text{day}) + 3600\,h_{\min}$$</p>
-<p class="fnote">$t_{\text{now}}$ is the current time in seconds, $t_{\text{pub}}$ the publication time in seconds, $h_{\min}$ the setting <code>min_channel_video_age_hours</code> (24 by default), $d_{\text{upload}}$ the upload date, and all times are in Coordinated Universal Time (UTC).</p></div>
+<p class="fnote">$t_{\text{now}}$ is the current time in seconds; $t_{\text{pub}}$ is the publication time in seconds; $h_{\min}$ is <code>min_channel_video_age_hours</code> (24 by default); $d_{\text{upload}}$ is the upload date; and all times use Coordinated Universal Time (UTC).</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> the raw timestamp text and upload date text from <code>yt-dlp</code>, plus the configured minimum age. <b>Output:</b> <code>True</code>, <code>False</code>, or <code>None</code>. <b>Role:</b> a three-valued answer, not two. <code>None</code> means &quot;I could not tell&quot;, and every caller treats that as permission to proceed.</p></div>
+<p><b>Input:</b> the timestamp and upload-date text from <code>yt-dlp</code>, plus the configured minimum age. <b>Output:</b> <code>True</code>, <code>False</code>, or <code>None</code>. <b>Role:</b> three possible answers. <code>None</code> means the age is unknown, and every caller allows the download.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io stack">
@@ -535,20 +535,20 @@ no timestamp, upload_date 2024-01-05 timestamp='NA'           upload_date='20240
 both missing                         timestamp='NA'           upload_date='NA'         -&gt; None
 garbage upload_date                  timestamp='NA'           upload_date='not-a-date' -&gt; None   &lt;- unknown, not blocked</pre></div>
 </div>
-<p>Checking the second row by hand: the run happened at Unix time 1786402418, so the age is 1786402418 minus 1786294418 = 108000 seconds, which is 30 hours, and 30 is at least 24. True.</p></div>
+<p>For the second row, the run happened at Unix time 1786402418. The age is 1786402418 minus 1786294418 = 108000 seconds, or 30 hours. Since 30 is at least 24, the result is True.</p></div>
 
-<div class="box why"><span class="k">Why unknown means allow</span>
-<p><code>yt-dlp</code> writes the literal text <code>NA</code> when a field is unavailable, and its channel listings often omit exact timestamps. If unknown meant &quot;wait&quot;, a channel whose listings never carry dates would never download anything at all, and the failure would be silent. Allowing an unknown age risks keeping a sponsor read in one episode. That is the cheaper mistake.</p></div>
+<div class="box why"><span class="k">Why unknown allows the download</span>
+<p><code>yt-dlp</code> writes <code>NA</code> when a field is missing, and channel listings often omit exact times. If unknown meant &quot;wait&quot;, a channel without dates would never download anything, with no clear error. Allowing an unknown age may leave a sponsor read in one episode, which is the smaller risk here.</p></div>
 
-<div class="box warn"><span class="k">Trap: the date-only path waits longer than you asked</span>
-<p>With the default 24 hours and only an upload date available, a video published at 01:00 UTC waits until 00:00 the next day plus 24 hours &mdash; that is 47 hours, not 24. This is intentional caution given an unknown publication time, but it means the setting is a floor, not the actual delay.</p></div>
+<div class="box warn"><span class="k">Trap: date-only metadata creates a longer wait</span>
+<p>With the default 24 hours and only an upload date, a video published at 01:00 UTC waits until 00:00 the next day plus 24 hours: 47 hours, not 24. This is deliberate caution when the publication time is unknown, so the setting is a minimum, not the exact delay.</p></div>
 
 <div class="box def"><span class="k">The one-shot override</span>
-<p>Ticking &quot;run now&quot; in the browser, or passing <code>--skip-age-check</code> on the command line, writes the video URL into <code>bypass_age_check_urls.txt</code>. <code>BypassStore.consume()</code> removes the line and reports the match in a single locked read-modify-write, and it does so <em>before</em> the download attempt. So a failed download does not silently keep permission for later runs: the override really is used once.</p></div>
+<p>Choosing &quot;run now&quot; in the browser or passing <code>--skip-age-check</code> on the command line writes the video URL to <code>bypass_age_check_urls.txt</code>. <code>BypassStore.consume()</code> removes the line and reports the match in one locked read-modify-write <em>before</em> the download starts. A failed download does not preserve permission for a later run; the override is used once.</p></div>
 
 <h2 id="s06"><span class="sec-no">06</span>Running the downloader &mdash; <code>YtDlpClient</code></h2>
 
-<p><code>src/downloads/ytdlp_client.py</code> is small on purpose. It builds the command, runs it under a time limit, decides whether the cookie retry is warranted, and reports what it saw.</p>
+<p><code>src/downloads/ytdlp_client.py</code> has four jobs: build the command, run it with a time limit, decide whether to retry with another cookie choice, and report the result.</p>
 
 <pre>def build_download_command(self, url: str, work_dir: Path, cookies_file: Path | None) -&gt; list[str]:
     <span class="c">"""Build one audio-download command with a safe URL separator."""</span>
@@ -576,10 +576,10 @@ garbage upload_date                  timestamp='NA'           upload_date='not-a
     return command</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Build the command, run it, and if it fails, run it once more with the opposite cookie decision. Nothing else.</p></div>
+<p>Build the command, run it, and retry once with the opposite cookie choice if needed.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> a direct media URL and the scratch folder it may write into. <b>Output:</b> a <code>YtDlpResult</code> holding the exit status, the text output, the MP3 files that changed, the before and after file snapshots, and whether one or two attempts happened. <b>Role:</b> the only place that runs the external downloader, which is what makes the download logic testable without a network.</p></div>
+<p><b>Input:</b> a direct media URL and its scratch folder. <b>Output:</b> a <code>YtDlpResult</code> containing the exit status, command output, changed MP3 files, before and after snapshots, and the number of attempts. <b>Role:</b> the only code that runs the external downloader, so the download logic can be tested without a network.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io stack">
@@ -600,19 +600,19 @@ garbage upload_date                  timestamp='NA'           upload_date='not-a
  '--output', '/temporary/singles/%(channel,uploader)s - %(title)s [%(id)s].%(ext)s',
  '--no-playlist',
  '--', 'https://videos.example.com/watch/episode-1']</pre>
-<p class="fnote">No SponsorBlock and no cookies. Both differences are deliberate: SponsorBlock only has YouTube data, and cookies are private credentials that should never reach an unrelated site.</p></div>
+<p class="fnote">There is no SponsorBlock and no cookies. SponsorBlock has YouTube data only, and private cookies must not be sent to an unrelated site.</p></div>
 </div>
 </div>
 
-<div class="box why"><span class="k">Why every command ends with a double dash</span>
-<p>URLs in <code>urls.txt</code> and in the web form are user input. A URL that begins with a hyphen would otherwise be read by <code>yt-dlp</code> as one of its own options. Putting <code>--</code> before the URL tells the argument parser that everything after it is a value, never a flag. The command is also passed as a list, never as a shell string, so there is no shell to inject into in the first place.</p></div>
+<div class="box why"><span class="k">Why every command ends with two hyphens</span>
+<p>URLs in <code>urls.txt</code> and the web form are user input. A URL beginning with a hyphen could be read by <code>yt-dlp</code> as an option. Putting <code>--</code> before the URL tells the argument parser that everything after it is a value. The command is also passed as a list, not a shell string, so shell injection is not possible.</p></div>
 
-<div class="box why"><span class="k">Why the cookie order is configurable at all</span>
-<p>Cookies make YouTube treat the request as a signed-in session. That gets you past &quot;confirm you are not a bot&quot;, but a stale or over-used cookie file can also cause failures that a plain anonymous request would not hit. Rather than guessing, the project lets you pick the first choice and always tries the other one once. Both directions are covered by the same two-attempt code path.</p></div>
+<div class="box why"><span class="k">Why cookie order is configurable</span>
+<p>Cookies make YouTube treat a request as signed in, which can get past &quot;confirm you are not a bot&quot;. A stale or over-used cookie file can also cause failures that an anonymous request would avoid. The project lets you choose which option comes first, then tries the other once. Both directions use the same two-attempt path.</p></div>
 
 <h2 id="s07"><span class="sec-no">07</span>Proving the download worked &mdash; file snapshots</h2>
 
-<p>This is the most important idea in the project, and the least obvious one.</p>
+<p>The downloader checks the files, not only the exit code.</p>
 
 <pre>def snapshot_audio(self, work_dir: Path) -&gt; AudioSnapshot:
     <span class="c">"""Capture recursive MP3 modification time and size state."""</span>
@@ -634,13 +634,13 @@ def changed_audio_files(before_snapshot, after_snapshot) -&gt; list[Path]:
     )</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p><code>yt-dlp</code> can finish with a success code and still not have produced an MP3. So the program lists the MP3 files in the scratch folder before it starts and again when it finishes, and only calls the download a success if a file actually appeared or changed.</p></div>
+<p><code>yt-dlp</code> can return success without producing an MP3. The program lists MP3 files in the scratch folder before and after the attempt, and counts the download as successful only if a file appeared or changed.</p></div>
 
 <div class="box def"><span class="k">The formula</span>
 <p>Let $B$ be the set of MP3 files in the scratch folder before the attempt and $A$ the set after, and let $s(p)$ be the state of file $p$, meaning the pair (modification time in nanoseconds, size in bytes). A file $p \in A$ counts as changed when</p>
 <p>$$p \notin B \quad\text{or}\quad s_A(p) \ne s_B(p)$$</p>
-<p>and the attempt counts as a success only when at least one such $p$ exists.</p>
-<p class="fnote">Restricting both sets to this source's own scratch folder matters: a file produced by another source or another process cannot prove that <em>this</em> URL worked.</p></div>
+<p>The attempt succeeds only when at least one such $p$ exists.</p>
+<p class="fnote">Both sets cover only this source's scratch folder. A file created by another source or process cannot prove that <em>this</em> URL worked.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io">
@@ -654,17 +654,17 @@ after : {'/w/old.mp3': (1000, 500),
 with an unchanged folder:
 []                        &lt;- treated as a failed attempt</pre></div>
 </div>
-<p>An empty result is what triggers the second attempt with the other cookie choice, even when <code>yt-dlp</code> returned exit code zero.</p></div>
+<p>An empty result triggers the second attempt with the other cookie choice, even when <code>yt-dlp</code> returned exit code zero.</p></div>
 
-<div class="box why"><span class="k">Why size and modification time, not a checksum</span>
-<p>These files are tens of megabytes and the comparison happens twice per download. A checksum would read every byte for no gain: the question is not &quot;are these files identical&quot; but &quot;did this run write anything here&quot;, and a nanosecond timestamp plus a byte count answers that at the cost of one <code>stat</code> call per file.</p></div>
+<div class="box why"><span class="k">Why size and modification time instead of a checksum</span>
+<p>These files are tens of megabytes, and the comparison happens twice per download. A checksum would read every byte. The question is whether this run wrote anything, which a nanosecond timestamp and byte count answer with one <code>stat</code> call per file.</p></div>
 
-<div class="box warn"><span class="k">Trap: the one-file recovery rule</span>
-<p>If nothing changed, the service falls back to <code>_find_recoverable_existing_audio</code>, which accepts the situation only when the scratch folder holds <b>exactly one</b> MP3. That covers the real case it was written for: a previous run downloaded the file but crashed while writing its tags, so this run's <code>yt-dlp</code> says &quot;already downloaded&quot; and changes nothing. It is a guess, though, and the section on limitations explains when the guess can pick the wrong file.</p></div>
+<div class="box warn"><span class="k">Trap: recovery accepts only one MP3</span>
+<p>If nothing changed, <code>_find_recoverable_existing_audio</code> continues only when the scratch folder contains <b>exactly one</b> MP3. This handles a previous run that downloaded the file but crashed while writing tags; the next <code>yt-dlp</code> attempt then says &quot;already downloaded&quot; and changes nothing. It is still a guess, and the limitations section shows when it can choose the wrong file.</p></div>
 
 <h2 id="s08"><span class="sec-no">08</span>Tagging the MP3 &mdash; <code>AudioMetadataWriter</code></h2>
 
-<p>Audiobookshelf reads a podcast episode's publication date from tags inside the audio file, not from the file's timestamp on disk. So after a successful download the project writes its own tags.</p>
+<p>Audiobookshelf reads an episode's date from tags inside the audio file, not from the file's timestamp on disk. After a successful download, the project writes its own tags.</p>
 
 <pre>command = [
     "ffmpeg", "-y",
@@ -684,10 +684,10 @@ with temp_audio_file.open("rb") as temp_audio:
         shutil.copyfileobj(temp_audio, final_audio)</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Rewrite the file's tags with <code>ffmpeg</code> without re-encoding the audio, then pour the rewritten bytes back into the original file instead of replacing it, so the library scanner keeps seeing the same file.</p></div>
+<p>Rewrite the tags with <code>ffmpeg</code> without re-encoding the audio, then copy the result back into the original file. The library scanner keeps seeing the same file.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> an MP3 path, the completion timestamp as text, the source URL, and optionally a readable channel name. <b>Output:</b> nothing on success; a <code>RuntimeError</code> if <code>ffmpeg</code> failed. <b>Role:</b> it decides what Audiobookshelf shows as the episode date and the podcast name, and it leaves a provenance trail so a file on disk can be traced back to its source video.</p></div>
+<p><b>Input:</b> an MP3 path, the completion timestamp as text, the source URL, and optionally a readable channel name. <b>Output:</b> nothing on success; a <code>RuntimeError</code> if <code>ffmpeg</code> fails. <b>Role:</b> it sets the date and podcast name shown by Audiobookshelf and records the source video URL.</p></div>
 
 <div class="box data"><span class="k">Sample data &mdash; a real ffmpeg run on a real MP3</span>
 <div class="io">
@@ -707,20 +707,20 @@ album  : 'Example Channel'
 title  : 'Episode 12'        &lt;- pre-existing tags survive
 leftover temp files: none</pre></div>
 </div>
-<p>This is a genuine end-to-end result: <code>ffmpeg</code> wrote the tags and <code>ffprobe</code> read them back. The file grew by 180 bytes, which is the size of the added tag frames; the audio itself was copied, not re-encoded.</p></div>
+<p>This is a real end-to-end result: <code>ffmpeg</code> wrote the tags and <code>ffprobe</code> read them back. The file grew by 180 bytes for the added tag frames; the audio was copied, not re-encoded.</p></div>
 
-<div class="box why"><span class="k">Why the bytes are copied back instead of the file being replaced</span>
-<p>Audiobookshelf's scanner and file watcher match library files by path and by inode number, the operating system's internal identifier for a file. Renaming a temporary file over the original would give the path a brand new inode, and the library could treat it as a delete followed by an add &mdash; losing the listen position. Copying the bytes into the existing file keeps the inode, so nothing downstream notices.</p></div>
+<div class="box why"><span class="k">Why the bytes are copied back</span>
+<p>Audiobookshelf's scanner and file watcher identify files by path and inode number, the operating system's identifier for a file. Replacing the original with a renamed temporary file would create a new inode, so the library could treat it as a delete and a new file and lose the listen position. Copying into the existing file keeps the inode.</p></div>
 
-<div class="box why"><span class="k">Why the date is the download time, not the upload time</span>
-<p>You want your podcast app to show new arrivals in the order you received them. A channel backfilling a five-year-old talk would otherwise bury it. The same tag is what the retention rule later reads to decide the file's age, so &quot;keep for 30 days&quot; means 30 days since you got it.</p></div>
+<div class="box why"><span class="k">Why the date is download time</span>
+<p>The podcast app should show new arrivals in the order received. A channel backfilling a five-year-old episode would otherwise place it far back in the list. Retention reads the same tag, so &quot;keep for 30 days&quot; means 30 days since download.</p></div>
 
-<div class="box warn"><span class="k">Trap: the temporary filename must not end in .mp3</span>
-<p>The temporary file is named <code>.&lt;original name&gt;.download-date.tmp</code>. If it ended in <code>.mp3</code> it would appear in the next <code>snapshot_audio</code> call, be counted as a changed audio file, and be published into the library as a duplicate episode. The leading dot also hides it from most file browsers.</p></div>
+<div class="box warn"><span class="k">Trap: the temporary file must not end in .mp3</span>
+<p>The temporary file is named <code>.&lt;original name&gt;.download-date.tmp</code>. If it ended in <code>.mp3</code>, the next <code>snapshot_audio</code> call would count it as a changed audio file and publish it as a duplicate. The leading dot also hides it from most file browsers.</p></div>
 
 <h2 id="s09"><span class="sec-no">09</span>Folders, publishing and cleanup &mdash; <code>PodcastDownloadService</code></h2>
 
-<p><code>src/downloads/service.py</code> is the largest file in the project and the one that coordinates everything else. It never talks to YouTube itself and never decides a file format; it sequences the modules that do.</p>
+<p><code>src/downloads/service.py</code> coordinates the other modules. It does not talk to YouTube or choose the file format; it calls the modules that handle those jobs.</p>
 
 <pre>def _sanitize_download_folder_name(self, raw_name: str) -&gt; str:
     <span class="c">"""Return a folder name that is safe to use on the filesystem."""</span>
@@ -734,7 +734,7 @@ leftover temp files: none</pre></div>
     return safe_name or FALLBACK_SINGLE_DOWNLOAD_FOLDER</pre>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> a name taken from a URL path or from YouTube metadata. <b>Output:</b> a folder name with no path separators, no characters Windows rejects, and no leading or trailing dots. <b>Role:</b> this is the boundary where a remote-controlled string becomes a path on your disk, so it is a security check as much as a tidiness one.</p></div>
+<p><b>Input:</b> a name from a URL path or YouTube metadata. <b>Output:</b> a folder name without path separators, Windows-invalid characters, or leading and trailing dots. <b>Role:</b> this turns remote input into a path on disk, so it is a security check as well as a formatting step.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io">
@@ -753,7 +753,7 @@ leftover temp files: none</pre></div>
 'Caf&eacute;-du-Monde'       &lt;- accented letters are kept
 'a-b'                 &lt;- the null byte is removed</pre></div>
 </div>
-<p>And the folder chosen for a whole source: <code>/@examplechannel</code> becomes <code>examplechannel</code>; <code>/channel/UCuAXFkgsw1L7xaCfnd5JJOw</code> stays as the raw identifier when <code>yt-dlp</code> is unavailable to resolve it; a direct video and a non-YouTube link both go to <code>singles</code>.</p></div>
+<p>For a whole source, <code>/@examplechannel</code> becomes <code>examplechannel</code>. If <code>/channel/UCuAXFkgsw1L7xaCfnd5JJOw</code> cannot be resolved by <code>yt-dlp</code>, the raw identifier is used. Direct videos and non-YouTube links both use <code>singles</code>.</p></div>
 
 <div class="box def"><span class="k">The folder layout it produces</span>
 <div class="scroll">
@@ -770,36 +770,36 @@ leftover temp files: none</pre></div>
 </div>
 
 <div class="box why"><span class="k">Why there are two folders, scratch and library</span>
-<p><code>intermediate_dir</code> receives the partial downloads, the thumbnail, the intermediate audio stream and the tagging temporary file. Only a finished, tagged MP3 is moved into <code>output_dir</code>. Audiobookshelf watches <code>output_dir</code>, so it never sees a half-written file and never tries to import a fragment. If the two paths are configured to be the same folder, the code detects that and falls back to deleting non-MP3 leftovers in place instead of moving anything.</p></div>
+<p><code>intermediate_dir</code> holds partial downloads, thumbnails, the intermediate audio stream, and the temporary tagging file. Only a finished, tagged MP3 moves to <code>output_dir</code>. Audiobookshelf watches <code>output_dir</code>, so it does not see fragments. If both paths point to the same folder, the code detects that and deletes non-MP3 leftovers in place instead of moving files.</p></div>
 
 <div class="box why"><span class="k">Why failure deletes the whole scratch folder</span>
-<p>Every failure path calls <code>_finalize_intermediate_cleanup(work_dir)</code>, which removes the source's scratch folder outright. A failed item is not written to the history file, so the next run tries it again from scratch. Leaving fragments behind would make the next run's before-and-after snapshot ambiguous.</p></div>
+<p>Every failure path calls <code>_finalize_intermediate_cleanup(work_dir)</code>, which removes the source's scratch folder. A failed item is not added to the history file, so the next run starts it again. Removing fragments keeps the next before-and-after snapshot clear.</p></div>
 
 <div class="box def"><span class="k">The two locks around a download</span>
-<p>Channel and playlist items are wrapped in <code>archive_store.locked_download_claim()</code>, a lock on a small separate file. The history file itself is only locked for the brief read and the brief append. That is the point: a download can take an hour, and holding the history file for an hour would stall the browser page every time it checks for duplicates. One-off videos use a different lock, <code>.direct-download.lock</code> inside the scratch folder, because all of them share the <code>singles</code> workspace.</p></div>
+<p>Channel and playlist items use <code>archive_store.locked_download_claim()</code>, which locks a small separate file. The history file is locked only for its short read or append. A download can take an hour; holding the history lock that long would block the browser's duplicate check. One-off videos use <code>.direct-download.lock</code> in the scratch folder because they share the <code>singles</code> workspace.</p></div>
 
-<div class="box warn"><span class="k">Trap: the history file is only written after success</span>
-<p><code>downloaded_urls.txt</code> gains a line when the MP3 has been tagged and published, never before. That is what makes a failed download automatically retryable and what makes a timeout so expensive: a video that always exceeds <code>download_timeout_seconds</code> is retried on every single run, forever, because it is never recorded as done.</p></div>
+<div class="box warn"><span class="k">Trap: history is written only after success</span>
+<p><code>downloaded_urls.txt</code> gets a line only after the MP3 is tagged and published. A failed download is therefore retried automatically. A video that always exceeds <code>download_timeout_seconds</code> is retried forever because it is never recorded as complete.</p></div>
 
 <h2 id="s10"><span class="sec-no">10</span>Deleting old episodes &mdash; retention</h2>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Before a full run starts, look through the folders belonging to monitored YouTube channels, read the date the program wrote inside each MP3, and delete the ones older than the retention window &mdash; also removing that video from the history file so it could be fetched again later.</p></div>
+<p>Before a full run, the program scans monitored YouTube channel folders, reads each MP3's stored date, and deletes files older than the retention window. It also removes each deleted video's URL from the history so it can be downloaded again.</p></div>
 
 <div class="box def"><span class="k">The formula</span>
-<p>An MP3 at path $p$ is deleted when all four conditions hold:</p>
+<p>An MP3 at path $p$ is deleted only when all four conditions hold:</p>
 <p>$$p \in D_{\text{channel}}, \quad d(p) \ \text{is readable}, \quad u(p) \ \text{is readable}, \quad d(p) &lt; t_{\text{now}} - R$$</p>
-<p class="fnote">$D_{\text{channel}}$ is the set of output folders belonging to YouTube channels currently listed in <code>urls.txt</code>; $d(p)$ is the download date read back out of the file's own <code>date</code> tag; $u(p)$ is the source URL read out of its <code>comment</code> tag; $t_{\text{now}}$ is the current Toronto time; and $R$ is <code>retention_days</code>, 30 by default.</p></div>
+<p class="fnote">$D_{\text{channel}}$ is the set of output folders for YouTube channels currently in <code>urls.txt</code>; $d(p)$ is the download date in the file's <code>date</code> tag; $u(p)$ is the source URL in its <code>comment</code> tag; $t_{\text{now}}$ is the current Toronto time; and $R$ is <code>retention_days</code>, 30 by default.</p></div>
 
-<div class="box why"><span class="k">Why so many conditions have to line up</span>
-<p>Each one blocks a different way of deleting the wrong thing. Restricting to current channel folders keeps playlists and one-off downloads safe. Requiring a readable date means a file the program did not tag &mdash; something you copied in by hand &mdash; is never touched. Requiring the source URL means the program can also remove the matching line from <code>downloaded_urls.txt</code>; without it, the file would vanish from disk while still being remembered as downloaded forever, so it could never come back. Every skipped file is logged with the reason.</p></div>
+<div class="box why"><span class="k">Why all four conditions are required</span>
+<p>Each condition prevents a different mistaken deletion. Limiting cleanup to current channel folders protects playlists and one-off downloads. Requiring a readable date protects files copied in by hand. Requiring the source URL lets the program remove the matching line from <code>downloaded_urls.txt</code>; otherwise the file would disappear while remaining marked as downloaded. Every skipped file is logged with its reason.</p></div>
 
-<div class="box warn"><span class="k">Trap: retention runs before the history check, not after</span>
-<p>In <code>download_all</code>, cleanup happens first. If it ran afterwards, this run would skip a video because it was still in the history file, and only then delete the file and its history line &mdash; leaving a gap until the next run. Doing it first means an expired episode becomes eligible again in the same pass.</p></div>
+<div class="box warn"><span class="k">Trap: retention runs before the history check</span>
+<p>In <code>download_all</code>, cleanup runs first. If it ran later, the history check would skip a video, then cleanup would delete its file and history line. The video would not be eligible again until the next run. Running cleanup first makes it eligible in the same pass.</p></div>
 
 <h2 id="s11"><span class="sec-no">11</span>The browser interface &mdash; <code>src/web/</code></h2>
 
-<p>Four files. <code>app.py</code> builds the application and hands it its collaborators; <code>auth.py</code> holds the request-security rules; <code>routes.py</code> holds the endpoints; <code>templates.py</code> renders the HTML. <code>src/api.py</code> is a two-line file that exposes the finished application to the server.</p>
+<p>The four main files have separate jobs: <code>app.py</code> builds the application and its collaborators; <code>auth.py</code> holds request-security rules; <code>routes.py</code> defines the endpoints; and <code>templates.py</code> renders the HTML. <code>src/api.py</code> exposes the finished application to the server.</p>
 
 <div class="box def"><span class="k">The endpoints</span>
 <div class="scroll">
@@ -824,8 +824,8 @@ leftover temp files: none</pre></div>
 <h3>How sign-in works</h3>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> a username and password typed into the form, plus a one-time token. <b>Output:</b> a random session identifier stored in a cookie and in <code>.ui_sessions.json</code>. <b>Role:</b> the only gate in front of every queue edit.</p>
-<p>Passwords are never stored. <code>src/passwords.py</code> derives a key with PBKDF2-HMAC-SHA256 &mdash; Password-Based Key Derivation Function 2, the standard slow-hashing construction &mdash; using 600,000 iterations and a 16-byte random salt, and stores the result as <code>pbkdf2_sha256$iterations$salt$hash</code>. On every start-up, <code>src/credentials.py</code> reads the plain passwords from <code>.env</code>, checks them against the stored hashes, and only re-hashes when something changed.</p></div>
+<p><b>Input:</b> a username, password, and one-time token from the form. <b>Output:</b> a random session identifier in a cookie and <code>.ui_sessions.json</code>. <b>Role:</b> the gate for every queue edit.</p>
+<p>Passwords are never stored. <code>src/passwords.py</code> uses PBKDF2-HMAC-SHA256 (Password-Based Key Derivation Function 2; HMAC means Hash-based Message Authentication Code, and SHA means Secure Hash Algorithm), a deliberately slow password-hashing method. It uses 600,000 iterations and a random 16-byte salt, then stores <code>pbkdf2_sha256$iterations$salt$hash</code>. At start-up, <code>src/credentials.py</code> reads passwords from <code>.env</code>, checks them against the stored hashes, and re-hashes only when a password changes.</p></div>
 
 <div class="box data"><span class="k">Sample data</span>
 <div class="io stack">
@@ -837,41 +837,41 @@ verify_password("correct horse battery staple", stored)  -&gt; True
 verify_password("wrong", stored)                          -&gt; False
 verify_password("x", "not-a-hash")                        -&gt; False</pre></div>
 </div>
-<p>The stored value carries its own iteration count and salt, so the check reads them back out of the string. <code>verify_password</code> refuses any iteration count outside 100,000 to 1,000,000, which stops a tampered file from demanding unbounded processor time during a sign-in attempt.</p></div>
+<p>The stored value includes its iteration count and salt, so the verifier reads them from the string. <code>verify_password</code> rejects counts outside 100,000 to 1,000,000, preventing a tampered file from demanding unlimited processor time during sign-in.</p></div>
 
-<div class="box why"><span class="k">Why a wrong username costs the same time as a wrong password</span>
-<p>If the code skipped hashing when no account name matched, a failed sign-in would return instantly for an unknown name and slowly for a known one &mdash; enough of a timing difference to let an attacker enumerate valid account names. So when no name matches, the code hashes the submitted password against the first account's stored hash as a decoy, throws the result away, and reports the same failure. The name comparison itself uses <code>secrets.compare_digest</code>, which takes the same time regardless of where the strings first differ.</p></div>
+<div class="box why"><span class="k">Why an unknown username takes as long as a wrong password</span>
+<p>If the code skipped hashing for an unknown name, sign-in would be faster for an invalid name than for a valid name with a wrong password. An attacker could use that timing difference to find account names. When no name matches, the code hashes the submitted password against the first stored hash as a decoy. It also uses <code>secrets.compare_digest</code> to compare names in constant time.</p></div>
 
 <div class="box def"><span class="k">The ban rule</span>
-<p>Five failed attempts within a ten-minute rolling window from the same client address set a fifteen-minute ban, recorded in <code>.login_state.json</code>. A failure that arrives after the window has elapsed starts the count fresh. The ban is checked before the password is ever hashed, so a banned address cannot be used to burn processor time.</p></div>
+<p>Five failed attempts from one client address within a rolling ten-minute window create a fifteen-minute ban in <code>.login_state.json</code>. A failure after the window starts a new count. The ban is checked before password hashing, so a banned address cannot use the server's processor time.</p></div>
 
-<div class="box warn"><span class="k">Trap: every form carries a token, and the login form's token is single-use</span>
-<p>Cross-Site Request Forgery is the attack where another website makes your browser submit a form to this one while you are signed in. Each page therefore embeds a random token that the server also remembers, and each form submission must present it. The sign-in form's token is popped from the server's map the moment it is used, and expires after ten minutes, so a captured form cannot be replayed.</p></div>
+<div class="box warn"><span class="k">Trap: form tokens are required and login tokens are single-use</span>
+<p>Cross-Site Request Forgery (CSRF) is when another website makes your signed-in browser submit a form here. Each page includes a random token that the server remembers, and each form must send it back. The sign-in token is removed as soon as it is used and expires after ten minutes, so a captured form cannot be replayed.</p></div>
 
-<div class="box why"><span class="k">Why /logs answers 401 instead of redirecting</span>
-<p>The queue page polls <code>/logs</code> from JavaScript every fifteen seconds. A redirect would be followed silently by <code>fetch</code>, which would then receive the sign-in page's HTML and render it inside the log box as if it were log lines. Returning the status code 401, meaning &quot;not authenticated&quot;, lets the script recognise an expired session for what it is.</p></div>
+<div class="box why"><span class="k">Why /logs returns 401 instead of redirecting</span>
+<p>The queue page asks <code>/logs</code> for updates every fifteen seconds. If the session expired, a redirect would be followed by <code>fetch</code>, which would receive the sign-in page and display it as log text. Status code 401 means &quot;not authenticated&quot;, so the script can handle the expired session correctly.</p></div>
 
 <div class="box def"><span class="k">Response headers on every page</span>
-<p><code>auth.py</code> sets a Content Security Policy of <code>default-src 'none'</code> with a per-request random nonce for the one inline script, plus <code>frame-ancestors 'none'</code>, <code>X-Frame-Options: DENY</code>, <code>X-Content-Type-Options: nosniff</code>, <code>Referrer-Policy: same-origin</code> and <code>Cache-Control: no-store</code>. In plain terms: the page may not load anything from another site, may not be embedded in another site's frame, and may not be cached.</p></div>
+<p><code>auth.py</code> sets a Content Security Policy (CSP) of <code>default-src 'none'</code> with a random per-request nonce for the inline script. It also sets <code>frame-ancestors 'none'</code>, <code>X-Frame-Options: DENY</code>, <code>X-Content-Type-Options: nosniff</code>, <code>Referrer-Policy: same-origin</code>, and <code>Cache-Control: no-store</code>. In plain terms, the page cannot load from another site, appear inside another site's frame, or be cached.</p></div>
 
 <h2 id="s12"><span class="sec-no">12</span>The scheduler &mdash; <code>start.py</code> and <code>trigger.py</code></h2>
 
-<p>Inside Docker, one process serves the web page and runs the schedule. <code>start.py</code> keeps the web server in the main thread and puts the scheduler in a background thread.</p>
+<p>Inside Docker, one process serves the web page and runs the schedule. <code>start.py</code> keeps the web server in the main thread and runs the scheduler in a background thread.</p>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Every 48 hours: update <code>yt-dlp</code>, wait five minutes, then run the whole queue by launching the command-line program as a separate process. If someone adds a URL through the browser in the meantime, wake up early and handle just that one URL.</p></div>
+<p>Every 48 hours, update <code>yt-dlp</code>, wait five minutes, and run the full queue in a separate process. If the browser adds a URL meanwhile, wake early and handle only that URL.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> the environment variables <code>DOWNLOAD_INTERVAL_HOURS</code> and <code>YT_DLP_AUTO_UPDATE</code>, plus wake-up requests from the browser. <b>Output:</b> child processes running <code>python -m src.cli</code>, with no arguments for a full run, or with <code>--download-single-url</code> or <code>--download-full-playlist</code> for an immediate one. <b>Role:</b> the only thing that decides <em>when</em> downloads happen.</p></div>
+<p><b>Input:</b> <code>DOWNLOAD_INTERVAL_HOURS</code>, <code>YT_DLP_AUTO_UPDATE</code>, and wake-up requests from the browser. <b>Output:</b> child processes running <code>python -m src.cli</code>, with no arguments for a full run or with <code>--download-single-url</code> or <code>--download-full-playlist</code> for an immediate run. <b>Role:</b> the only code that decides <em>when</em> downloads happen.</p></div>
 
-<div class="box why"><span class="k">Why the downloader runs as a separate process</span>
-<p>A crash or a memory leak inside <code>yt-dlp</code> handling takes down a short-lived child process, not the web server you use to fix the problem. The child also gets a clean logging setup and a clean working directory every time. The cost is that the two processes share state only through locked files &mdash; which is exactly why <code>src/state/</code> exists.</p></div>
+<div class="box why"><span class="k">Why the downloader is a separate process</span>
+<p>A crash or memory leak while handling <code>yt-dlp</code> takes down a short-lived child, not the web server. Each child also starts with a clean logging setup and working directory. The two processes share state through locked files, which is why <code>src/state/</code> exists.</p></div>
 
-<div class="box why"><span class="k">Why the browser hands over the URL, not just a wake-up signal</span>
-<p><code>trigger.py</code> keeps two lists guarded by a lock, one for single videos and one for full playlists. If the browser only rang a bell, the scheduler would have to process the entire queue, expanding every channel, just because you pasted one link. Passing the exact URL keeps an immediate run to one item.</p></div>
+<div class="box why"><span class="k">Why the browser passes the URL</span>
+<p><code>trigger.py</code> keeps two lock-protected lists: one for single videos and one for full playlists. If the browser sent only a wake-up signal, the scheduler would process the whole queue, including every channel, for one pasted link. Passing the URL limits the immediate run to that item.</p></div>
 
-<div class="box warn"><span class="k">Trap: adding a channel does not start anything</span>
-<p>Only direct videos and explicitly ticked playlists trigger an immediate run. A newly added channel waits for the next scheduled cycle, which can be up to 48 hours away. This is intentional &mdash; expanding a channel is the expensive path &mdash; but it surprises people, and the browser page gives no visible hint that nothing is about to happen.</p></div>
+<div class="box warn"><span class="k">Trap: adding a channel does not start a run</span>
+<p>Only direct videos and explicitly selected playlists trigger an immediate run. A new channel waits for the next scheduled cycle, up to 48 hours away. This avoids the expensive channel-expansion path, but the browser page does not show that the channel is waiting.</p></div>
 
 <h2 id="appendix"><span class="sec-no">A</span>Appendix: the yt-dlp flags this project uses</h2>
 
@@ -879,18 +879,18 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 <table>
 <thead><tr><th>Flag</th><th>What it does</th><th>Why this project uses it</th></tr></thead>
 <tbody>
-<tr><td><code>--flat-playlist</code></td><td>List the entries of a channel or playlist without opening each video's page.</td><td>Listing 12 videos costs roughly one request instead of 12.</td></tr>
-<tr><td><code>--print TEMPLATE</code></td><td>Print chosen fields instead of downloading.</td><td>The expansion step wants URLs and dates, not media.</td></tr>
-<tr><td><code>--playlist-end N</code></td><td>Stop after N entries.</td><td>Caps how far back a channel scan reaches.</td></tr>
-<tr><td><code>--extract-audio --audio-format mp3 --audio-quality 0</code></td><td>Strip the video and convert to MP3 at the best variable-bitrate setting.</td><td>Audiobookshelf wants audio files.</td></tr>
-<tr><td><code>--sponsorblock-remove sponsor,selfpromo</code></td><td>Cut segments the SponsorBlock community marked as sponsor reads or self-promotion.</td><td>The reason this project exists. YouTube only.</td></tr>
-<tr><td><code>--no-playlist</code></td><td>Download only the single item, even if the URL implies a list.</td><td>Applied to non-YouTube links so one URL cannot become fifty files.</td></tr>
-<tr><td><code>--no-mtime</code></td><td>Do not copy the source's timestamp onto the output file.</td><td>The date that matters is written into the tags instead.</td></tr>
+<tr><td><code>--flat-playlist</code></td><td>List channel or playlist entries without opening each video page.</td><td>Listing 12 videos costs roughly one request instead of 12.</td></tr>
+<tr><td><code>--print TEMPLATE</code></td><td>Print selected fields instead of downloading.</td><td>The expansion step needs URLs and dates, not media.</td></tr>
+<tr><td><code>--playlist-end N</code></td><td>Stop after N entries.</td><td>Limits how far back a channel scan goes.</td></tr>
+<tr><td><code>--extract-audio --audio-format mp3 --audio-quality 0</code></td><td>Remove the video and convert the audio to MP3 at the best variable-bitrate setting.</td><td>Audiobookshelf needs audio files.</td></tr>
+<tr><td><code>--sponsorblock-remove sponsor,selfpromo</code></td><td>Cut segments marked by the SponsorBlock community as sponsor reads or self-promotion.</td><td>Removes those segments from YouTube videos.</td></tr>
+<tr><td><code>--no-playlist</code></td><td>Download one item even when the URL implies a list.</td><td>Prevents one non-YouTube URL from producing fifty files.</td></tr>
+<tr><td><code>--no-mtime</code></td><td>Do not copy the source timestamp to the output file.</td><td>The relevant date is written into the tags.</td></tr>
 <tr><td><code>--paths temp:DIR</code></td><td>Put partial files in a chosen folder.</td><td>Keeps fragments out of the library folder.</td></tr>
-<tr><td><code>--embed-thumbnail --add-metadata</code></td><td>Attach the cover image and the source's own tags.</td><td>Gives the episode artwork and a title before this project's own tags are added.</td></tr>
-<tr><td><code>--cookies FILE</code></td><td>Send browser cookies with the request.</td><td>Gets past &quot;confirm you are not a bot&quot;. YouTube only.</td></tr>
-<tr><td><code>--sleep-requests 0.5</code></td><td>Pause half a second between the requests inside one command.</td><td>Politeness towards YouTube's rate limits.</td></tr>
-<tr><td><code>--</code></td><td>End of options; everything after is a value.</td><td>Stops a user-supplied URL starting with a hyphen from being read as a flag.</td></tr>
+<tr><td><code>--embed-thumbnail --add-metadata</code></td><td>Attach the cover image and the source's tags.</td><td>Adds artwork and a title before this project writes its own tags.</td></tr>
+<tr><td><code>--cookies FILE</code></td><td>Send browser cookies with the request.</td><td>Can get past &quot;confirm you are not a bot&quot;. YouTube only.</td></tr>
+<tr><td><code>--sleep-requests 0.5</code></td><td>Pause half a second between requests in one command.</td><td>Reduces request speed against YouTube.</td></tr>
+<tr><td><code>--</code></td><td>End options; everything after is a value.</td><td>Prevents a URL beginning with a hyphen from being read as a flag.</td></tr>
 </tbody>
 </table>
 </div>
@@ -948,21 +948,21 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 <table>
 <thead><tr><th>Situation</th><th>What would go wrong</th><th>What handles it</th></tr></thead>
 <tbody>
-<tr><td>The same video pasted as <code>youtu.be/ID</code> and as <code>watch?v=ID</code></td><td>Two queue lines, two downloads, two files</td><td><code>normalize_youtube_url</code>, applied before every comparison and before every write</td></tr>
-<tr><td>A URL beginning with a hyphen</td><td><code>yt-dlp</code> reads it as one of its own options</td><td>Every command ends with <code>--</code> before the URL, and commands are passed as lists, never through a shell</td></tr>
-<tr><td>A playlist titled <code>../../etc</code></td><td>Files written outside the library folder</td><td><code>_sanitize_download_folder_name</code> replaces separators and strips leading dots; <code>etc-passwd</code> was the observed result</td></tr>
-<tr><td><code>yt-dlp</code> exits 0 but writes nothing</td><td>The item is marked done and never retried</td><td>Before-and-after MP3 snapshots; no changed file means failure</td></tr>
-<tr><td>A previous run made the MP3 but crashed while tagging</td><td>The file is stuck: <code>yt-dlp</code> says &quot;already downloaded&quot; forever</td><td><code>_find_recoverable_existing_audio</code> adopts the single existing MP3 and finishes the tagging</td></tr>
-<tr><td>Both processes edit <code>urls.txt</code> at once</td><td>The newly added URL is silently lost</td><td><code>fcntl</code> locks in <code>src/state/file_locks.py</code> around every read and write</td></tr>
-<tr><td>Hand-edited <code>urls.txt</code> with no final newline</td><td>The next append glues two URLs together</td><td><code>LockedLineFile</code> reads the final byte and writes the separator first</td></tr>
-<tr><td><code>yt-dlp</code> reports no upload date</td><td>Either nothing ever downloads, or nothing ever waits</td><td><code>is_old_enough</code> returns <code>None</code>, and callers treat unknown as allowed, logging the count</td></tr>
-<tr><td>The download exceeds the time limit</td><td>The process hangs forever</td><td><code>subprocess.run(timeout=download_timeout_seconds)</code>; the scratch folder is then deleted</td></tr>
-<tr><td>A cookie file that YouTube has invalidated</td><td>Every YouTube download fails</td><td>One automatic retry with the opposite cookie choice, in both directions</td></tr>
-<tr><td>A session cookie from before a password change</td><td>A removed account stays signed in</td><td><code>sync_ui_credentials</code> deletes <code>.ui_sessions.json</code> whenever the account list changes</td></tr>
-<tr><td>The session expires while the log box is polling</td><td>The sign-in page is rendered inside the log box</td><td><code>/logs</code> returns status 401 rather than a redirect</td></tr>
-<tr><td>An MP3 you copied into the library yourself</td><td>Retention deletes a file it did not create</td><td>Deletion requires both a readable date tag and a readable source-URL tag; missing either one skips the file with a logged reason</td></tr>
-<tr><td>An uploaded cookie file that is not in Netscape format</td><td><code>yt-dlp</code> fails with an unhelpful HTTP 400</td><td>The upload checks the first line, converts Windows line endings to Unix ones, and sets owner-only permissions</td></tr>
-<tr><td>A corrupt or missing <code>.ui_credentials.json</code></td><td>An unhandled exception on every sign-in request</td><td><code>load_ui_accounts</code> returns an empty list, which disables sign-in and shows &quot;Login not configured&quot;</td></tr>
+<tr><td>The same video pasted as <code>youtu.be/ID</code> and as <code>watch?v=ID</code></td><td>Two queue lines, downloads, and files</td><td><code>normalize_youtube_url</code> runs before every comparison and write</td></tr>
+<tr><td>A URL beginning with a hyphen</td><td><code>yt-dlp</code> reads it as an option</td><td>Every command puts <code>--</code> before the URL and runs as a list, not through a shell</td></tr>
+<tr><td>A playlist titled <code>../../etc</code></td><td>Files are written outside the library folder</td><td><code>_sanitize_download_folder_name</code> replaces separators and strips leading dots; the observed result was <code>etc-passwd</code></td></tr>
+<tr><td><code>yt-dlp</code> exits 0 but writes nothing</td><td>The item is marked done and not retried</td><td>Before-and-after MP3 snapshots; no changed file means failure</td></tr>
+<tr><td>A previous run made the MP3 but crashed while tagging</td><td><code>yt-dlp</code> reports &quot;already downloaded&quot; on every run</td><td><code>_find_recoverable_existing_audio</code> adopts the single MP3 and finishes tagging</td></tr>
+<tr><td>Both processes edit <code>urls.txt</code> at once</td><td>The new URL is silently lost</td><td><code>fcntl</code> locks in <code>src/state/file_locks.py</code> surround every read and write</td></tr>
+<tr><td>Hand-edited <code>urls.txt</code> with no final newline</td><td>The next append joins two URLs</td><td><code>LockedLineFile</code> reads the final byte and writes the separator first</td></tr>
+<tr><td><code>yt-dlp</code> reports no upload date</td><td>Nothing downloads, or the age check is skipped</td><td><code>is_old_enough</code> returns <code>None</code>; callers allow unknown ages and log the count</td></tr>
+<tr><td>The download exceeds the time limit</td><td>The process runs forever</td><td><code>subprocess.run(timeout=download_timeout_seconds)</code>; the scratch folder is then deleted</td></tr>
+<tr><td>A cookie file invalidated by YouTube</td><td>Every YouTube download fails</td><td>One automatic retry with the opposite cookie choice, in both directions</td></tr>
+<tr><td>A session cookie from before a password change</td><td>A removed account stays signed in</td><td><code>sync_ui_credentials</code> deletes <code>.ui_sessions.json</code> when the account list changes</td></tr>
+<tr><td>The session expires while the log box polls</td><td>The sign-in page appears inside the log box</td><td><code>/logs</code> returns status 401 instead of redirecting</td></tr>
+<tr><td>An MP3 copied into the library by hand</td><td>Retention deletes a file it did not create</td><td>Deletion requires readable date and source-URL tags; missing either skips the file and logs why</td></tr>
+<tr><td>An uploaded cookie file not in Netscape format</td><td><code>yt-dlp</code> fails with an unhelpful HTTP 400</td><td>The upload checks the first line, converts Windows line endings to Unix, and sets owner-only permissions</td></tr>
+<tr><td>A corrupt or missing <code>.ui_credentials.json</code></td><td>Every sign-in request raises an unhandled exception</td><td><code>load_ui_accounts</code> returns an empty list, disables sign-in, and shows &quot;Login not configured&quot;</td></tr>
 </tbody>
 </table>
 </div>
@@ -973,17 +973,17 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 <table>
 <thead><tr><th>Idiom in the code</th><th>What it does</th><th>The trap</th></tr></thead>
 <tbody>
-<tr><td><code>command.extend(["--", url])</code></td><td>Ends option parsing</td><td>Forget it in a new command builder and a hostile URL becomes a flag. The expansion, metadata and download builders each have their own copy.</td></tr>
-<tr><td><code>bool | None</code> return from <code>is_old_enough</code></td><td>Three answers: yes, no, unknown</td><td>Writing <code>if not is_old_enough(...)</code> would treat unknown as too new and quietly stop downloading from channels with sparse metadata.</td></tr>
-<tr><td><code>self.downloaded_urls</code> as a property</td><td>Re-reads the archive file on every access</td><td>Using it inside a loop reads the file every iteration. The docstring says so; bind it to a local first.</td></tr>
-<tr><td><code>from ..media.youtube import ...</code> inside functions</td><td>Deferred import in <code>src/state/</code></td><td>It is there to keep state files from importing media policy at module load. Hoisting it to the top creates an import cycle.</td></tr>
-<tr><td><code>os.pread(fd, 1, size - 1)</code></td><td>Reads the final byte at an absolute offset</td><td>A text-mode handle cannot use <code>seek(-1, 2)</code> reliably, because character encodings make byte offsets and character offsets disagree.</td></tr>
-<tr><td><code>secrets.compare_digest</code></td><td>Constant-time comparison</td><td>Replacing it with <code>==</code> reintroduces a timing side channel on tokens and usernames.</td></tr>
-<tr><td>Temporary file named <code>.name.download-date.tmp</code></td><td>Holds the retagged audio</td><td>Rename it to end in <code>.mp3</code> and it gets published as a duplicate episode.</td></tr>
-<tr><td><code>delay_seconds</code> sleep in the download loop</td><td>Pauses between items</td><td>It sleeps even when the item was skipped because it was already in the history file. With the shipped 60-second setting and ten already-downloaded items, a run spends nine minutes asleep having done nothing.</td></tr>
-<tr><td>Folder name from a live <code>yt-dlp</code> lookup</td><td>Resolves <code>/channel/UC...</code> to a readable name</td><td>The lookup happens on every run. If it fails once, that run writes into <code>UCxxxx/</code> instead of <code>examplechannel/</code>, so one channel ends up with two folders and retention only knows about one of them.</td></tr>
-<tr><td>Retention runs after a single-URL run too</td><td>Keeps the library tidy</td><td>Every &quot;add this video&quot; from the browser triggers a sweep that runs two <code>ffprobe</code> processes per MP3 in every monitored channel folder.</td></tr>
-<tr><td><code>SPONSORBLOCK_CATEGORIES</code>, metadata timeouts</td><td>Constants at the top of their modules</td><td>These are genuinely tunable but are not in <code>config.ini</code>, so changing them means editing source. <code>download_timeout_seconds</code> was moved into the settings file for exactly this reason; its neighbours were not.</td></tr>
+<tr><td><code>command.extend(["--", url])</code></td><td>Ends option parsing</td><td>Omitting it from a command builder lets a hostile URL become a flag. The expansion, metadata, and download builders each include it.</td></tr>
+<tr><td><code>bool | None</code> return from <code>is_old_enough</code></td><td>Three answers: yes, no, unknown</td><td><code>if not is_old_enough(...)</code> would treat unknown as too new and stop downloads from channels with sparse metadata.</td></tr>
+<tr><td><code>self.downloaded_urls</code> as a property</td><td>Reads the archive file on every access</td><td>Using it in a loop rereads the file each time. Bind it to a local first.</td></tr>
+<tr><td><code>from ..media.youtube import ...</code> inside functions</td><td>Defers the import in <code>src/state/</code></td><td>Moving it to the top creates an import cycle by loading media policy when state modules load.</td></tr>
+<tr><td><code>os.pread(fd, 1, size - 1)</code></td><td>Reads the final byte at an absolute offset</td><td>A text-mode handle cannot reliably use <code>seek(-1, 2)</code> because byte and character offsets can differ.</td></tr>
+<tr><td><code>secrets.compare_digest</code></td><td>Compares values in constant time</td><td>Replacing it with <code>==</code> brings back a timing side channel for tokens and usernames.</td></tr>
+<tr><td>Temporary file named <code>.name.download-date.tmp</code></td><td>Holds retagged audio</td><td>If it ended in <code>.mp3</code>, it would be published as a duplicate episode.</td></tr>
+<tr><td><code>delay_seconds</code> sleep in the download loop</td><td>Pauses between items</td><td>It also sleeps after an item already in the history file is skipped. With the shipped 60-second setting and ten such items, the run sleeps nine minutes without doing work.</td></tr>
+<tr><td>Folder name from a live <code>yt-dlp</code> lookup</td><td>Resolves <code>/channel/UC...</code> to a readable name</td><td>The lookup runs every time. One failure writes to <code>UCxxxx/</code> instead of <code>examplechannel/</code>, leaving two folders while retention knows only one.</td></tr>
+<tr><td>Retention runs after a single-URL run too</td><td>Keeps the library tidy</td><td>Every browser request to add a video also runs two <code>ffprobe</code> processes per MP3 in every monitored channel folder.</td></tr>
+<tr><td><code>SPONSORBLOCK_CATEGORIES</code>, metadata timeouts</td><td>Constants at module level</td><td>They are adjustable but not in <code>config.ini</code>, so changing them requires editing source. <code>download_timeout_seconds</code> is configurable for this reason; its neighbours are not.</td></tr>
 </tbody>
 </table>
 </div>
@@ -991,8 +991,8 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 <h2 id="fixes"><span class="sec-no">E</span>Fixes applied</h2>
 
 <div class="box def"><span class="k">One defect found and fixed &mdash; <code>src/media/youtube.py</code></span>
-<p><b>The bug.</b> <code>normalize_youtube_url</code> built the video identifier from <code>parsed.path.lstrip("/")</code>, which removes a leading slash but not a trailing one. A share link pasted as <code>https://youtu.be/dQw4w9WgXcQ/</code> therefore normalized to <code>https://www.youtube.com/watch?v=dQw4w9WgXcQ/</code> &mdash; a watch URL whose video identifier still carried the slash. Separately, the watch branch compared <code>parsed.path == "/watch"</code>, so <code>https://www.youtube.com/watch/?v=abc</code> was not normalized at all.</p>
-<p><b>Why it matters.</b> This function is the identity function for the whole system. The queue, the one-shot bypass file and the downloaded-URL history all compare normalized URLs. With the bug, the same video pasted with a trailing slash became a <em>second</em> identity: it survived the duplicate check in <code>append_urls</code>, sat in <code>urls.txt</code> twice, and would be downloaded a second time. It also broke the cleanup step, because <code>QueueStore.remove_url</code> looks for the normalized form and would not match the other spelling.</p>
+<p><b>The bug.</b> <code>normalize_youtube_url</code> used <code>parsed.path.lstrip("/")</code> to build the video identifier. That removes a leading slash but not a trailing one, so <code>https://youtu.be/dQw4w9WgXcQ/</code> became <code>https://www.youtube.com/watch?v=dQw4w9WgXcQ/</code>. The watch branch also compared <code>parsed.path == "/watch"</code>, so <code>https://www.youtube.com/watch/?v=abc</code> was not normalized.</p>
+<p><b>Why it matters.</b> The queue, one-shot bypass file, and download history all compare normalized URLs. With this bug, a trailing slash gave the same video a <em>second</em> identity. It survived the duplicate check in <code>append_urls</code>, appeared twice in <code>urls.txt</code>, and could be downloaded twice. Cleanup also failed because <code>QueueStore.remove_url</code> looked for the normalized form.</p>
 </div>
 
 <div class="box data"><span class="k">Before and after</span>
@@ -1016,37 +1016,37 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 'https://www.youtube.com/live/ID/'
   -&gt; '...watch?v=ID'</pre></div>
 </div>
-<p>Everything else is unchanged: channels, playlists, non-YouTube links, lookalike hostnames and the empty <code>https://youtu.be/</code> case all return exactly what they returned before.</p></div>
+<p>Channels, playlists, non-YouTube links, similar-looking hostnames, and the empty <code>https://youtu.be/</code> case are unchanged.</p></div>
 
 <div class="box def"><span class="k">The change</span>
-<p>The path is split once into non-empty parts, which discards the leading and any trailing slash together, and both branches now work from those parts. A regression test covering all three trailing-slash shapes was added to <code>tests/test_url_utils_behavior.py</code>.</p>
-<p>Files touched: <code>src/media/youtube.py</code> and <code>tests/test_url_utils_behavior.py</code>. Nothing else was changed.</p></div>
+<p>The path is split into non-empty parts, removing leading and trailing slashes together. Both branches use those parts. A regression test for all three trailing-slash shapes was added to <code>tests/test_url_utils_behavior.py</code>.</p>
+<p>Files touched: <code>src/media/youtube.py</code> and <code>tests/test_url_utils_behavior.py</code>.</p></div>
 
 <div class="box why"><span class="k">What was examined and deliberately left alone</span>
-<p>Folder-name handling was tested against traversal strings, null bytes and characters Windows rejects, and it is sound. Locking around every state file is correct and consistent. Nothing writes a password, a cookie or a session identifier to a log. Relative paths are all derived from <code>Path(__file__).resolve()</code> and are correct from any working directory. The invalid settings that should raise, do raise. The remaining issues below are real but need design decisions rather than a small correction, so they are documented rather than patched.</p></div>
+<p>Folder-name handling was tested with traversal strings, null bytes, and Windows-invalid characters. Locking around state files is consistent. Passwords, cookies, and session identifiers are not written to logs. Relative paths come from <code>Path(__file__).resolve()</code> and work from any directory. Invalid settings raise as intended. The remaining issues need design decisions, so they are documented below.</p></div>
 
 <h2 id="limits"><span class="sec-no">F</span>Limitations, stated honestly</h2>
 
-<div class="box flag"><span class="k">Retagging can destroy an MP3 if the disk fills up</span>
-<p><code>AudioMetadataWriter</code> opens the finished MP3 for writing, which truncates it to zero bytes, and then copies the retagged bytes in from a temporary file. If that copy fails part way &mdash; a full disk is the realistic case for a downloader &mdash; the original is already gone, and the <code>finally</code> block deletes the temporary file that held the only complete copy. The caller then <em>preserves</em> the now-truncated MP3 for a later retry, and a later run can adopt it through the one-file recovery rule and publish it. Keeping the inode stable for Audiobookshelf and never truncating the original are genuinely in tension; resolving it needs a decision about which one wins, so it is documented here rather than patched.</p></div>
+<div class="box flag"><span class="k">Retagging can destroy an MP3 when the disk fills</span>
+<p><code>AudioMetadataWriter</code> opens the finished MP3 for writing, truncating it to zero bytes, then copies the retagged bytes from a temporary file. If the copy fails, the original is gone and the <code>finally</code> block deletes the only complete copy. The caller then <em>preserves</em> the truncated MP3 for a later retry, and the one-file recovery rule can publish it. Keeping Audiobookshelf's inode stable conflicts with protecting the original file, so this needs a design decision.</p></div>
 
-<div class="box flag"><span class="k">The one-file recovery rule can adopt the wrong MP3</span>
-<p><code>_find_recoverable_existing_audio</code> accepts any single MP3 sitting in the scratch folder when a run changed nothing. Suppose video A's tagging failed, leaving A's MP3 in the folder, and the run then reaches video B, whose <code>yt-dlp</code> attempt exits 0 without producing a file. The snapshots are identical and exactly one MP3 is present, so A's audio is tagged with B's source URL, published, and B is recorded as downloaded. A tighter rule would require the filename to contain the video identifier that <code>yt-dlp</code> puts in square brackets, but that would not work for non-YouTube sources, so it was left as is.</p></div>
+<div class="box flag"><span class="k">The one-file recovery rule can choose the wrong MP3</span>
+<p><code>_find_recoverable_existing_audio</code> accepts any single MP3 in the scratch folder when a run changes nothing. If video A failed during tagging and video B's <code>yt-dlp</code> attempt then produces no file, A's audio is tagged with B's source URL, published, and B is recorded as downloaded. A stricter rule could require the filename to contain the video identifier that <code>yt-dlp</code> puts in square brackets, but that would not work for non-YouTube sources.</p></div>
 
 <div class="box flag"><span class="k">Channel folder names are not stable</span>
-<p>For a <code>/channel/UC...</code> source, the readable folder name comes from a live <code>yt-dlp</code> lookup performed on every run. There is no cache. A single network failure sends that run's downloads into a folder named after the raw identifier, and retention cleanup will then only ever look at one of the two folders. Sources written as <code>/@handle</code> are not affected, because the name comes from the URL itself.</p></div>
+<p>For a <code>/channel/UC...</code> source, a live <code>yt-dlp</code> lookup supplies the readable folder name on every run. There is no cache. One network failure sends that run's downloads to the raw identifier, and retention then sees only one of the two folders. Sources written as <code>/@handle</code> are unaffected because their names come from the URL.</p></div>
 
 <div class="box flag"><span class="k">Everything depends on parsing yt-dlp's output</span>
-<p>Channel expansion reads tab-separated lines printed by <code>yt-dlp --print</code>, and the age gate reads the literal string <code>NA</code> as &quot;missing&quot;. Both are conventions of a tool that changes often to keep up with YouTube. An upstream change to either would not raise an exception; it would quietly produce zero videos, which looks exactly like a channel that has not posted anything.</p></div>
+<p>Channel expansion reads tab-separated lines from <code>yt-dlp --print</code>, and the age check treats <code>NA</code> as &quot;missing&quot;. These are conventions of a tool that changes often to follow YouTube. If either changes upstream, the program may quietly produce zero videos instead of raising an error.</p></div>
 
 <div class="box flag"><span class="k">One shared account list, one process</span>
-<p>Sign-in is a small number of shared accounts from <code>.env</code>, not per-user identity, and the active-session map lives in the memory of a single process. Running the web server with more than one worker would break sign-in outright, because each worker would keep its own map. The README is honest that this is a personal tool, not a multi-user service.</p></div>
+<p>Sign-in uses a small shared account list from <code>.env</code>, not separate user identities. Active sessions live in one process's memory. More than one web worker would break sign-in because each worker would keep a separate session map. The README describes this as a personal tool, not a multi-user service.</p></div>
 
 <div class="box flag"><span class="k">The shipped settings trust proxy headers</span>
-<p><code>trust_x_forwarded_for = true</code> ships in <code>config.ini</code>, while the code's own default is <code>false</code>. That is coherent with the supplied Docker Compose file, which binds the port to <code>127.0.0.1</code> behind a reverse proxy. But anyone who exposes the port directly and keeps the shipped settings lets a client claim any address it likes in an <code>X-Forwarded-For</code> header &mdash; and the sign-in ban is recorded per address, so the ban becomes trivial to evade. The setting is documented in both the file and the README; it is still the sharpest edge in the configuration.</p></div>
+<p><code>trust_x_forwarded_for = true</code> is in <code>config.ini</code>, while the code default is <code>false</code>. This matches the supplied Docker Compose file, which binds the port to <code>127.0.0.1</code> behind a reverse proxy. If the port is exposed directly, a client can claim any address in an <code>X-Forwarded-For</code> header and evade the per-address sign-in ban. The setting is documented in the file and README, but it remains the sharpest configuration risk.</p></div>
 
-<div class="box flag"><span class="k">The detailed log rotates, but from more than one process</span>
-<p><code>download.log</code> uses a rotating handler with a five-megabyte limit and three backups. Each downloader run is its own process. If two ever overlap &mdash; a manual command-line run while the scheduler is working &mdash; a rollover in one process can drop entries written by the other. Nothing is lost that matters to the download itself, but the log is not a perfect record under concurrency.</p></div>
+<div class="box flag"><span class="k">The detailed log rotates across processes</span>
+<p><code>download.log</code> uses a rotating handler with a five-megabyte limit and three backups. Each downloader run is a separate process. If two overlap, such as a manual run during the scheduled run, one process can rotate the log and drop entries from the other. The download is unaffected, but the log is incomplete under concurrency.</p></div>
 
 <h2 id="verify"><span class="sec-no">G</span>Verification</h2>
 
@@ -1054,19 +1054,19 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 <table>
 <thead><tr><th>Check</th><th>How it works</th><th>What it catches</th><th>Result</th></tr></thead>
 <tbody>
-<tr><td>Test suite</td><td><code>uv run python -m pytest -q</code>, 230 offline tests across 16 files</td><td>Regressions in URL rules, locking, the download flow, sign-in, settings and the container entrypoint. No test touches the network.</td><td class="pass">230 passed</td></tr>
-<tr><td>Linter</td><td><code>uv run ruff check</code> on the changed files</td><td>Unused imports, undefined names, obvious mistakes</td><td class="pass">clean</td></tr>
-<tr><td>Settings validation</td><td><code>load_config</code> exercised with a missing file, a missing section, and four invalid values</td><td>Settings that would fail much later, in the middle of a download</td><td class="pass">rejected with named messages</td></tr>
-<tr><td>Queue round trip</td><td><code>append_urls</code>, <code>read_urls</code>, <code>remove_url</code> on a real temporary file</td><td>Duplicate detection, comment preservation, rejection of non-web URLs</td><td class="pass">1 of 4 candidates added</td></tr>
-<tr><td>MP3 tagging</td><td>Real <code>ffmpeg</code> write and <code>ffprobe</code> read-back on a generated MP3</td><td>Lost pre-existing tags, leftover temporary files, a wrong date format</td><td class="pass">tags written, title kept, no leftovers</td></tr>
-<tr><td>Folder safety</td><td><code>_sanitize_download_folder_name</code> on traversal strings, control characters and dots</td><td>Writing outside the library folder</td><td class="pass">no traversal survived</td></tr>
-<tr><td>Password hashing</td><td><code>hash_password</code> then <code>verify_password</code> with the right password, a wrong one, and a non-hash</td><td>A verifier that accepts anything, or a malformed stored value that crashes a request</td><td class="pass">True, False, False</td></tr>
+<tr><td>Test suite</td><td><code>uv run python -m pytest -q</code>, 230 offline tests across 16 files</td><td>URL rules, locking, downloads, sign-in, settings, and the container entrypoint. No test uses the network.</td><td class="pass">230 passed</td></tr>
+<tr><td>Linter</td><td><code>uv run ruff check</code> on the changed files</td><td>Unused imports, undefined names, and obvious mistakes</td><td class="pass">clean</td></tr>
+<tr><td>Settings validation</td><td><code>load_config</code> tested with a missing file, missing section, and four invalid values</td><td>Settings that would otherwise fail during a download</td><td class="pass">rejected with named messages</td></tr>
+<tr><td>Queue round trip</td><td><code>append_urls</code>, <code>read_urls</code>, and <code>remove_url</code> on a real temporary file</td><td>Duplicate detection, comment preservation, and rejection of non-web URLs</td><td class="pass">1 of 4 candidates added</td></tr>
+<tr><td>MP3 tagging</td><td>Real <code>ffmpeg</code> write and <code>ffprobe</code> read-back on a generated MP3</td><td>Preserved tags, temporary-file cleanup, and date format</td><td class="pass">tags written, title kept, no leftovers</td></tr>
+<tr><td>Folder safety</td><td><code>_sanitize_download_folder_name</code> tested with traversal strings, control characters, and dots</td><td>Writing outside the library folder</td><td class="pass">no traversal survived</td></tr>
+<tr><td>Password hashing</td><td><code>hash_password</code> then <code>verify_password</code> with the right password, a wrong one, and a non-hash</td><td>A verifier that accepts invalid input or crashes on malformed stored data</td><td class="pass">True, False, False</td></tr>
 <tr><td>Live download</td><td>Not run</td><td>&mdash;</td><td class="failw"><code>yt-dlp</code> is not installed in this checkout</td></tr>
 </tbody>
 </table>
 </div>
 
-<p class="foot">Companion reading in this repository: <code>README.md</code> for setup and commands, <code>docs/architecture.md</code> for the component boundaries, <code>docs/operations.md</code> for running it, and the <code>GUIDE_*.md</code> file in each folder for that folder's responsibilities.</p>
+<p class="foot">See <code>README.md</code> for setup and commands, <code>docs/architecture.md</code> for component boundaries, <code>docs/operations.md</code> for operations, and each folder's <code>GUIDE_*.md</code> for its responsibilities.</p>
 
 </div>
 </body>
