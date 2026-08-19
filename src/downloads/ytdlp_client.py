@@ -12,6 +12,7 @@ from ..config import DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
 from ..media.youtube import is_youtube_url
 
 SPONSORBLOCK_CATEGORIES = "sponsor,selfpromo"
+DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
 YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
@@ -78,6 +79,9 @@ class YtDlpClient:
         Subprocess-compatible callable; tests may inject a deterministic fake.
     download_timeout_seconds:
         Wall-clock limit for one ``yt-dlp`` attempt.
+    youtube_player_client:
+        YouTube player API yt-dlp requests stream URLs from. An empty string
+        leaves the choice to yt-dlp. See ``DEFAULT_YOUTUBE_PLAYER_CLIENT``.
     """
 
     def __init__(
@@ -88,12 +92,14 @@ class YtDlpClient:
         logger: logging.Logger,
         run_command: RunCommand = subprocess.run,
         download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+        youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
     ) -> None:
         self.cookies_file = cookies_file
         self.always_use_cookies = always_use_cookies
         self.logger = logger
         self.run_command = run_command
         self.download_timeout_seconds = download_timeout_seconds
+        self.youtube_player_client = youtube_player_client.strip()
 
     def snapshot_audio(self, work_dir: Path) -> AudioSnapshot:
         """Capture recursive MP3 modification time and size state."""
@@ -130,8 +136,14 @@ class YtDlpClient:
         cookies_file: Path | None,
     ) -> list[str]:
         """Build one audio-download command with a safe URL separator."""
+        # `--paths` only applies to relative output templates; an absolute
+        # `--output` makes yt-dlp ignore it and warn. Setting both the final
+        # (`home`) and scratch (`temp`) folders here keeps every file inside
+        # `work_dir` no matter what the process working directory is.
         command = [
             "yt-dlp",
+            "--paths",
+            f"home:{work_dir}",
             "--paths",
             f"temp:{work_dir}",
             "--extract-audio",
@@ -143,10 +155,20 @@ class YtDlpClient:
             "--embed-thumbnail",
             "--add-metadata",
             "--output",
-            str(work_dir / YTDLP_OUTPUT_FILENAME_TEMPLATE),
+            YTDLP_OUTPUT_FILENAME_TEMPLATE,
         ]
         if is_youtube_url(url):
             command.extend(["--sponsorblock-remove", SPONSORBLOCK_CATEGORIES])
+            # Pinning the player client keeps yt-dlp off the API responses whose
+            # stream URLs require a PO token and answer plain requests with
+            # HTTP 403 Forbidden.
+            if self.youtube_player_client:
+                command.extend(
+                    [
+                        "--extractor-args",
+                        f"youtube:player_client={self.youtube_player_client}",
+                    ]
+                )
         else:
             command.append("--no-playlist")
         if cookies_file is not None:

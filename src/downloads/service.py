@@ -14,7 +14,11 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from ..config import DEFAULT_CHANNEL_VIDEO_COUNT, DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
+from ..config import (
+    DEFAULT_CHANNEL_VIDEO_COUNT,
+    DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+    DEFAULT_YOUTUBE_PLAYER_CLIENT,
+)
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..media.youtube import (
     expand_channel_or_playlist,
@@ -92,6 +96,7 @@ class PodcastDownloadService:
         always_use_cookies: bool = False,
         bypass_age_check_file: Path | None = None,
         download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+        youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
         ytdlp_client: YtDlpClient | None = None,
     ) -> None:
         """Create a downloader service for one queue/archive location.
@@ -131,6 +136,9 @@ class PodcastDownloadService:
         download_timeout_seconds:
             Wall-clock limit for one ``yt-dlp`` attempt, covering the download
             and the MP3 extraction that follows it.
+        youtube_player_client:
+            YouTube player API ``yt-dlp`` requests stream URLs from. An empty
+            string leaves the choice to ``yt-dlp``.
         """
         self.urls_file = urls_file
         self.downloads_dir = downloads_dir
@@ -148,6 +156,7 @@ class PodcastDownloadService:
         self.cookies_file = cookies_file
         self.always_use_cookies = always_use_cookies
         self.download_timeout_seconds = download_timeout_seconds
+        self.youtube_player_client = youtube_player_client
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
         )
@@ -172,6 +181,7 @@ class PodcastDownloadService:
             logger=self.logger,
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
             download_timeout_seconds=self.download_timeout_seconds,
+            youtube_player_client=self.youtube_player_client,
         )
 
         if self.cookies_file:

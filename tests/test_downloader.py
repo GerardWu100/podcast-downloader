@@ -37,6 +37,19 @@ def ffmpeg_command_from(commands: list[list[str]]) -> list[str]:
     return next(command for command in commands if command[0] == "ffmpeg")
 
 
+def ytdlp_home_dir_from(command: list[str]) -> Path:
+    """Return the folder a ``yt-dlp`` command writes finished files into.
+
+    The client passes the destination as ``--paths home:<folder>`` and keeps
+    ``--output`` a bare filename template, so tests read the folder from the
+    ``home:`` entry rather than from the template.
+    """
+    for index, argument in enumerate(command):
+        if argument == "--paths" and command[index + 1].startswith("home:"):
+            return Path(command[index + 1].removeprefix("home:"))
+    raise AssertionError(f"no `--paths home:` entry in command: {command}")
+
+
 def ytdlp_result(
     *,
     returncode: int,
@@ -1822,11 +1835,9 @@ def test_download_full_playlist_now_downloads_every_expanded_video(
         **kwargs,
     ) -> subprocess.CompletedProcess[str]:
         if command[0] == "yt-dlp":
-            output_template = Path(command[command.index("--output") + 1])
-            output_template.parent.mkdir(parents=True, exist_ok=True)
-            output_mp3 = (
-                output_template.parent / f"creator - {len(downloaded_urls) + 1}.mp3"
-            )
+            home_dir = ytdlp_home_dir_from(command)
+            home_dir.mkdir(parents=True, exist_ok=True)
+            output_mp3 = home_dir / f"creator - {len(downloaded_urls) + 1}.mp3"
             output_mp3.write_text("audio", encoding="utf-8")
             downloaded_urls.append(command[-1])
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
@@ -1895,10 +1906,10 @@ def test_download_all_routes_mp3s_to_source_folders_without_moving_queue(
         **kwargs,
     ) -> subprocess.CompletedProcess[str]:
         if command[0] == "yt-dlp":
-            output_template = Path(command[command.index("--output") + 1])
-            actual_parents.append(output_template.parent)
-            output_template.parent.mkdir(parents=True, exist_ok=True)
-            output_mp3 = output_template.parent / f"creator - {len(actual_parents)}.mp3"
+            home_dir = ytdlp_home_dir_from(command)
+            actual_parents.append(home_dir)
+            home_dir.mkdir(parents=True, exist_ok=True)
+            output_mp3 = home_dir / f"creator - {len(actual_parents)}.mp3"
             output_mp3.write_text("audio", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 

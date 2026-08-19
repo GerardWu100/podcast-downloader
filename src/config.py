@@ -17,6 +17,12 @@ DEFAULT_RETENTION_DAYS = 30
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 3600
 # A limit below one minute is unlikely to finish a real download.
 MINIMUM_DOWNLOAD_TIMEOUT_SECONDS = 60
+# Which YouTube player API yt-dlp asks for stream URLs. Most clients now hand
+# back URLs that need a "GVS PO Token" (a proof-of-origin token issued by
+# YouTube's own web player); fetching those URLs without one returns
+# HTTP 403 Forbidden. `web_embedded` still serves usable URLs without a token.
+# An empty value lets yt-dlp pick, which is what fails today.
+DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
 
 
 class ConfigError(ValueError):
@@ -41,6 +47,7 @@ class PodcastConfig:
     cookies_file: Path | None
     always_use_cookies: bool
     bypass_age_check_file: Path
+    youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT
 
 
 def _require_non_blank(raw_value: str, key: str) -> str:
@@ -244,6 +251,11 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         project_root,
     )
 
+    youtube_player_client = section.get(
+        "youtube_player_client",
+        DEFAULT_YOUTUBE_PLAYER_CLIENT,
+    ).strip()
+
     return PodcastConfig(
         urls_file=urls_file,
         output_dir=output_dir,
@@ -259,4 +271,5 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         cookies_file=cookies_file,
         always_use_cookies=always_use_cookies,
         bypass_age_check_file=bypass_age_check_file,
+        youtube_player_client=youtube_player_client,
     )
