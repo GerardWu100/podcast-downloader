@@ -12,6 +12,10 @@ services:
       - PODCAST_INTERMEDIATE_DIR=/temporary
       - DOWNLOAD_INTERVAL_HOURS=48
       - YT_DLP_AUTO_UPDATE=true
+      # The entrypoint repairs mounted-file ownership, then runs the app with
+      # this host user and group. `id -u` and `id -g` show the right values.
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
     volumes:
       # Folder on your machine, then the path inside the container. Edit the
       # left side to keep files somewhere else; the right sides pair with the

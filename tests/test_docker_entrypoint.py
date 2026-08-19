@@ -49,6 +49,39 @@ def test_dockerfile_installs_ytdlp_default_dependency_group() -> None:
     assert "yt-dlp[default]" in dockerfile_text
 
 
+def test_dockerfile_installs_gosu_for_non_root_application_process() -> None:
+    """The image should be able to drop privileges after mounted-file setup."""
+    dockerfile = PROJECT_ROOT / "Dockerfile"
+
+    dockerfile_text = dockerfile.read_text(encoding="utf-8")
+
+    assert "gosu" in dockerfile_text
+
+
+def test_compose_configures_host_file_owner() -> None:
+    """Compose should pass the host identity used for mounted output files."""
+    compose_file = PROJECT_ROOT / "docker-compose.yml"
+
+    compose_text = compose_file.read_text(encoding="utf-8")
+
+    assert "HOST_UID=${HOST_UID:-1000}" in compose_text
+    assert "HOST_GID=${HOST_GID:-1000}" in compose_text
+
+    env_example_text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert "HOST_UID=1000" in env_example_text
+    assert "HOST_GID=1000" in env_example_text
+
+
+def test_entrypoint_repairs_ownership_before_dropping_privileges() -> None:
+    """Startup should repair old files and run the app as the host identity."""
+    entrypoint_file = PROJECT_ROOT / "docker-entrypoint.sh"
+
+    entrypoint_text = entrypoint_file.read_text(encoding="utf-8")
+
+    assert 'chown -h "$HOST_UID:$HOST_GID"' in entrypoint_text
+    assert 'exec gosu "$HOST_UID:$HOST_GID"' in entrypoint_text
+
+
 def _run_entrypoint(
     data_dir: Path, download_dir: Path
 ) -> subprocess.CompletedProcess[str]:

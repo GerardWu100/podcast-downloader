@@ -4,7 +4,7 @@ COPY --from=denoland/deno:bin-2.7.14 /deno /usr/local/bin/deno
 
 # ffmpeg is required by yt-dlp for audio extraction
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy just the uv binary from the official image

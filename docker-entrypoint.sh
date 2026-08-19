@@ -5,7 +5,20 @@ DATA_DIR="${PODCAST_DATA_DIR:-/app}"
 DOWNLOAD_DIR="${PODCAST_DOWNLOAD_DIR:-$DATA_DIR/downloads}"
 INTERMEDIATE_DIR="${PODCAST_INTERMEDIATE_DIR:-$DATA_DIR/download_work}"
 AUTO_UPDATE="${YT_DLP_AUTO_UPDATE:-true}"
+HOST_UID="${HOST_UID:-1000}"
+HOST_GID="${HOST_GID:-1000}"
 SCRIPT_DIR="$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)"
+
+case "$HOST_UID:$HOST_GID" in
+    *[!0-9:]*|:*|*:|*:*:*)
+        echo "[startup] HOST_UID and HOST_GID must be positive integers" >&2
+        exit 1
+        ;;
+esac
+if [ "$HOST_UID" -eq 0 ] || [ "$HOST_GID" -eq 0 ]; then
+    echo "[startup] HOST_UID and HOST_GID must be greater than zero" >&2
+    exit 1
+fi
 
 # The mounted data directory owns .env (UI account name and password). A
 # repo-root .env baked into the image seeds it on first boot; without one,
@@ -85,6 +98,18 @@ if [ "$AUTO_UPDATE" = "true" ]; then
     fi
 else
     echo "[startup] yt-dlp auto-update disabled; using bundled version $(yt-dlp --version)"
+fi
+
+# Docker starts this entrypoint as root so it can repair files created by older
+# container versions. Only paths mounted for this application are changed.
+# The application itself then runs with the host user's numeric identity, so
+# every new MP3 and state file can be managed without sudo on the host.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "[startup] Setting mounted files to host owner $HOST_UID:$HOST_GID"
+    find "$DATA_DIR" "$DOWNLOAD_DIR" "$INTERMEDIATE_DIR" \
+        \( ! -uid "$HOST_UID" -o ! -gid "$HOST_GID" \) \
+        -exec chown -h "$HOST_UID:$HOST_GID" {} +
+    exec gosu "$HOST_UID:$HOST_GID" env HOME="$DATA_DIR" "$@"
 fi
 
 exec "$@"

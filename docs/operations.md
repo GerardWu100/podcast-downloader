@@ -46,6 +46,27 @@ When the container starts, it:
 3. Keeps an existing `/data/cookies.txt`, fixes its permissions to owner-only, and seeds it from the image’s repository-root `cookies.txt` only when the mounted data directory has no cookie file.
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, and `.login_state.json`.
 5. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
+6. Changes existing files in the three mounted application directories to the configured host user and group, then runs the application as that identity. This repairs root-owned files from earlier runs and prevents new ones.
+
+`HOST_UID` and `HOST_GID` default to `1000`, the usual IDs of the first Linux
+account. If your account uses different values, place them in the repository
+`.env` before starting Compose:
+
+```bash
+id -u
+id -g
+```
+
+For example, if those commands both print `1001`, add:
+
+```dotenv
+HOST_UID=1001
+HOST_GID=1001
+```
+
+The next `docker compose up --build -d` repairs existing podcast ownership.
+The entrypoint needs root only during setup; the web server and downloader run
+with the configured host identity.
 
 `start.py` then checks the `.env` password before starting the web server. If it is still the example password `changeme`, startup logs a warning.
 

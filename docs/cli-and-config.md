@@ -78,6 +78,8 @@ The checked-in file is in the project root and contains one `[podcast]` section.
 | `PODCAST_INTERMEDIATE_DIR` | Scratch download directory; Compose maps `$HOME/downloads/temporary` to `/temporary` |
 | `DOWNLOAD_INTERVAL_HOURS` | Scheduler interval in Docker mode |
 | `YT_DLP_AUTO_UPDATE` | Enables or disables Docker-time `yt-dlp` upgrades; only `yt-dlp` is updated |
+| `HOST_UID` | Numeric host user that owns mounted Docker files; defaults to `1000` |
+| `HOST_GID` | Numeric host group that owns mounted Docker files; defaults to `1000` |
 
 `yt-dlp` is not listed in `uv.lock`. After `uv sync`, install the current release and its default YouTube challenge-solving dependencies:
 

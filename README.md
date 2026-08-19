@@ -107,7 +107,10 @@ docker compose up --build -d
 
 On first boot, the container creates missing runtime files and `.env`, points
 Audiobookshelf at the mounted download folder, and stores host cookies at
-`$HOME/.containers/podcast-downloader/cookies.txt`. See
+`$HOME/.containers/podcast-downloader/cookies.txt`. It also owns mounted files
+as host user and group `1000:1000` by default, so downloaded podcasts can be
+deleted without `sudo`. Set `HOST_UID` and `HOST_GID` in the repository `.env`
+to the values from `id -u` and `id -g` when the host account uses other IDs. See
 [docs/operations.md](docs/operations.md) for the deployment flow.
 
 ## Layout
