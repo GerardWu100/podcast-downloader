@@ -1495,3 +1495,29 @@ def test_logs_endpoint_returns_401_for_expired_session() -> None:
     assert response.status_code == 401
     assert response.media_type == "text/plain"
     assert "<html" not in response.body.decode("utf-8").lower()
+
+
+def test_settings_page_warns_that_testing_does_not_save() -> None:
+    """Pressing Test stores nothing, so the page has to say so.
+
+    A green test result reads as "done", and the typed endpoint then vanishes
+    on the next page load.
+    """
+    session_id = "test-settings-save-reminder"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    body = api_module.settings(request).body.decode("utf-8")
+
+    assert "Testing does not store anything" in body
+    assert "Press Save to keep these settings." in body
+    assert 'id="notify-unsaved"' in body
+
+    api_module.SESSIONS.pop(session_id, None)

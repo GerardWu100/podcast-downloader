@@ -247,6 +247,11 @@ SETTINGS_FORM_STYLES = """
 .notify-result { margin-top:12px; font-size:.82rem; line-height:1.45; word-break:break-word; }
 .notify-result.ok { color:#15803d; }
 .notify-result.err { color:#b91c1c; }
+.notify-unsaved {
+  margin-top:12px; font-size:.82rem; font-weight:600; color:#b45309;
+  background:var(--warn-bg, rgba(180,83,9,.1)); border:1px solid rgba(180,83,9,.35);
+  border-radius:7px; padding:8px 11px;
+}
 .settings-intro { font-size:.82rem; color:var(--muted); line-height:1.55; margin-bottom:16px; }
 @media (max-width:640px) {
   .file-row { display:flex; flex-direction:column; }
@@ -629,7 +634,14 @@ def render_settings_page(
             Send test notification
           </button>
         </div>
+        <p class="field-hint" style="margin-top:10px">
+          Testing does not store anything. Press <strong>Save</strong> to keep
+          these settings.
+        </p>
       </form>
+      <div id="notify-unsaved" class="notify-unsaved" hidden>
+        Unsaved changes. Press Save.
+      </div>
       <div id="notify-result" class="notify-result"></div>
     </div>
       </div>
@@ -639,6 +651,13 @@ def render_settings_page(
 
     const notifyTestButton = document.getElementById('notify-test');
     const notifyResult = document.getElementById('notify-result');
+    const notifyUnsaved = document.getElementById('notify-unsaved');
+    const notifyForm = document.getElementById('notify-form');
+
+    // Pressing Test sends the typed values but stores nothing, so an edited
+    // form that is never saved silently reverts on the next page load.
+    notifyForm.addEventListener('input', () => {{ notifyUnsaved.hidden = false; }});
+    notifyForm.addEventListener('change', () => {{ notifyUnsaved.hidden = false; }});
 
     async function sendTestNotification() {{
       const form = document.getElementById('notify-form');
@@ -661,7 +680,9 @@ def render_settings_page(
         }}
         const data = await r.json();
         notifyResult.className = 'notify-result ' + (data.ok ? 'ok' : 'err');
-        notifyResult.textContent = data.detail;
+        notifyResult.textContent = data.ok
+          ? data.detail + ' Press Save to keep these settings.'
+          : data.detail;
       }} catch (e) {{
         notifyResult.className = 'notify-result err';
         notifyResult.textContent = 'Request failed: ' + e;
