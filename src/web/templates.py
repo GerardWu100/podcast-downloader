@@ -508,8 +508,12 @@ def render_queue_page(
     }}
     .notify-actions {{ display:flex; gap:8px; margin-top:12px; }}
     .notify-actions .btn {{ margin-top:0; width:auto; flex:1; }}
-    .btn-secondary {{ background:var(--surface); color:var(--text);
-      border:1px solid var(--border); }}
+    /* The base `.btn:hover` rule also matches a secondary button, so the
+       hover colour has to be restated here or Test looks like Save. */
+    .btn-secondary,.btn-secondary:hover {{
+      background:var(--surface); color:var(--text);
+      border:1px solid var(--border);
+    }}
     .btn-secondary:hover {{ border-color:var(--accent); }}
     .notify-result {{ margin-top:10px; font-size:.82rem; line-height:1.45;
       word-break:break-word; }}

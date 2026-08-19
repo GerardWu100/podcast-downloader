@@ -51,6 +51,12 @@ When the container starts, it:
 
 ## YouTube cookies
 
+## Error notifications
+
+Set these up in the web UI, not in `config.ini`. See [notifications.md](notifications.md).
+
+Inside Docker, `localhost` in the notify URL means the downloader's own container. Point it at your Apprise container name and put both containers on the same network. The `single` network in `docker-compose.yml` is the natural place.
+
 If YouTube blocks a normal request, provide a Netscape-format cookie file named `cookies.txt`. With Docker Compose, the host path is `$HOME/.containers/podcast-downloader/cookies.txt`; the container path is `/data/cookies.txt`.
 
 The mounted cookie file is the one the app uses. Restarts and rebuilds do not replace it; the entrypoint only applies `chmod 600`. If `/data/cookies.txt` is missing, the entrypoint copies `/app/cookies.txt` when that file exists.
@@ -136,6 +142,7 @@ If the date metadata is missing or unreadable, or the file has no source URL in 
 | `downloaded_urls.txt` | Archive of expanded channel and playlist items |
 | `download.log` | Main runtime log; rotates at 5 MB and keeps `download.log.1` through `download.log.3` |
 | `activity.log` | Short browser activity feed, created on the first activity event |
+| `notifications.json` | Apprise error-notification settings written by the web UI; owner-only because the endpoint usually embeds a key |
 | `.login_state.json` | Failed-login counters and temporary bans |
 | `.env` | Operator-set UI account names and plain-text passwords |
 | `.ui_credentials.json` | UI account names and PBKDF2 password hashes generated from `.env` |

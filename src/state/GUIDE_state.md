@@ -12,6 +12,7 @@ thread.
 | `ArchiveStore` | `downloaded_urls.txt` | Short archive locks stay separate from the long download-claim lock |
 | `BypassStore` | `bypass_age_check_urls.txt` | Overrides are normalized and atomically consumed once |
 | `ActivityLogStore` | `activity.log` or `download.log` | Appends and tail reads see whole lines; tails read only the final 256 KB |
+| `NotificationStore` | `notifications.json` | Replaced atomically and kept owner-only; a missing or damaged file reads as defaults |
 | `AuthStore` | `.ui_sessions.json`, `.login_state.json` | JSON updates are locked, atomically replaced, and mode `600` |
 
 `locked_text_file()` uses `fcntl`, the Unix file-locking interface. A shared

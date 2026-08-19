@@ -13,16 +13,20 @@ flowchart LR
     Web --> State["state/"]
     Downloads --> Media
     Downloads --> State
+    Downloads --> Notify["notifications/"]
+    Web --> Notify
     API["api.py"] --> Web
 ```
 
 - `media/` decides whether a URL is supported and how to interpret YouTube URLs.
 - `state/` owns saved file formats and locking.
 - `downloads/` turns individual media URLs into published MP3 files.
+- `notifications/` posts failures to an Apprise instance.
 - `web/` builds the FastAPI app and owns request security, routes, and HTML.
 - `cli.py` parses commands and sends work to the stores or download service.
 
-URL rules must not edit queue or history files. State stores must not run
+Notifications must not fail a download: delivery problems come back as a
+result, never an exception. URL rules must not edit queue or history files. State stores must not run
 `yt-dlp`. The download service coordinates both without copying their details.
 
 ## Part 2: Code Reference

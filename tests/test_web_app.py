@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+from src.notifications.apprise_client import AppriseSettings
 from src.state.activity_store import ActivityLogStore
 from src.state.archive_store import ArchiveStore
 from src.state.auth_store import AuthStore
 from src.state.bypass_store import BypassStore
+from src.state.notification_store import (
+    NotificationStore,
+    notification_settings_file_for,
+)
 from src.state.queue_store import QueueStore
 from src.web import routes
 from src.web.app import create_app
@@ -181,3 +187,110 @@ def test_create_app_loads_sessions_from_injected_auth_store(tmp_path: Path) -> N
     )
 
     assert routes._require_login(request) is None
+
+
+def _logged_in_request(app, session_id: str = "notify-test-session"):
+    """Return a request fake with a valid session and matching CSRF token."""
+    app.state.sessions[session_id] = {"created_at": time.time()}
+    csrf_token = routes._get_csrf_token(session_id, SimpleNamespace(app=app))
+    request = SimpleNamespace(app=app, cookies={routes.SESSION_COOKIE: session_id})
+    return request, csrf_token
+
+
+def test_saving_notification_settings_persists_them(tmp_path: Path) -> None:
+    """The save form should write settings the downloader can read back."""
+    store = NotificationStore(notification_settings_file_for(tmp_path))
+    app = create_app(notification_store=store)
+    request, csrf_token = _logged_in_request(app)
+
+    response = routes.save_notifications_form(
+        request,
+        csrf_token=csrf_token,
+        server_url="http://apprise.test/notify/key",
+        notification_urls="tgram://token/chatid",
+        tag="podcasts",
+        enabled="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=notifications_saved"
+    saved_settings = store.load()
+    assert saved_settings.enabled is True
+    assert saved_settings.server_url == "http://apprise.test/notify/key"
+    assert saved_settings.notification_urls == "tgram://token/chatid"
+
+
+def test_enabling_notifications_requires_a_usable_url(tmp_path: Path) -> None:
+    """Turning notifications on without a valid endpoint must be refused."""
+    store = NotificationStore(notification_settings_file_for(tmp_path))
+    app = create_app(notification_store=store)
+    request, csrf_token = _logged_in_request(app)
+
+    response = routes.save_notifications_form(
+        request,
+        csrf_token=csrf_token,
+        server_url="ftp://apprise.test/notify",
+        notification_urls="",
+        tag="",
+        enabled="1",
+    )
+
+    assert response.headers["location"] == "/ui?msg=notifications_invalid"
+    assert store.load() == AppriseSettings()
+
+
+def test_settings_can_be_turned_off_without_an_url(tmp_path: Path) -> None:
+    """Clearing the form and saving with the box unticked should succeed."""
+    store = NotificationStore(notification_settings_file_for(tmp_path))
+    app = create_app(notification_store=store)
+    request, csrf_token = _logged_in_request(app)
+
+    # Direct calls bypass FastAPI's form defaults, so every field is supplied.
+    response = routes.save_notifications_form(
+        request,
+        csrf_token=csrf_token,
+        server_url="",
+        notification_urls="",
+        tag="",
+        enabled="",
+    )
+
+    assert response.headers["location"] == "/ui?msg=notifications_saved"
+    assert store.load().enabled is False
+
+
+def test_test_button_reports_a_refused_url_without_sending(tmp_path: Path) -> None:
+    """The test endpoint should explain a bad URL rather than attempt a request."""
+    app = create_app(
+        notification_store=NotificationStore(notification_settings_file_for(tmp_path))
+    )
+    request, csrf_token = _logged_in_request(app)
+
+    response = routes.test_notification(
+        request,
+        csrf_token=csrf_token,
+        server_url="not-a-url",
+        notification_urls="",
+        tag="",
+    )
+
+    payload = json.loads(response.body)
+    assert payload["ok"] is False
+    assert "http://" in payload["detail"]
+
+
+def test_test_button_requires_a_session(tmp_path: Path) -> None:
+    """An expired session must not be able to make the server send requests."""
+    app = create_app(
+        notification_store=NotificationStore(notification_settings_file_for(tmp_path))
+    )
+    request = SimpleNamespace(app=app, cookies={})
+
+    response = routes.test_notification(
+        request,
+        csrf_token="irrelevant",
+        server_url="http://apprise.test/notify/key",
+        notification_urls="",
+        tag="",
+    )
+
+    assert response.status_code == 401

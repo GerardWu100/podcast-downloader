@@ -20,6 +20,14 @@ attaches the complete set to the app. Route handlers read those objects from
 the current request, so tests use the stores they supplied.
 `src/api.py` contains no route, authentication, or rendering implementation.
 
+Two endpoints handle Apprise error notifications. `POST /save-notifications`
+validates and stores the settings. `POST /test-notification` sends one message
+using the values currently in the form rather than the saved ones, so an
+endpoint can be tried before it is committed, and returns JSON instead of
+redirecting because the point is to show the exact reason a connection failed.
+Both require a session and a valid CSRF token, since either one makes the
+server send an outbound request.
+
 `auth.py` interprets proxy trust and builds browser security headers.
 `AuthStore` in `state/` saves sessions and login failures. Route code owns the
 login flow and Cross-Site Request Forgery (CSRF) tokens. Each factory-created

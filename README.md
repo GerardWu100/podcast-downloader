@@ -77,6 +77,15 @@ Runtime settings live in `config.ini`:
 
 See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete reference.
 
+## Error notifications
+
+The web UI can push every failed download to an Apprise instance you run, which
+then forwards it to Telegram or anywhere else you have configured. Open the
+**Error notifications** card, paste your Apprise notify URL, and press **Send
+test notification** to check the connection before saving.
+
+See [docs/notifications.md](docs/notifications.md).
+
 ## Docker
 
 ```bash

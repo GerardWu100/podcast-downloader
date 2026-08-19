@@ -16,9 +16,11 @@ flowchart LR
     Web --> State["src/state/"]
     Downloads --> Media
     Downloads --> State
+    Downloads --> Notify["src/notifications/"]
+    Web --> Notify
 ```
 
-`src/media/` interprets URLs without changing saved state. `src/state/` owns file formats and locks. `src/downloads/` turns individual URLs into published MP3 files and uses `YtDlpClient` to run external commands. `src/web/` builds the app and owns request security, routes, and HTML. `src/api.py` exports the production app created by `create_app()`.
+`src/media/` interprets URLs without changing saved state. `src/state/` owns file formats and locks. `src/downloads/` turns individual URLs into published MP3 files and uses `YtDlpClient` to run external commands. `src/notifications/` posts failures to an Apprise instance and knows nothing about downloads beyond a title and a body. `src/web/` builds the app and owns request security, routes, and HTML. `src/api.py` exports the production app created by `create_app()`.
 
 ## End-to-end flow
 
@@ -107,6 +109,7 @@ The `src/state/` stores own these rules:
 - `ArchiveStore` reads and writes `downloaded_urls.txt` and owns the separate download-claim lock.
 - `BypassStore` owns one-shot age-bypass entries.
 - `ActivityLogStore` appends to and reads the tail of `activity.log`.
+- `NotificationStore` reads and replaces `notifications.json`, the Apprise settings the web UI writes and the downloader reads.
 
 Callers use these stores directly. The former `src/url_utils.py` and `src/activity_log.py` adapters were removed so URL policy cannot become a second persistence boundary.
 
