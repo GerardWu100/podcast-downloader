@@ -931,7 +931,7 @@ def save_notifications_form(
     tag: str = Form(""),
     enabled: str = Form(""),
 ) -> RedirectResponse:
-    """Save the Apprise error-notification settings from the queue page.
+    """Save the Apprise error-notification settings from the settings page.
 
     Parameters
     ----------
@@ -951,7 +951,7 @@ def save_notifications_form(
     Returns
     -------
     RedirectResponse
-        Back to the queue page with a status message.
+        Back to the settings page with a status message.
     """
     redirect = _require_login(request)
     if redirect:

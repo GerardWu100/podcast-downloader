@@ -55,8 +55,9 @@ Successful downloads send nothing.
 | `Could not reach Apprise: ... Connection refused` | Nothing is listening at that address. Check the host, port, and container network. |
 | `Could not reach Apprise: ... Name or service not known` | The host name cannot be found. In Docker, use the container name, not `localhost`. |
 | `Apprise returned HTTP 424 ...` | Apprise was reached but could not deliver the notification. Check the destination URLs or configuration key. |
-| `Apprise returned HTTP 404. The server answered with a web page ...` | The `/notify/` part of the path is missing. Change `http://apprise-api:8000/<key>` to `http://apprise-api:8000/notify/<key>`. |
+| `Apprise returned HTTP 404. The server returned an HTML error page ...` | The endpoint may be wrong. Check that it contains `/notify/`, for example `http://apprise-api:8000/notify/<key>`. |
 | `Apprise returned HTTP 404 ...` | The path is correct, but the configuration key does not exist on that instance. |
+| `Apprise returned HTTP 5xx. The server returned an HTML error page ...` | The server or reverse proxy is failing. Check its status and authentication rather than changing a known-good path. |
 | `The URL must start with http:// or https://` | The notify URL is invalid. |
 
 ## Common mistakes

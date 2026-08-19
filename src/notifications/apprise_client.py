@@ -132,7 +132,7 @@ def _shorten(text: str) -> str:
     return collapsed[: MAX_RESPONSE_DETAIL_CHARS - 1] + "…"
 
 
-def summarize_error_body(error_body: str) -> str:
+def summarize_error_body(error_body: str, status_code: int | None = None) -> str:
     """Return a useful one-line explanation of a rejected request.
 
     An HTML body means the request reached the Apprise web interface rather
@@ -143,6 +143,10 @@ def summarize_error_body(error_body: str) -> str:
     ----------
     error_body:
         Raw response body from the failed request.
+    status_code:
+        HTTP status returned with the body, when available. A 404 can indicate
+        a missing Apprise ``/notify/`` path; other statuses need a neutral
+        diagnosis because proxies and outage pages also return HTML.
 
     Returns
     -------
@@ -151,9 +155,15 @@ def summarize_error_body(error_body: str) -> str:
     """
     stripped_body = error_body.strip()
     if stripped_body[:200].lower().lstrip().startswith(HTML_RESPONSE_MARKERS):
+        if status_code == 404:
+            return (
+                "The server returned an HTML error page. Check the endpoint "
+                f"path; an Apprise endpoint usually looks like {EXAMPLE_NOTIFY_URL}"
+            )
         return (
-            "The server answered with a web page, not an API response, so the "
-            f"path is wrong. An Apprise endpoint looks like {EXAMPLE_NOTIFY_URL}"
+            "The server returned an HTML error page instead of an Apprise API "
+            "response. Check the endpoint, reverse proxy, authentication, and "
+            "server status."
         )
     return _shorten(stripped_body)
 
@@ -266,7 +276,11 @@ class AppriseNotifier:
                 error_body = http_error.read().decode("utf-8", errors="replace")
             except Exception:
                 error_body = ""
-            detail = summarize_error_body(error_body) or http_error.reason or ""
+            detail = (
+                summarize_error_body(error_body, http_error.code)
+                or http_error.reason
+                or ""
+            )
             self.logger.error(
                 "Apprise rejected the notification (HTTP %s): %s",
                 http_error.code,

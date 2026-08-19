@@ -26,10 +26,12 @@ The signed-in interface has two pages:
 
 Both cookie and notification forms return to `/settings`, not to the queue.
 
-`APP_LAYOUT_STYLES`, `SETTINGS_FORM_STYLES`, and `THEME_SCRIPT` in
-`templates.py` are shared by both pages. They are plain strings, not f-string
-fragments, so their braces are not doubled. When inserted into an f-string,
-each value is included unchanged.
+`APP_LAYOUT_STYLES` and `THEME_SCRIPT` in `templates.py` are shared by both
+pages. `SETTINGS_FORM_STYLES` is used only by `/settings`. These constants are
+plain strings, not f-string fragments, so their braces are not doubled. When
+inserted into an f-string, each value is included unchanged. Shared header
+controls, including navigation links, belong in `APP_LAYOUT_STYLES` so the two
+pages cannot render the same control differently.
 
 Two endpoints handle Apprise error notifications:
 
@@ -59,7 +61,8 @@ lines.
 - `app.py`: `create_app()` and application dependencies.
 - `routes.py`: FastAPI route handlers for login, queue, cookie upload, logs, help, and scheduler triggers.
 - `auth.py`: `security_headers()`, `client_ip()`, and `request_is_secure()`.
-- `templates.py`: shared CSS plus help, login, and authenticated queue-page renderers. Route code passes escaped values and security headers in.
+- `templates.py`: shared CSS plus help, login, queue, and settings page
+  renderers. Route code passes escaped values and security headers in.
 - `__init__.py`: package marker.
 
 ## Part 3: Journal
@@ -68,3 +71,6 @@ lines.
 - 2026-07-26: Route handlers began getting configuration, stores, and the scheduler trigger from the application factory instead of rebuilding production dependencies from module globals.
 - 2026-08-10: `/logs` began returning `401` instead of redirecting when the session is invalid. The queue page reloads on that status, preventing expired sessions from filling the log box with escaped login-page HTML. The header also gained a one-line description of the app.
 - 2026-08-10: Application instances stopped sharing session state. Cookie uploads became size-limited and are replaced atomically with owner-only access.
+- 2026-08-19: Queue and settings navigation styles moved into the shared
+  signed-in layout after the new settings page rendered its links with browser
+  defaults.

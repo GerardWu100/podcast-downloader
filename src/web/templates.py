@@ -186,6 +186,13 @@ header {
 .header-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .brand h1 { font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }
 .brand p  { font-size:.78rem; color:var(--muted); }
+.nav-link {
+  font-size:.78rem; color:var(--muted); background:var(--surface);
+  padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+  cursor:pointer; transition:color .15s,border-color .15s;
+  text-decoration:none; line-height:1.5;
+}
+.nav-link:hover { color:var(--text); border-color:var(--accent); }
 .theme-toggle {
   font-size:.78rem; color:var(--muted); background:var(--surface);
   padding:6px 12px; border:1px solid var(--border); border-radius:6px;
@@ -693,30 +700,7 @@ def render_queue_page(
       {FAVICON_TAG}
       <style>
     {BASE_STYLES}
-    body {{ padding:38px 18px 54px; }}
-    .page {{ max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }}
-    header {{
-      display:flex; justify-content:space-between; align-items:center;
-      gap:16px; margin-bottom:2px; padding:0 2px;
-    }}
-    /* The brand may shrink and wrap its description; the controls may not, so
-       a long description never squeezes the Help, theme, and Logout buttons. */
-    .brand {{ min-width:0; }}
-    .header-actions {{ display:flex; align-items:center; gap:8px; flex-shrink:0; }}
-    .brand h1 {{ font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }}
-    .brand p  {{ font-size:.78rem; color:var(--muted); }}
-    .theme-toggle {{
-      font-size:.78rem; color:var(--muted); background:var(--surface);
-      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
-      cursor:pointer; transition:color .15s,border-color .15s;
-    }}
-    .theme-toggle:hover {{ color:var(--text); border-color:var(--accent); }}
-    .logout-btn {{
-      font-size:.78rem; color:var(--muted); background:var(--surface); text-decoration:none;
-      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
-      cursor:pointer; transition:color .15s,border-color .15s;
-    }}
-    .logout-btn:hover {{ color:#dc2626; border-color:#dc2626; }}
+    {APP_LAYOUT_STYLES}
     .card-row {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }}
     .badge {{
       background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-border);
@@ -804,13 +788,6 @@ def render_queue_page(
     .log-line--info .log-msg {{ color:var(--log-info); }}
     .log-line--dim .log-msg {{ color:var(--log-dim); }}
     .brand p {{ margin-top:3px; font-size:.8rem; }}
-    .theme-toggle,.nav-link {{
-      font-size:.78rem; color:var(--muted); background:var(--surface);
-      padding:6px 12px; border:1px solid var(--border); border-radius:6px;
-      cursor:pointer; transition:color .15s,border-color .15s;
-      text-decoration:none; line-height:1.5;
-    }}
-    .theme-toggle:hover,.nav-link:hover {{ color:var(--text); border-color:var(--accent); }}
     .status-strip {{
       display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:hidden;
       background:var(--surface-raised); border:1px solid var(--border);
@@ -832,13 +809,7 @@ def render_queue_page(
       width:8px; height:8px; flex:0 0 auto; border-radius:50%;
       background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.13);
     }}
-    .card {{ transition:border-color .15s,box-shadow .15s; }}
-    .card:hover {{ border-color:var(--border-strong); }}
     @media (max-width:640px) {{
-      body {{ padding:22px 12px 36px; }}
-      .page {{ gap:14px; }}
-      header {{ align-items:flex-start; gap:14px; }}
-      .header-actions {{ flex-wrap:wrap; justify-content:flex-end; }}
       .status-strip {{ grid-template-columns:1fr; }}
       .status-item {{ padding:12px 16px; }}
       .status-item + .status-item {{
@@ -854,9 +825,6 @@ def render_queue_page(
       .log-time {{ min-width:56px; }}
     }}
     @media (max-width:440px) {{
-      header {{ flex-direction:column; }}
-      .header-actions {{ width:100%; justify-content:flex-start; }}
-      .card {{ padding:18px; }}
       .log-time {{ display:none; }}
     }}
       </style>

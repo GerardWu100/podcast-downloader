@@ -597,6 +597,8 @@ def test_settings_page_shows_saved_notification_values_and_examples() -> None:
 
     assert 'action="/save-notifications"' in body
     assert 'id="notify-test"' in body
+    assert ".nav-link {" in body
+    assert "text-decoration:none" in body
     # A worked example for the field that is easiest to get wrong.
     assert "http://apprise-api:8000/notify/your-key" in body
     assert "/notify/" in body

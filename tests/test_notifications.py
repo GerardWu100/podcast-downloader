@@ -239,6 +239,37 @@ def test_html_error_body_is_replaced_with_a_diagnosis() -> None:
     assert "/notify/" in result.detail
 
 
+def test_html_service_outage_is_not_misdiagnosed_as_a_wrong_path() -> None:
+    """An HTML proxy outage must not be reported as an endpoint-path mistake."""
+    html_page = "<html><body><h1>Service Unavailable</h1></body></html>"
+
+    def open_url(request: object, timeout: int = 0):
+        raise urllib.error.HTTPError(
+            "https://notify.example.com/notify/podcasts",
+            503,
+            "Service Unavailable",
+            {},
+            io.BytesIO(html_page.encode("utf-8")),
+        )
+
+    notifier = AppriseNotifier(
+        AppriseSettings(
+            enabled=True,
+            server_url="https://notify.example.com/notify/podcasts",
+        ),
+        _LOGGER,
+        open_url=open_url,
+    )
+
+    result = notifier.send("title", "body")
+
+    assert result.ok is False
+    assert result.status_code == 503
+    assert "server status" in result.detail
+    assert "path is wrong" not in result.detail
+    assert "<html" not in result.detail
+
+
 def test_json_error_body_is_still_shown_verbatim() -> None:
     """A real API error explains itself, so it must survive unchanged."""
     assert "no destinations" in summarize_error_body('{"error": "no destinations"}')
