@@ -13,7 +13,7 @@ Run one pass through the queue:
 uv run python main.py
 ```
 
-Add URLs without downloading them yet:
+Add URLs to the queue without downloading them:
 
 ```bash
 uv run python main.py --add-url "https://www.youtube.com/watch?v=..."
@@ -24,7 +24,7 @@ uv run python main.py --add-url "https://videos.example.com/watch/episode-1"
 uv run python main.py --add-url "https://www.youtube.com/watch?v=..." --skip-age-check
 ```
 
-For YouTube channels, `/videos` selects normal uploads and `/streams` selects livestream entries. A bare channel URL uses `/videos`.
+For YouTube channels, `/videos` selects normal uploads and `/streams` selects livestreams. A bare channel URL uses `/videos`.
 
 Read URLs from standard input and append them to the queue:
 
@@ -34,9 +34,9 @@ uv run python main.py --add-url-stdin < new_urls.txt
 
 Use `--skip-age-check` with either add command when a direct YouTube video should bypass the waiting period on its next run. Other sites do not use this waiting period.
 
-The web UI has the same option. For a direct URL, it starts `python -m src.cli --download-single-url "<url>"` from the project root. The command handles only that URL. The checkbox also records a one-use exception for a new YouTube video.
+The web UI offers the same option. For a direct URL, it starts `python -m src.cli --download-single-url "<url>"` from the project root and handles only that URL. The checkbox also records a one-use exception for a new YouTube video.
 
-For a playlist, the checkbox starts `python -m src.cli --download-full-playlist "<url>"`. That command downloads every playlist entry immediately; the scheduled run considers only the newest `channel_count` entries.
+For a playlist, the checkbox starts `python -m src.cli --download-full-playlist "<url>"`. This downloads every playlist entry immediately; scheduled runs consider only the newest `channel_count` entries.
 
 Override the queue file, output folder, or number of recent channel/playlist entries:
 
@@ -85,7 +85,7 @@ The checked-in file is in the project root and contains one `[podcast]` section.
 uv pip install "yt-dlp[default]"
 ```
 
-Docker performs this during the image build and at container startup. The image includes Deno for YouTube JavaScript challenges.
+Docker does this during the image build and at container startup. The image includes Deno for YouTube JavaScript challenges.
 
 ## YouTube player client
 
@@ -95,7 +95,7 @@ YouTube provides stream URLs through several player APIs. `yt-dlp` calls these A
 ERROR: unable to download video data: HTTP Error 403: Forbidden
 ```
 
-Metadata may still load successfully, so the error often appears only when the audio starts transferring.
+Metadata may still load successfully, so the error often appears only when audio starts transferring.
 
 `youtube_player_client` selects the client used by `yt-dlp`. The default, `web_embedded`, currently provides usable URLs without a token. Leaving the setting blank lets `yt-dlp` choose, which currently triggers the 403 error.
 
@@ -103,32 +103,21 @@ If YouTube closes this route, the durable fix is a PO token provider plugin. See
 
 ## Failure logging
 
-Every download failure is recorded twice.
+Each download failure is recorded in two places.
 
-`download.log` gets the full picture: the exact `yt-dlp` command, and the
-complete stdout and stderr of every attempt, untruncated. Both attempts of a
-cookie retry are kept, because a YouTube download can fail twice for two
-different reasons.
+`download.log` contains the exact `yt-dlp` command and the complete stdout and stderr from every attempt. This includes both attempts of a cookie retry, which may fail for different reasons.
 
-`activity.log`, which the web UI shows, gets one line naming the cause:
+`activity.log`, shown in the web UI, contains one line with the cause:
 
-```
+```text
 [2026-08-18 21:14] Failed: https://www.youtube.com/watch?v=... - ERROR: [youtube] Video unavailable
 ```
 
-The cause is the last `ERROR:` line from the failed attempt, collapsed to one
-line and capped at 160 characters. Timeouts, metadata failures, and publishing
-failures name themselves instead.
+The cause is the last `ERROR:` line from the failed attempt, collapsed to one line and capped at 160 characters. Timeouts, metadata failures, and publishing failures name themselves instead.
 
-The retry attempt always runs with `-v`, so a download that is genuinely broken
-leaves the full extractor trail, including which player client answered and
-whether a PO token provider was available. Runs that succeed the first time add
-nothing. A double failure with the verbose retry costs roughly 7 KB of log.
+Retry attempts always run with `-v`, leaving the full extractor trail, including the player client and whether a PO token provider was available. A run that succeeds on its first attempt adds no verbose retry output. A double failure with the verbose retry adds roughly 7 KB to the log.
 
-`ytdlp_verbose = true` adds `-v` to first attempts too. It is off by default
-because the retry already covers real failures. Turn it on to inspect a run that
-reports success but produces the wrong result. `-v` prints the cookie file path,
-never cookie values.
+`ytdlp_verbose = true` adds `-v` to first attempts too. It is off by default because retries already provide verbose output for real failures. Turn it on when a run reports success but produces the wrong result. `-v` prints the cookie file path, never cookie values.
 
 ## Cookie support
 
@@ -139,7 +128,7 @@ When `cookies_file` is unset, the app looks for `cookies.txt` in the active data
 - `true` (default): use cookies first for YouTube downloads, channel/playlist expansion, and metadata lookups; retry once without them if the attempt fails or produces no usable result.
 - `false`: try without cookies first; retry once with cookies if needed.
 
-The file must be in the Netscape/Mozilla text format expected by `yt-dlp`:
+The file must use the Netscape/Mozilla text format expected by `yt-dlp`:
 
 - The first line must be `# HTTP Cookie File` or `# Netscape HTTP Cookie File`.
 - Use LF (`\n`) line endings on Linux and macOS, or CRLF (`\r\n`) on Windows. Convert them when moving the file between operating systems.

@@ -1,15 +1,15 @@
 # Podcast Downloader
 
-A small, self-hosted downloader that turns online videos into local MP3 files for [Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels and playlists, accepts individual video URLs, removes SponsorBlock-marked sections, and gives you both a command-line interface and a small web UI.
+A small, self-hosted downloader that turns online videos into local MP3 files for [Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels and playlists, accepts individual video URLs, removes SponsorBlock-marked sections, and includes both a command-line interface and a small web UI.
 
 ## What it does
 
 - Downloads a video URL, or the newest videos from a YouTube channel or playlist, with `yt-dlp`.
-- Ignores YouTube Shorts and waits a configurable amount of time before downloading new YouTube videos. The delay gives SponsorBlock time to publish segment data.
-- Removes SponsorBlock-marked sections when data is available.
+- Skips YouTube Shorts and waits a configurable amount of time before downloading new YouTube videos. This gives SponsorBlock time to publish segment data.
+- Removes SponsorBlock-marked sections when that data is available.
 - Converts downloads to MP3 and groups them by source in a configurable folder.
 - Deletes old MP3 files from YouTube channel folders after the configured retention period.
-- Keeps the queue, download history, and one-use age-check exceptions in local files: `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Stores the queue, download history, and one-use age-check exceptions in local files: `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
 - Provides a password-protected web UI for managing sources, uploading YouTube cookies, and viewing recent activity and logs.
 
 For the full pipeline and module map, see [docs/architecture.md](docs/architecture.md) and [docs/intro.md](docs/intro.md).
@@ -23,7 +23,7 @@ For the full pipeline and module map, see [docs/architecture.md](docs/architectu
 
 Set these values in `.env`; see `.env.example`:
 
-- `UI_USERNAME` and `UI_PASSWORD` are required for the web UI. You can add second and third accounts with `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
+- `UI_USERNAME` and `UI_PASSWORD` are required for the web UI. Optional second and third accounts use `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
 - `PODCAST_DATA_DIR` changes where state files, `.env`, and cookies are stored. Docker uses it for the mounted data volume.
 - `PODCAST_DOWNLOAD_DIR` and `PODCAST_INTERMEDIATE_DIR` override `output_dir` and `intermediate_dir` in `config.ini`.
 
@@ -36,7 +36,7 @@ cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-`yt-dlp` is installed separately rather than pinned in `uv.lock`, because YouTube extraction changes often. Add one source URL per line to `urls.txt`, then review `config.ini` for paths, delays, and retention.
+`yt-dlp` is installed separately rather than pinned in `uv.lock` because YouTube extraction changes often. Add one source URL per line to `urls.txt`, then review `config.ini` for paths, delays, and retention.
 
 ## Usage
 
@@ -72,7 +72,7 @@ Runtime settings live in `config.ini`:
 - `download_timeout_seconds` sets the timeout for one `yt-dlp` attempt (default: 3600 seconds).
 - `cookies_file` and `always_use_cookies` control YouTube cookie use and retry order.
 - `youtube_player_client` selects the YouTube player API that `yt-dlp` uses. Leaving it blank lets `yt-dlp` choose; that currently fails with `HTTP Error 403: Forbidden` after audio begins downloading.
-- `ytdlp_verbose` runs every `yt-dlp` attempt with `-v`. Off by default, because retry attempts are verbose regardless.
+- `ytdlp_verbose` runs every `yt-dlp` attempt with `-v`. It is off by default because retry attempts are verbose anyway.
 - `trust_x_forwarded_for` controls whether client IP headers from a reverse proxy are trusted.
 
 See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete reference.

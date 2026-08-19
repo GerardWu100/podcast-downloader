@@ -86,7 +86,7 @@ The web UI performs this conversion during upload.
 - `yt-dlp` is not pinned in `uv.lock`. Docker installs the latest PyPI release with `yt-dlp[default]` during `docker build` and upgrades it at each container start when `YT_DLP_AUTO_UPDATE=true`. Local development should run `uv pip install "yt-dlp[default]"` after `uv sync`.
 - The Docker image includes Deno, which gives current `yt-dlp` YouTube extraction a supported JavaScript runtime.
 - `ERROR: unable to download video data: HTTP Error 403: Forbidden` usually means YouTube now requires a GVS PO Token, not that the network or cookies are broken. Metadata succeeds but the audio transfer is refused. See `youtube_player_client` in [cli-and-config.md](cli-and-config.md).
-- When a download fails, `download.log` holds the exact `yt-dlp` command and the complete output of every attempt, and `activity.log` holds a one-line cause. Copy the logged command to reproduce the failure by hand.
+- When a download fails, `download.log` holds the exact `yt-dlp` command and the complete output of every attempt, while `activity.log` holds a one-line cause. Copy the logged command to reproduce the failure by hand.
 - Scheduled updates affect only the `yt-dlp[default]` dependency group.
 - After a scheduled update, the downloader waits five minutes before starting the run unless a UI-triggered download arrives during that wait.
 - If the update fails, the scheduler logs a warning, reports the current `yt-dlp` version, and skips the five-minute wait.
