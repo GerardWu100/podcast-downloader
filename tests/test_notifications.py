@@ -11,6 +11,7 @@ from pathlib import Path
 from src.notifications.apprise_client import (
     AppriseNotifier,
     AppriseSettings,
+    summarize_error_body,
     validate_server_url,
 )
 from src.state.notification_store import (
@@ -205,3 +206,44 @@ def test_settings_are_not_ready_without_an_endpoint() -> None:
     assert AppriseSettings(enabled=True, server_url="").is_ready() is False
     assert AppriseSettings(enabled=False, server_url="http://x.test/n").is_ready() is False
     assert AppriseSettings(enabled=True, server_url="http://x.test/n").is_ready() is True
+
+
+def test_html_error_body_is_replaced_with_a_diagnosis() -> None:
+    """A wrong path hits the Apprise web page, so the page must not be pasted back."""
+    html_page = (
+        '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        '<meta name="description" content="Apprise API - notification service API" />\n'
+        "</head>\n<body>Apprise API</body>\n</html>\n"
+    )
+
+    def open_url(request: object, timeout: int = 0):
+        raise urllib.error.HTTPError(
+            "http://apprise-api:8000/somekey",
+            404,
+            "Not Found",
+            {},
+            io.BytesIO(html_page.encode("utf-8")),
+        )
+
+    notifier = AppriseNotifier(
+        AppriseSettings(enabled=True, server_url="http://apprise-api:8000/somekey"),
+        _LOGGER,
+        open_url=open_url,
+    )
+
+    result = notifier.send("title", "body")
+
+    assert result.ok is False
+    assert result.status_code == 404
+    assert "<html" not in result.detail
+    assert "/notify/" in result.detail
+
+
+def test_json_error_body_is_still_shown_verbatim() -> None:
+    """A real API error explains itself, so it must survive unchanged."""
+    assert "no destinations" in summarize_error_body('{"error": "no destinations"}')
+
+
+def test_any_path_is_accepted_so_reverse_proxies_keep_working() -> None:
+    """The /notify hint is advisory; an unusual path must still be savable."""
+    assert validate_server_url("https://notify.example.com/hook/abc") == ""

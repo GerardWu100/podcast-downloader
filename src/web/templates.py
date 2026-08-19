@@ -415,14 +415,14 @@ def render_notification_settings_card(
         <div class="notify-row">
           <label for="notify-url">Apprise notify URL</label>
           <input id="notify-url" name="server_url" type="url"
-            placeholder="http://apprise:8000/notify/my-key"
+            placeholder="http://apprise-api:8000/notify/your-key"
             value="{safe_server_url}" />
         </div>
         <div class="notify-row">
           <label for="notify-urls">Destination URLs (leave blank if your
             Apprise instance already stores them)</label>
           <input id="notify-urls" name="notification_urls" type="text"
-            placeholder="tgram://bottoken/chatid"
+            placeholder="usually blank"
             value="{safe_notification_urls}" />
         </div>
         <div class="notify-row">
