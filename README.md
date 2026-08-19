@@ -1,18 +1,22 @@
 # Podcast Downloader
 
-A small, self-hosted downloader that turns online videos into local MP3 files for [Audiobookshelf](https://www.audiobookshelf.org/). It can watch YouTube channels and playlists, download individual video URLs, remove SponsorBlock-marked sections, and run from either the command line or a web UI.
+A small, self-hosted downloader that turns online videos into local MP3 files
+for [Audiobookshelf](https://www.audiobookshelf.org/). It can watch YouTube
+channels and playlists, download individual video URLs, remove
+SponsorBlock-marked sections, and run from the command line or a web UI.
 
 ## What it does
 
-- Downloads videos with `yt-dlp`, including the newest entries from a channel or playlist.
-- Skips YouTube Shorts and waits a configurable time before downloading new YouTube videos. This gives SponsorBlock time to publish segment data.
+- Downloads videos with `yt-dlp`, including the newest videos from a channel or playlist.
+- Skips YouTube Shorts and waits for a configurable delay before downloading new videos. This gives SponsorBlock time to publish segment data.
 - Removes SponsorBlock segments when data is available.
 - Converts downloads to MP3 and groups them by source.
 - Removes old MP3 files from YouTube channel folders after the retention period.
-- Keeps the queue, download history, and one-use age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Provides a password-protected web UI for managing sources, uploading YouTube cookies, and viewing activity and logs.
+- Stores the queue, download history, and one-use age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Provides a password-protected web UI for managing sources, viewing activity and logs, uploading YouTube cookies, and configuring error notifications.
 
-See [docs/architecture.md](docs/architecture.md) for the pipeline and module map. [docs/intro.md](docs/intro.md) gives the project overview.
+See [docs/architecture.md](docs/architecture.md) for the pipeline and module
+map. [docs/intro.md](docs/intro.md) gives a short project overview.
 
 ## Requirements
 
@@ -36,7 +40,9 @@ cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-`yt-dlp` is installed separately rather than pinned in `uv.lock` because YouTube extraction changes often. Add one source URL per line to `urls.txt`, then review `config.ini` for paths, delays, and retention.
+`yt-dlp` is installed separately instead of being pinned in `uv.lock` because
+YouTube extraction changes often. Add one source URL per line to `urls.txt`,
+then review `config.ini` for paths, delays, and retention.
 
 ## Usage
 
@@ -52,13 +58,17 @@ uv run python -m pytest -q                                          # test suite
 uv run python scripts/sponsorblock_smoke_check.py                   # manual, live-network SponsorBlock check
 ```
 
-Once the API is running, open `http://127.0.0.1:8000/help` for cookie-export instructions. If YouTube blocks downloads, create fresh cookies with:
+Once the API is running, open `http://127.0.0.1:8000/help` for cookie-export
+instructions. If YouTube blocks downloads, create fresh cookies with:
 
 ```bash
 yt-dlp --cookies-from-browser chrome --cookies cookies.txt
 ```
 
-Upload the resulting file through the web UI. See [docs/web-ui-security.md](docs/web-ui-security.md) for login and session details and [docs/operations.md](docs/operations.md) for cookies and Docker deployment.
+Upload the resulting file on the web UI's **Settings** page. See
+[docs/web-ui-security.md](docs/web-ui-security.md) for login and session
+details and [docs/operations.md](docs/operations.md) for cookies and Docker
+deployment.
 
 ## Configuration
 
@@ -75,11 +85,16 @@ Runtime settings live in `config.ini`:
 - `ytdlp_verbose` runs every `yt-dlp` attempt with `-v`. It is off by default because retry attempts are verbose anyway.
 - `trust_x_forwarded_for` controls whether client IP headers from a reverse proxy are trusted.
 
-See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete reference.
+See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete
+reference.
 
 ## Error notifications
 
-The web UI can send every failed download to an Apprise instance, which can then forward it to Telegram, email, Discord, or another service. Open the **Error notifications** card, enter the Apprise notify URL, and press **Send test notification** before saving.
+The web UI can send each failed download to an Apprise instance. Apprise can
+then forward it to Telegram, email, Discord, or another service. Open
+**Settings**, enter the Apprise notify URL under **Error notifications**, and
+press **Send test notification** before saving. Each field includes a worked
+example.
 
 See [docs/notifications.md](docs/notifications.md).
 
@@ -90,7 +105,10 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
 
-On first boot, the container creates missing runtime files and `.env`, points Audiobookshelf at the mounted download folder, and stores host cookies at `$HOME/.containers/podcast-downloader/cookies.txt`. See [docs/operations.md](docs/operations.md) for the deployment flow.
+On first boot, the container creates missing runtime files and `.env`, points
+Audiobookshelf at the mounted download folder, and stores host cookies at
+`$HOME/.containers/podcast-downloader/cookies.txt`. See
+[docs/operations.md](docs/operations.md) for the deployment flow.
 
 ## Layout
 

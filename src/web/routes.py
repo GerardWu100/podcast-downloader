@@ -56,8 +56,8 @@ from .auth import client_ip, request_is_secure, security_headers
 from .templates import (
     render_help_page,
     render_login_page,
-    render_notification_settings_card,
     render_queue_page,
+    render_settings_page,
 )
 
 _logger = logging.getLogger("api")
@@ -832,8 +832,49 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         _last_activity_label(_activity_store(request).activity_log_file)
     )
 
+    return render_queue_page(
+        bypass_row_html=bypass_row_html,
+        count=count,
+        last_activity=last_activity,
+        msg_html=msg_html,
+        queue_html=queue_html,
+        safe_token=safe_token,
+        script_nonce=script_nonce,
+        headers=_security_headers(script_nonce),
+    )
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings(request: Request, msg: str = "") -> HTMLResponse:
+    """Render the settings page for cookies and error notifications.
+
+    Parameters
+    ----------
+    request:
+        Current request with the session and the settings store.
+    msg:
+        Optional known status key displayed at the top of the page.
+
+    Returns
+    -------
+    HTMLResponse
+        Settings page, or a login redirect when the session is invalid.
+    """
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    session_id = request.cookies.get(SESSION_COOKIE, "")
+    safe_token = html.escape(_get_csrf_token(session_id, request))
+    script_nonce = secrets.token_urlsafe(16)
+
+    msg_html = ""
+    if msg in _MSG_DISPLAY:
+        css_class, display_text = _MSG_DISPLAY[msg]
+        msg_html = f'<div class="{css_class}">{html.escape(display_text)}</div>'
+
     notification_settings = _notification_store(request).load()
-    notifications_html = render_notification_settings_card(
+    return render_settings_page(
         safe_token=safe_token,
         safe_server_url=html.escape(notification_settings.server_url, quote=True),
         safe_notification_urls=html.escape(
@@ -841,17 +882,8 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
             quote=True,
         ),
         safe_tag=html.escape(notification_settings.tag, quote=True),
-        enabled=notification_settings.enabled,
-    )
-
-    return render_queue_page(
-        bypass_row_html=bypass_row_html,
-        count=count,
-        last_activity=last_activity,
+        notifications_enabled=notification_settings.enabled,
         msg_html=msg_html,
-        notifications_html=notifications_html,
-        queue_html=queue_html,
-        safe_token=safe_token,
         script_nonce=script_nonce,
         headers=_security_headers(script_nonce),
     )
@@ -879,15 +911,15 @@ async def upload_cookies_form(
         raise HTTPException(status_code=413, detail="Cookie file is too large")
     normalized_cookie_text = _normalize_uploaded_cookie_text(raw_cookie_file)
     if normalized_cookie_text is None:
-        return RedirectResponse(url="/ui?msg=cookies_invalid", status_code=303)
+        return RedirectResponse(url="/settings?msg=cookies_invalid", status_code=303)
 
     try:
         _write_cookie_file(_configured_cookie_file(request), normalized_cookie_text)
     except OSError:
         _logger.exception("Could not update cookies file")
-        return RedirectResponse(url="/ui?msg=cookies_error", status_code=303)
+        return RedirectResponse(url="/settings?msg=cookies_error", status_code=303)
 
-    return RedirectResponse(url="/ui?msg=cookies_updated", status_code=303)
+    return RedirectResponse(url="/settings?msg=cookies_updated", status_code=303)
 
 
 @router.post("/save-notifications")
@@ -932,7 +964,7 @@ def save_notifications_form(
     # An endpoint is only required once notifications are switched on, so the
     # settings can be cleared and saved without tripping validation.
     if is_enabled and validate_server_url(server_url):
-        return RedirectResponse(url="/ui?msg=notifications_invalid", status_code=303)
+        return RedirectResponse(url="/settings?msg=notifications_invalid", status_code=303)
 
     settings = AppriseSettings(
         enabled=is_enabled,
@@ -944,9 +976,9 @@ def save_notifications_form(
         _notification_store(request).save(settings)
     except OSError:
         _logger.exception("Could not save notification settings")
-        return RedirectResponse(url="/ui?msg=notifications_error", status_code=303)
+        return RedirectResponse(url="/settings?msg=notifications_error", status_code=303)
 
-    return RedirectResponse(url="/ui?msg=notifications_saved", status_code=303)
+    return RedirectResponse(url="/settings?msg=notifications_saved", status_code=303)
 
 
 @router.post("/test-notification")

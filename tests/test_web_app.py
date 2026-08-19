@@ -212,7 +212,7 @@ def test_saving_notification_settings_persists_them(tmp_path: Path) -> None:
         enabled="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=notifications_saved"
+    assert response.headers["location"] == "/settings?msg=notifications_saved"
     saved_settings = store.load()
     assert saved_settings.enabled is True
     assert saved_settings.server_url == "http://apprise.test/notify/key"
@@ -234,7 +234,7 @@ def test_enabling_notifications_requires_a_usable_url(tmp_path: Path) -> None:
         enabled="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=notifications_invalid"
+    assert response.headers["location"] == "/settings?msg=notifications_invalid"
     assert store.load() == AppriseSettings()
 
 
@@ -254,7 +254,7 @@ def test_settings_can_be_turned_off_without_an_url(tmp_path: Path) -> None:
         enabled="",
     )
 
-    assert response.headers["location"] == "/ui?msg=notifications_saved"
+    assert response.headers["location"] == "/settings?msg=notifications_saved"
     assert store.load().enabled is False
 
 

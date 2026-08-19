@@ -530,9 +530,9 @@ def test_ui_shows_playlist_checkbox_when_age_gate_disabled(monkeypatch) -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
-def test_ui_includes_authenticated_cookie_upload_form() -> None:
-    """The logged-in UI should expose a CSRF-protected cookies.txt upload form."""
-    session_id = "test-ui-cookie-upload-form"
+def test_settings_page_includes_authenticated_cookie_upload_form() -> None:
+    """The settings page should expose a CSRF-protected cookies.txt upload form."""
+    session_id = "test-settings-cookie-upload-form"
     api_module.SESSIONS[session_id] = {
         "ip": "127.0.0.1",
         "created_at": time.time(),
@@ -543,14 +543,63 @@ def test_ui_includes_authenticated_cookie_upload_form() -> None:
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = api_module.ui(request)
+    response = api_module.settings(request)
     body = response.body.decode("utf-8")
 
     assert 'action="/upload-cookies"' in body
     assert 'enctype="multipart/form-data"' in body
     assert 'name="cookie_file"' in body
     assert 'name="csrf_token"' in body
-    assert body.index("Activity and logs") < body.index("YouTube access cookies")
+    assert "YouTube access cookies" in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_queue_page_links_to_settings_without_embedding_them() -> None:
+    """Setup controls moved off the queue page, which now only links to them."""
+    session_id = "test-queue-links-to-settings"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    body = api_module.ui(request).body.decode("utf-8")
+
+    assert 'href="/settings"' in body
+    assert "YouTube access cookies" not in body
+    assert 'action="/upload-cookies"' not in body
+    assert 'action="/save-notifications"' not in body
+    # The queue itself must still be there.
+    assert 'action="/add-url"' in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_settings_page_shows_saved_notification_values_and_examples() -> None:
+    """Saved values reload into the form, and each field explains itself."""
+    session_id = "test-settings-notification-values"
+    api_module.SESSIONS[session_id] = {
+        "ip": "127.0.0.1",
+        "created_at": time.time(),
+    }
+
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    body = api_module.settings(request).body.decode("utf-8")
+
+    assert 'action="/save-notifications"' in body
+    assert 'id="notify-test"' in body
+    # A worked example for the field that is easiest to get wrong.
+    assert "http://apprise-api:8000/notify/your-key" in body
+    assert "/notify/" in body
 
     api_module.SESSIONS.pop(session_id, None)
 
@@ -593,7 +642,7 @@ def test_upload_cookies_overwrites_existing_cookie_file(
         )
     )
 
-    assert response.headers["location"] == "/ui?msg=cookies_updated"
+    assert response.headers["location"] == "/settings?msg=cookies_updated"
     assert cookie_file.read_text(encoding="utf-8") == uploaded_text.replace(
         "\r\n", "\n"
     )
@@ -691,7 +740,7 @@ def test_upload_cookies_rejects_invalid_cookie_header(
         )
     )
 
-    assert response.headers["location"] == "/ui?msg=cookies_invalid"
+    assert response.headers["location"] == "/settings?msg=cookies_invalid"
     assert (
         cookie_file.read_text(encoding="utf-8") == "# Netscape HTTP Cookie File\nold\n"
     )

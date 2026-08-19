@@ -171,6 +171,105 @@ input:focus,select:focus,button:focus-visible,a:focus-visible {
 """
 
 
+# Chrome shared by the signed-in pages: the queue and the settings page. These
+# are plain strings rather than f-string fragments, so their braces stay single.
+APP_LAYOUT_STYLES = """
+body { padding:38px 18px 54px; }
+.page { max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }
+header {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:16px; margin-bottom:2px; padding:0 2px;
+}
+/* The brand may shrink and wrap its description; the controls may not, so
+   a long description never squeezes the navigation buttons. */
+.brand { min-width:0; }
+.header-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.brand h1 { font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }
+.brand p  { font-size:.78rem; color:var(--muted); }
+.theme-toggle {
+  font-size:.78rem; color:var(--muted); background:var(--surface);
+  padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+  cursor:pointer; transition:color .15s,border-color .15s;
+}
+.theme-toggle:hover { color:var(--text); border-color:var(--accent); }
+.logout-btn {
+  font-size:.78rem; color:var(--muted); background:var(--surface); text-decoration:none;
+  padding:6px 12px; border:1px solid var(--border); border-radius:6px;
+  cursor:pointer; transition:color .15s,border-color .15s;
+}
+.logout-btn:hover { color:#dc2626; border-color:#dc2626; }
+.card { transition:border-color .15s,box-shadow .15s; }
+.card:hover { border-color:var(--border-strong); }
+@media (max-width:640px) {
+  body { padding:22px 12px 36px; }
+  .page { gap:14px; }
+  header { align-items:flex-start; gap:14px; }
+  .header-actions { flex-wrap:wrap; justify-content:flex-end; }
+}
+@media (max-width:440px) {
+  header { flex-direction:column; }
+  .header-actions { width:100%; justify-content:flex-start; }
+  .card { padding:18px; }
+}
+"""
+
+# Styles for the settings page forms: the cookie upload and the Apprise card.
+SETTINGS_FORM_STYLES = """
+.file-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
+.field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
+.field > label { font-size:.78rem; font-weight:600; color:var(--text); }
+.field input[type=text],.field input[type=url] {
+  width:100%; padding:9px 11px; border:1px solid var(--border);
+  border-radius:6px; background:var(--bg); color:var(--text); font-size:.88rem;
+}
+.field-hint { font-size:.74rem; color:var(--muted); line-height:1.5; }
+.field-hint code {
+  background:var(--input-bg); border:1px solid var(--border); border-radius:4px;
+  padding:1px 5px; font-size:.92em; word-break:break-all;
+}
+.check-row { display:flex; align-items:center; gap:8px; font-size:.86rem;
+  color:var(--text); margin-bottom:16px; }
+.form-actions { display:flex; gap:8px; margin-top:4px; }
+.form-actions .btn { margin-top:0; width:auto; flex:1; }
+/* The base `.btn:hover` rule also matches a secondary button, so the hover
+   colour has to be restated here or Test looks identical to Save. */
+.btn-secondary,.btn-secondary:hover {
+  background:var(--surface); color:var(--text); border:1px solid var(--border);
+}
+.btn-secondary:hover { border-color:var(--accent); }
+.notify-result { margin-top:12px; font-size:.82rem; line-height:1.45; word-break:break-word; }
+.notify-result.ok { color:#15803d; }
+.notify-result.err { color:#b91c1c; }
+.settings-intro { font-size:.82rem; color:var(--muted); line-height:1.55; margin-bottom:16px; }
+@media (max-width:640px) {
+  .file-row { display:flex; flex-direction:column; }
+  .file-row .btn { width:100%; }
+  .form-actions { flex-direction:column; }
+}
+"""
+
+# Theme toggle shared by both signed-in pages. Interpolating this constant into
+# an f-string inserts its braces verbatim, so they are not doubled here.
+THEME_SCRIPT = """
+const savedTheme = localStorage.getItem('podcast-theme');
+const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+const themeButton = document.getElementById('theme-toggle');
+
+function applyTheme(theme) {
+  document.body.classList.toggle('theme-dark', theme === 'dark');
+  document.body.classList.toggle('theme-light', theme === 'light');
+  themeButton.textContent = theme === 'dark' ? 'Light' : 'Dark';
+}
+
+applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
+themeButton.addEventListener('click', () => {
+  const next = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
+  localStorage.setItem('podcast-theme', next);
+  applyTheme(next);
+});
+"""
+
+
 def render_help_page(
     header_factory: Callable[[str | None], dict[str, str]],
 ) -> HTMLResponse:
@@ -369,15 +468,21 @@ def render_login_page(
     )
 
 
-def render_notification_settings_card(
+def render_settings_page(
     *,
     safe_token: str,
     safe_server_url: str,
     safe_notification_urls: str,
     safe_tag: str,
-    enabled: bool,
-) -> str:
-    """Return the Apprise error-notification card for the queue page.
+    notifications_enabled: bool,
+    msg_html: str,
+    script_nonce: str,
+    headers: dict[str, str],
+) -> HTMLResponse:
+    """Render the settings page holding cookies and error notifications.
+
+    These controls are configured once and then left alone, so they live here
+    instead of below the queue that gets used every day.
 
     Every value must already be HTML-escaped by the caller, because these
     strings are interpolated into attributes without further processing.
@@ -385,52 +490,133 @@ def render_notification_settings_card(
     Parameters
     ----------
     safe_token:
-        Escaped CSRF token for both the save form and the test button.
+        Escaped CSRF token shared by every form on the page.
     safe_server_url:
         Escaped Apprise notify endpoint.
     safe_notification_urls:
         Escaped comma-separated destinations for stateless Apprise servers.
     safe_tag:
         Escaped Apprise tag.
-    enabled:
+    notifications_enabled:
         Whether the enable checkbox starts ticked.
+    msg_html:
+        Pre-rendered status banner, or an empty string.
+    script_nonce:
+        Nonce matching the page's Content Security Policy header.
+    headers:
+        Response security headers.
 
     Returns
     -------
-    str
-        HTML fragment.
+    HTMLResponse
+        The complete settings page.
     """
-    checked_attribute = " checked" if enabled else ""
-    return f"""
+    checked_attribute = " checked" if notifications_enabled else ""
+    return HTMLResponse(
+        content=f"""<!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <title>Settings - Podcast Downloader</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      {FAVICON_TAG}
+      <style>
+    {BASE_STYLES}
+    {APP_LAYOUT_STYLES}
+    {SETTINGS_FORM_STYLES}
+      </style>
+    </head>
+    <body>
+      <div class="page">
+    <header>
+      <div class="brand">
+        <h1>Settings</h1>
+        <p>YouTube sign-in cookies and error notifications.</p>
+      </div>
+      <div class="header-actions">
+        <a class="nav-link" href="/ui">Back to queue</a>
+        <a class="nav-link" href="/help">Help</a>
+        <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
+        <form method="post" action="/logout" style="margin:0">
+          <input type="hidden" name="csrf_token" value="{safe_token}" />
+          <button type="submit" class="logout-btn">Logout</button>
+        </form>
+      </div>
+    </header>
+
+    {msg_html}
+
+    <div class="card">
+      <span class="card-label">YouTube access cookies</span>
+      <p class="settings-intro">
+        Upload a Netscape-format <code>cookies.txt</code> when YouTube blocks
+        ordinary requests. Export one with
+        <code>yt-dlp --cookies-from-browser chrome --cookies cookies.txt</code>.
+      </p>
+      <form method="post" action="/upload-cookies" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <div class="file-row">
+          <input id="cookie-file" name="cookie_file" type="file"
+            accept=".txt,text/plain" required />
+          <button type="submit" class="btn">Upload</button>
+        </div>
+      </form>
+    </div>
+
     <div class="card">
       <span class="card-label">Error notifications</span>
+      <p class="settings-intro">
+        Failed downloads are sent to an Apprise instance you run, which
+        forwards them to Telegram or anywhere else you have set up there.
+        Successful downloads send nothing.
+      </p>
       <form method="post" action="/save-notifications" id="notify-form">
         <input type="hidden" name="csrf_token" value="{safe_token}" />
-        <div class="notify-row">
-          <label class="notify-check">
-            <input type="checkbox" name="enabled" value="1"{checked_attribute} />
-            Send failed downloads to Apprise
-          </label>
-        </div>
-        <div class="notify-row">
+
+        <label class="check-row">
+          <input type="checkbox" name="enabled" value="1"{checked_attribute} />
+          Send failed downloads to Apprise
+        </label>
+
+        <div class="field">
           <label for="notify-url">Apprise notify URL</label>
           <input id="notify-url" name="server_url" type="url"
             placeholder="http://apprise-api:8000/notify/your-key"
             value="{safe_server_url}" />
+          <span class="field-hint">
+            Example: <code>http://apprise-api:8000/notify/your-key</code><br />
+            The <code>/notify/</code> part is required; the key on its own
+            returns a 404. Inside Docker use the Apprise container name, not
+            <code>localhost</code>.
+          </span>
         </div>
-        <div class="notify-row">
-          <label for="notify-urls">Destination URLs (leave blank if your
-            Apprise instance already stores them)</label>
+
+        <div class="field">
+          <label for="notify-urls">Destination URLs</label>
           <input id="notify-urls" name="notification_urls" type="text"
             placeholder="usually blank"
             value="{safe_notification_urls}" />
+          <span class="field-hint">
+            Leave blank when your Apprise instance already stores the
+            destinations under that key. This is the normal setup.<br />
+            Fill it in only for a keyless endpoint such as
+            <code>http://apprise-api:8000/notify</code>, using a real Apprise
+            URL like <code>tgram://123456:ABC-DEF/987654321</code>. Anything
+            here overrides what the instance has stored.
+          </span>
         </div>
-        <div class="notify-row">
-          <label for="notify-tag">Tag (optional)</label>
+
+        <div class="field">
+          <label for="notify-tag">Tag</label>
           <input id="notify-tag" name="tag" type="text" placeholder="all"
             value="{safe_tag}" />
+          <span class="field-hint">
+            Example: <code>all</code>. Sends to every destination stored under
+            the key. Use a specific tag to reach only some of them.
+          </span>
         </div>
-        <div class="notify-actions">
+
+        <div class="form-actions">
           <button type="submit" class="btn">Save</button>
           <button type="button" class="btn btn-secondary" id="notify-test">
             Send test notification
@@ -439,7 +625,50 @@ def render_notification_settings_card(
       </form>
       <div id="notify-result" class="notify-result"></div>
     </div>
-    """
+      </div>
+
+      <script nonce="{script_nonce}">
+    {THEME_SCRIPT}
+
+    const notifyTestButton = document.getElementById('notify-test');
+    const notifyResult = document.getElementById('notify-result');
+
+    async function sendTestNotification() {{
+      const form = document.getElementById('notify-form');
+      // The unsaved form values are sent so an endpoint can be tried before
+      // it is saved.
+      const body = new FormData();
+      body.append('csrf_token', form.elements['csrf_token'].value);
+      body.append('server_url', form.elements['server_url'].value);
+      body.append('notification_urls', form.elements['notification_urls'].value);
+      body.append('tag', form.elements['tag'].value);
+
+      notifyTestButton.disabled = true;
+      notifyResult.className = 'notify-result';
+      notifyResult.textContent = 'Sending…';
+      try {{
+        const r = await fetch('/test-notification', {{ method: 'POST', body }});
+        if (r.status === 401) {{
+          window.location.reload();
+          return;
+        }}
+        const data = await r.json();
+        notifyResult.className = 'notify-result ' + (data.ok ? 'ok' : 'err');
+        notifyResult.textContent = data.detail;
+      }} catch (e) {{
+        notifyResult.className = 'notify-result err';
+        notifyResult.textContent = 'Request failed: ' + e;
+      }} finally {{
+        notifyTestButton.disabled = false;
+      }}
+    }}
+
+    notifyTestButton.addEventListener('click', sendTestNotification);
+      </script>
+    </body>
+    </html>""",
+        headers=headers,
+    )
 
 
 def render_queue_page(
@@ -448,7 +677,6 @@ def render_queue_page(
     count: int,
     last_activity: str,
     msg_html: str,
-    notifications_html: str,
     queue_html: str,
     safe_token: str,
     script_nonce: str,
@@ -496,29 +724,6 @@ def render_queue_page(
     }}
     .input-row {{ display:flex; gap:8px; }}
     .input-row input {{ flex:1; }}
-    .file-row {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }}
-    .notify-row {{ display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }}
-    .notify-row label {{ font-size:.78rem; color:var(--muted); }}
-    .notify-check {{ flex-direction:row; align-items:center; gap:8px;
-      display:flex; font-size:.86rem; color:var(--text); }}
-    .notify-row input[type=text],.notify-row input[type=url] {{
-      width:100%; padding:9px 11px; border:1px solid var(--border);
-      border-radius:6px; background:var(--bg); color:var(--text);
-      font-size:.88rem;
-    }}
-    .notify-actions {{ display:flex; gap:8px; margin-top:12px; }}
-    .notify-actions .btn {{ margin-top:0; width:auto; flex:1; }}
-    /* The base `.btn:hover` rule also matches a secondary button, so the
-       hover colour has to be restated here or Test looks like Save. */
-    .btn-secondary,.btn-secondary:hover {{
-      background:var(--surface); color:var(--text);
-      border:1px solid var(--border);
-    }}
-    .btn-secondary:hover {{ border-color:var(--accent); }}
-    .notify-result {{ margin-top:10px; font-size:.82rem; line-height:1.45;
-      word-break:break-word; }}
-    .notify-result.ok {{ color:var(--ok, #15803d); }}
-    .notify-result.err {{ color:var(--err, #b91c1c); }}
     .q-list {{ list-style:none; }}
     .q-item {{ display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); }}
     .q-item:last-child {{ border-bottom:none; }}
@@ -639,8 +844,8 @@ def render_queue_page(
       .status-item + .status-item {{
         border-left:0; border-top:1px solid var(--border);
       }}
-      .input-row,.file-row {{ display:flex; flex-direction:column; }}
-      .input-row .btn,.file-row .btn {{ width:100%; }}
+      .input-row {{ display:flex; flex-direction:column; }}
+      .input-row .btn {{ width:100%; }}
       .q-item {{ display:grid; grid-template-columns:auto minmax(0,1fr); }}
       .remove-form {{ grid-column:2; }}
       .log-bar {{ align-items:flex-start; }}
@@ -664,6 +869,7 @@ def render_queue_page(
         <p>Download YouTube audio as MP3. Sponsor segments are removed when available.</p>
       </div>
       <div class="header-actions">
+        <a class="nav-link" href="/settings">Settings</a>
         <a class="nav-link" href="/help">Help</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
         <form method="post" action="/logout" style="margin:0">
@@ -729,39 +935,11 @@ def render_queue_page(
       <div id="log-box"><div class="log-empty">Loading logs…</div></div>
     </div>
 
-    <div class="card">
-      <span class="card-label">YouTube access cookies</span>
-      <form method="post" action="/upload-cookies" enctype="multipart/form-data">
-        <input type="hidden" name="csrf_token" value="{safe_token}" />
-        <div class="file-row">
-          <input id="cookie-file" name="cookie_file" type="file"
-            accept=".txt,text/plain" required />
-          <button type="submit" class="btn">Upload</button>
-        </div>
-      </form>
-    </div>
-
-    {notifications_html}
       </div>
 
       <script nonce="{script_nonce}">
     let timer = null;
-    const savedTheme = localStorage.getItem('podcast-theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const themeButton = document.getElementById('theme-toggle');
-
-    function applyTheme(theme) {{
-      document.body.classList.toggle('theme-dark', theme === 'dark');
-      document.body.classList.toggle('theme-light', theme === 'light');
-      themeButton.textContent = theme === 'dark' ? 'Light' : 'Dark';
-    }}
-
-    applyTheme(savedTheme || (prefersDark ? 'dark' : 'light'));
-    themeButton.addEventListener('click', () => {{
-      const nextTheme = document.body.classList.contains('theme-dark') ? 'light' : 'dark';
-      localStorage.setItem('podcast-theme', nextTheme);
-      applyTheme(nextTheme);
-    }});
+    {THEME_SCRIPT}
 
     function esc(s) {{
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -897,43 +1075,6 @@ def render_queue_page(
     function setAuto(on) {{
       clearInterval(timer);
       if (on) timer = setInterval(loadLogs, 15000);
-    }}
-
-    const notifyTestButton = document.getElementById('notify-test');
-    const notifyResult = document.getElementById('notify-result');
-
-    async function sendTestNotification() {{
-      const form = document.getElementById('notify-form');
-      // The unsaved form values are sent so the endpoint can be tried before
-      // it is saved.
-      const body = new FormData();
-      body.append('csrf_token', form.elements['csrf_token'].value);
-      body.append('server_url', form.elements['server_url'].value);
-      body.append('notification_urls', form.elements['notification_urls'].value);
-      body.append('tag', form.elements['tag'].value);
-
-      notifyTestButton.disabled = true;
-      notifyResult.className = 'notify-result';
-      notifyResult.textContent = 'Sending…';
-      try {{
-        const r = await fetch('/test-notification', {{ method: 'POST', body }});
-        if (r.status === 401) {{
-          window.location.reload();
-          return;
-        }}
-        const data = await r.json();
-        notifyResult.className = 'notify-result ' + (data.ok ? 'ok' : 'err');
-        notifyResult.textContent = data.detail;
-      }} catch (e) {{
-        notifyResult.className = 'notify-result err';
-        notifyResult.textContent = 'Request failed: ' + e;
-      }} finally {{
-        notifyTestButton.disabled = false;
-      }}
-    }}
-
-    if (notifyTestButton) {{
-      notifyTestButton.addEventListener('click', sendTestNotification);
     }}
 
     document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));

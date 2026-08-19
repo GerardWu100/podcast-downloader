@@ -1,16 +1,19 @@
 # Error notifications
 
-The downloader can send each failed download to an Apprise instance. Apprise then forwards the notification to Telegram, email, Discord, or another configured service. The downloader does not connect to those services itself.
+The downloader can send each failed download to an Apprise instance. Apprise
+then forwards the message to Telegram, email, Discord, or another configured
+service. The downloader does not connect to those services directly.
 
 ## Set it up
 
-1. Sign in to the web UI and open the **Error notifications** card.
-2. Select **Send failed downloads to Apprise**.
+1. Sign in to the web UI and open **Settings**.
+2. Find **Error notifications** and select **Send failed downloads to Apprise**.
 3. Enter the **Apprise notify URL**, such as `http://apprise:8000/notify/podcasts`.
-4. Select **Send test notification**. The result appears below the buttons.
+4. Select **Send test notification** and check the result shown below the buttons.
 5. Select **Save** after the test succeeds.
 
-The test uses the values currently in the form, not the saved values. You can test an endpoint before saving it.
+The test uses the values currently in the form, not the saved values. You can
+test an endpoint before saving it.
 
 ## Choose an Apprise mode
 
@@ -21,9 +24,11 @@ The mode depends on whether **Destination URLs** contains a value.
 | Persistent | `http://apprise:8000/notify/<key>` | leave blank | in your Apprise instance, under `<key>` |
 | Stateless | `http://apprise:8000/notify` | `tgram://bottoken/chatid` | here, in this app |
 
-Persistent mode is usually the better choice. The bot token stays in Apprise, and this app only needs the notify URL.
+Persistent mode is usually the better choice. The bot token stays in Apprise,
+so this app only needs the notify URL.
 
-**Tag** is optional. It lets Apprise send the notification only to destinations with that tag under the selected key.
+**Tag** is optional. It tells Apprise to use only destinations with that tag
+under the selected key.
 
 ## What the downloader sends
 
@@ -36,7 +41,9 @@ Body:  https://www.youtube.com/watch?v=...
        ERROR: unable to download video data: HTTP Error 403: Forbidden
 ```
 
-The message uses Apprise's `failure` severity, which most services show in red. The reason is the same one-line cause written to `activity.log`. The full `yt-dlp` command and output remain in `download.log`.
+The message uses Apprise's `failure` severity, which most services show in red.
+The reason is the same one-line cause written to `activity.log`. The full
+`yt-dlp` command and output remain in `download.log`.
 
 Successful downloads send nothing.
 
