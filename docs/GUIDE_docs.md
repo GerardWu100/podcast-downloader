@@ -1,11 +1,10 @@
 # Docs Guide
 
-## Part 1: Documentation Purpose
+## Part 1: Purpose
 
-`docs/` contains material for users and operators. Developer navigation lives
-in the `GUIDE_*` files beside the code.
+`docs/` contains user and operator documentation. Developer navigation lives in the `GUIDE_*` files beside the code.
 
-The reading order is:
+Read the docs in this order:
 
 1. `intro.md` for the purpose and project map.
 2. `architecture.md` for the pipeline, code boundaries, saved state, and trust.
@@ -14,17 +13,13 @@ The reading order is:
 5. `web-ui-security.md` for sign-in and browser protections.
 6. `operations.md` for local and Docker operation.
 
-## Part 2: Code Reference
+## Part 2: Code reference
 
-- `architecture.md`: corresponds to `src/web/`, `src/media/`, `src/downloads/`,
-  and `src/state/`.
-- `cli-and-config.md`: corresponds to `src/cli.py` and `src/config.py`.
-- `notifications.md`: corresponds to `src/notifications/` and
-  `src/state/notification_store.py`.
-- `web-ui-security.md`: corresponds to `src/web/auth.py`,
-  `src/web/routes.py`, and `src/state/auth_store.py`.
-- `operations.md`: corresponds to `start.py`, `docker-entrypoint.sh`, and the
-  container files.
+- `architecture.md`: `src/web/`, `src/media/`, `src/downloads/`, and `src/state/`.
+- `cli-and-config.md`: `src/cli.py` and `src/config.py`.
+- `notifications.md`: `src/notifications/` and `src/state/notification_store.py`.
+- `web-ui-security.md`: `src/web/auth.py`, `src/web/routes.py`, and `src/state/auth_store.py`.
+- `operations.md`: `start.py`, `docker-entrypoint.sh`, and the container files.
 
 ## Part 3: Journal
 
@@ -32,6 +27,4 @@ The reading order is:
   architecture page and updated docs for the extracted module boundaries.
 - 2026-08-18: Added `notifications.md` when Apprise error notifications and
   their web UI settings card were introduced.
-- 2026-08-10: Removed `superpowers/plans/` and `review-and-safety.md`. Both were
-  point-in-time engineering records rather than current documentation, and both
-  described code that had already changed.
+- 2026-08-10: Removed `superpowers/plans/` and `review-and-safety.md`. Both were point-in-time engineering records rather than current documentation, and both described code that had already changed.

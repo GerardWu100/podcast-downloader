@@ -1,18 +1,18 @@
 # Podcast Downloader
 
-A small, self-hosted downloader that turns online videos into local MP3 files for [Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels and playlists, accepts individual video URLs, removes SponsorBlock-marked sections, and includes both a command-line interface and a small web UI.
+A small, self-hosted downloader that turns online videos into local MP3 files for [Audiobookshelf](https://www.audiobookshelf.org/). It can watch YouTube channels and playlists, download individual video URLs, remove SponsorBlock-marked sections, and run from either the command line or a web UI.
 
 ## What it does
 
-- Downloads a video URL, or the newest videos from a YouTube channel or playlist, with `yt-dlp`.
-- Skips YouTube Shorts and waits a configurable amount of time before downloading new YouTube videos. This gives SponsorBlock time to publish segment data.
-- Removes SponsorBlock-marked sections when that data is available.
-- Converts downloads to MP3 and groups them by source in a configurable folder.
-- Deletes old MP3 files from YouTube channel folders after the configured retention period.
-- Stores the queue, download history, and one-use age-check exceptions in local files: `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Provides a password-protected web UI for managing sources, uploading YouTube cookies, and viewing recent activity and logs.
+- Downloads videos with `yt-dlp`, including the newest entries from a channel or playlist.
+- Skips YouTube Shorts and waits a configurable time before downloading new YouTube videos. This gives SponsorBlock time to publish segment data.
+- Removes SponsorBlock segments when data is available.
+- Converts downloads to MP3 and groups them by source.
+- Removes old MP3 files from YouTube channel folders after the retention period.
+- Keeps the queue, download history, and one-use age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Provides a password-protected web UI for managing sources, uploading YouTube cookies, and viewing activity and logs.
 
-For the full pipeline and module map, see [docs/architecture.md](docs/architecture.md) and [docs/intro.md](docs/intro.md).
+See [docs/architecture.md](docs/architecture.md) for the pipeline and module map. [docs/intro.md](docs/intro.md) gives the project overview.
 
 ## Requirements
 
@@ -58,7 +58,7 @@ Once the API is running, open `http://127.0.0.1:8000/help` for cookie-export ins
 yt-dlp --cookies-from-browser chrome --cookies cookies.txt
 ```
 
-Upload the resulting file through the web UI. For login and session details, see [docs/web-ui-security.md](docs/web-ui-security.md). For cookie files and Docker deployment, see [docs/operations.md](docs/operations.md).
+Upload the resulting file through the web UI. See [docs/web-ui-security.md](docs/web-ui-security.md) for login and session details and [docs/operations.md](docs/operations.md) for cookies and Docker deployment.
 
 ## Configuration
 
@@ -79,10 +79,7 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete reference.
 
 ## Error notifications
 
-The web UI can push every failed download to an Apprise instance you run, which
-then forwards it to Telegram or anywhere else you have configured. Open the
-**Error notifications** card, paste your Apprise notify URL, and press **Send
-test notification** to check the connection before saving.
+The web UI can send every failed download to an Apprise instance, which can then forward it to Telegram, email, Discord, or another service. Open the **Error notifications** card, enter the Apprise notify URL, and press **Send test notification** before saving.
 
 See [docs/notifications.md](docs/notifications.md).
 
@@ -108,7 +105,7 @@ On first boot, the container creates missing runtime files and `.env`, points Au
 - Channel and playlist expansion parses `yt-dlp` output. An upstream `yt-dlp` or YouTube change can break it.
 - YouTube is tightening access to player clients that provide stream URLs without a proof-of-origin token. `youtube_player_client` may need to change over time.
 - SponsorBlock removal depends on community-submitted segment data.
-- The web UI uses shared accounts from `.env`, with no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
+- The web UI uses shared accounts from `.env` and has no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
 
 ## License
 

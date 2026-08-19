@@ -2,9 +2,7 @@
 
 ## Part 1: Purpose
 
-`notifications/` sends one HTTP request to an Apprise instance. That instance
-does the fan-out to Telegram, email, or anything else it is configured for, so
-nothing here knows about any specific service.
+`notifications/` sends one HTTP request to Apprise. Apprise forwards it to Telegram, email, or any other configured service. This package does not know about individual services.
 
 ```text
 download fails
@@ -16,38 +14,21 @@ download fails
 
 ## Part 2: Design rules
 
-**Failures never propagate.** `AppriseNotifier.send` catches everything and
-returns an `AppriseSendResult`. A notification problem must not turn a
-recoverable download into a crashed run.
+**Failures never stop a run.** `AppriseNotifier.send` catches every error and returns an `AppriseSendResult`. A notification problem must not turn a recoverable download failure into a crashed run.
 
-**The result carries a readable reason.** `detail` is written for a person: it
-is what the log shows and what the web UI's test button prints. An HTTP
-rejection includes Apprise's own response body, because that is where Apprise
-explains which destination refused.
+**The result carries a readable reason.** `detail` is written for a person. The log and the web UI's test button display it. An HTTP rejection includes Apprise's response body, which usually explains which destination refused the message.
 
-**Two server modes, one code path.** Filling in `notification_urls` adds a
-`urls` field to the request body and switches an Apprise server from persistent
-mode to stateless mode. Nothing else changes.
+**Two server modes, one code path.** Filling in `notification_urls` adds a `urls` field to the request and switches Apprise from persistent mode to stateless mode. Nothing else changes.
 
-**Only `http` and `https`.** `validate_server_url` rejects other schemes before
-any request is attempted, so a saved setting cannot make the server open a
-`file://` path.
+**Only `http` and `https`.** `validate_server_url` rejects other schemes before sending a request, so a saved setting cannot make the server open a `file://` path.
 
 ## Part 3: Where the settings live
 
-Not in `config.ini`. The web UI writes them, and rewriting a commented
-configuration file from a form would destroy its comments. They live in
-`notifications.json` in the data directory, owned by
-`src/state/notification_store.py`, with owner-only permissions because the
-endpoint usually embeds a key.
+The settings are not in `config.ini`. The web UI writes them, and rewriting a commented configuration file from a form would remove its comments. They live in `notifications.json` in the data directory, which `src/state/notification_store.py` owns. The file is owner-only because the endpoint usually contains a key.
 
-The web server and the downloader are separate processes, so that file is the
-only thing they share. The web server writes it; the next download run reads it.
+The web server and downloader are separate processes, so this file is their shared boundary. The web server writes it; the next download run reads it.
 
 ## Part 4: Web entry points
 
 - `POST /save-notifications` validates and stores the settings.
-- `POST /test-notification` sends one `info` message using the values currently
-  in the form, not the saved ones, so an endpoint can be tried before it is
-  saved. It returns JSON rather than redirecting, because the point is to show
-  the exact reason a connection failed.
+- `POST /test-notification` sends one `info` message using the values currently in the form, not the saved ones. It returns JSON so the UI can show the exact reason a connection failed.

@@ -7,7 +7,7 @@ sidebar_position: 5
 
 ## Local development
 
-Install dependencies and run the tests:
+Install the dependencies and run the tests:
 
 ```bash
 uv sync --dev
@@ -20,7 +20,7 @@ Start the API locally:
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
-Set the web UI login by copying `.env.example` to `.env` and changing both values:
+Set the web UI login by copying `.env.example` to `.env` and changing the username and password:
 
 ```bash
 cp .env.example .env
@@ -29,7 +29,7 @@ cp .env.example .env
 
 At startup, the app reads `.env`, hashes each `UI_PASSWORD` with PBKDF2, and stores only the hashes in `.ui_credentials.json`. You do not need to hash passwords yourself. Edit `.env` and restart to change a password. Optional second and third accounts use `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
 
-For Docker, create `.env` in the repository before copying the project to the server or running `docker compose up -d`. The image carries it into `/app/.env`, and the first start copies it into the mounted `/data/.env`. After that, edit the host file at `$HOME/.containers/podcast-downloader/.env`.
+For Docker, create `.env` in the repository before copying the project to the server or running `docker compose up -d`. The image places it at `/app/.env`, and the first start copies it to the mounted `/data/.env`. After that, edit `$HOME/.containers/podcast-downloader/.env` on the host.
 
 Compose expects a shared proxy network named `single`. Create it once if it does not exist:
 
@@ -49,19 +49,19 @@ When the container starts, it:
 
 `start.py` then checks the `.env` password before starting the web server. If it is still the example password `changeme`, startup logs a warning.
 
-## YouTube cookies
-
 ## Error notifications
 
-Set these up in the web UI, not in `config.ini`. See [notifications.md](notifications.md).
+Configure these in the web UI, not in `config.ini`. See [notifications.md](notifications.md).
 
-Inside Docker, `localhost` in the notify URL means the downloader's own container. Point it at your Apprise container name and put both containers on the same network. The `single` network in `docker-compose.yml` is the natural place.
+Inside Docker, `localhost` in the notify URL means the downloader's own container. Use the Apprise container name and put both containers on the same network. The `single` network in `docker-compose.yml` is the natural choice.
+
+## YouTube cookies
 
 If YouTube blocks a normal request, provide a Netscape-format cookie file named `cookies.txt`. With Docker Compose, the host path is `$HOME/.containers/podcast-downloader/cookies.txt`; the container path is `/data/cookies.txt`.
 
-The mounted cookie file is the one the app uses. Restarts and rebuilds do not replace it; the entrypoint only applies `chmod 600`. If `/data/cookies.txt` is missing, the entrypoint copies `/app/cookies.txt` when that file exists.
+The app uses the mounted cookie file. Restarts and rebuilds do not replace it; the entrypoint only applies `chmod 600`. If `/data/cookies.txt` is missing, the entrypoint copies `/app/cookies.txt` when that file exists.
 
-You can update cookies through the web UI instead of copying a file over SSH. The upload requires a signed-in session, checks the Netscape header, converts line endings to LF, and writes the file with permission mode `600`.
+You can update cookies through the web UI instead of copying a file over SSH. The upload requires a signed-in session, checks the Netscape header, converts line endings to LF, and writes the file with mode `600`.
 
 Set `cookies_file` in `config.ini` to use another mounted path.
 
@@ -89,9 +89,9 @@ The web UI performs this conversion during upload.
 
 - Scheduled runs happen every `DOWNLOAD_INTERVAL_HOURS`.
 - Scheduler subprocesses run `python -m src.cli` from the project root, so Docker behavior does not depend on where the scheduler thread started.
-- `yt-dlp` is not pinned in `uv.lock`. Docker installs the latest PyPI release with `yt-dlp[default]` during `docker build` and upgrades it at each container start when `YT_DLP_AUTO_UPDATE=true`. Local development should run `uv pip install "yt-dlp[default]"` after `uv sync`.
+- `yt-dlp` is not pinned in `uv.lock`. Docker installs the latest PyPI release with `yt-dlp[default]` during `docker build` and upgrades it at each container start when `YT_DLP_AUTO_UPDATE=true`. Locally, run `uv pip install "yt-dlp[default]"` after `uv sync`.
 - The Docker image includes Deno, which gives current `yt-dlp` YouTube extraction a supported JavaScript runtime.
-- `ERROR: unable to download video data: HTTP Error 403: Forbidden` usually means YouTube now requires a GVS PO Token, not that the network or cookies are broken. Metadata succeeds but the audio transfer is refused. See `youtube_player_client` in [cli-and-config.md](cli-and-config.md).
+- `ERROR: unable to download video data: HTTP Error 403: Forbidden` usually means YouTube now requires a GVS PO Token, not that the network or cookies are broken. Metadata succeeds, but the audio transfer is refused. See `youtube_player_client` in [cli-and-config.md](cli-and-config.md).
 - When a download fails, `download.log` holds the exact `yt-dlp` command and the complete output of every attempt, while `activity.log` holds a one-line cause. Copy the logged command to reproduce the failure by hand.
 - Scheduled updates affect only the `yt-dlp[default]` dependency group.
 - After a scheduled update, the downloader waits five minutes before starting the run unless a UI-triggered download arrives during that wait.

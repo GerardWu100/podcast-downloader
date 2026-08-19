@@ -20,11 +20,11 @@ flowchart LR
     Web --> Notify
 ```
 
-`src/media/` interprets URLs without changing saved state. `src/state/` owns file formats and locks. `src/downloads/` turns individual URLs into published MP3 files and uses `YtDlpClient` to run external commands. `src/notifications/` posts failures to an Apprise instance and knows nothing about downloads beyond a title and a body. `src/web/` builds the app and owns request security, routes, and HTML. `src/api.py` exports the production app created by `create_app()`.
+Each area has one job. `src/media/` interprets URLs without changing saved state. `src/state/` owns file formats and locks. `src/downloads/` turns URLs into published MP3 files and uses `YtDlpClient` to run external commands. `src/notifications/` posts failures to Apprise and only receives a title and body. `src/web/` builds the app and owns request security, routes, and HTML. `src/api.py` exports the production app created by `create_app()`.
 
 ## End-to-end flow
 
-1. The downloader reads `urls.txt` and checks each non-comment line as an `http` or `https` URL that `yt-dlp` can try.
+1. The downloader reads `urls.txt` and treats each non-comment line as an `http` or `https` URL for `yt-dlp`.
 2. Direct YouTube video URLs are normalized into canonical watch URLs.
 3. YouTube channel and playlist URLs are expanded with `yt-dlp --flat-playlist`. For channels, `/videos` checks normal uploads, `/streams` checks livestreams, and a bare channel URL becomes `/videos`. Playlists are limited to `channel_count` entries.
 4. Direct YouTube videos wait when `min_channel_video_age_hours > 0`, unless the user skips the wait from the CLI or web UI.
@@ -35,12 +35,12 @@ flowchart LR
 9. A download succeeds only when an MP3 is created or changed inside the active source work folder.
 10. Successful MP3 files receive an embedded date tag with the local completion time and a comment tag containing the source URL.
 11. Before a scheduled full-queue cycle checks archived channel candidates, channel MP3 files older than `retention_days` are deleted when their metadata proves both the download date and source video URL. Playlist and single-video MP3 files are not deleted by retention cleanup.
-12. Detailed diagnostics go to `download.log`; short browser-facing messages go to `activity.log`. Failures appear in both: the full command and output in `download.log`, and a one-line cause in `activity.log`.
+12. Detailed diagnostics go to `download.log`; short browser messages go to `activity.log`. Failures appear in both: the full command and output in `download.log`, and a one-line cause in `activity.log`.
 13. Successful direct-video URLs are removed from `urls.txt`. Successful expanded URLs are written to `downloaded_urls.txt`, so future channel scans do not download them again.
 
 ## Why the downloader checks file changes
 
-A command’s exit code is not enough. `yt-dlp` can return `0` without creating or updating an MP3 in the target folder. The project therefore records the MP3 files before and after each run.
+A command’s exit code is not enough. `yt-dlp` can return `0` without creating or updating an MP3 in the target folder, so the project compares the MP3 files before and after each run.
 
 Let:
 
@@ -62,7 +62,7 @@ $$
 
 The download succeeds only if at least one MP3 in the active source work folder satisfies that condition. Restricting both snapshots to that folder prevents a file created by another source or process from falsely proving that this URL worked.
 
-The downloader passes `--no-mtime` to `yt-dlp`, so source timestamps are not preserved on output files. Audiobookshelf’s visible episode date comes from embedded audio metadata instead. After a successful download, a small `ffmpeg` copy pass preserves the streams and metadata, then writes the Toronto/Eastern completion time to the embedded `date` tag and the source URL to the `comment` tag.
+The downloader passes `--no-mtime` to `yt-dlp`, so source timestamps are not preserved on output files. Audiobookshelf’s visible episode date comes from embedded audio metadata. After a successful download, an `ffmpeg` copy pass preserves the streams and metadata, then writes the Toronto/Eastern completion time to the `date` tag and the source URL to the `comment` tag.
 
 YouTube URLs are normalized to canonical watch URLs before the comment is written, so `https://www.youtube.com/live/VIDEO_ID` and `https://www.youtube.com/watch?v=VIDEO_ID` have the same metadata identity. The rewrite uses a non-`.mp3` temporary filename and copies the result back to the original path without replacing its inode. This helps Audiobookshelf’s scanner and watcher keep the existing library file.
 
@@ -95,9 +95,9 @@ downloads/
 
 YouTube channel folder names come from the source URL after filesystem-safe cleanup. Playlist folder names prefer the title reported by `yt-dlp`; if it is unavailable, the downloader uses the `list=` identifier. Direct individual videos, including non-YouTube videos, go into `singles/`. The media ID distinguishes episodes with the same title and gives each filename a stable source component.
 
-## Queue-file mutation model
+## Queue-file changes
 
-The CLI and web UI both change `urls.txt`. In Docker, the downloader may remove completed URLs while the web UI appends new ones. Queue reads and writes therefore use an interprocess file lock. Without it, the downloader could write an older in-memory copy after the UI has appended a URL, losing the new entry.
+The CLI and web UI both change `urls.txt`. In Docker, the downloader may remove completed URLs while the web UI appends new ones. Reads and writes therefore use an interprocess file lock: a lock shared by processes so one cannot overwrite another process’s newer changes.
 
 YouTube URL normalization treats `/live/VIDEO_ID` and `/watch?v=VIDEO_ID` as the same video. The queue and bypass stores convert both to the watch URL before comparing entries.
 
@@ -111,7 +111,7 @@ The `src/state/` stores own these rules:
 - `ActivityLogStore` appends to and reads the tail of `activity.log`.
 - `NotificationStore` reads and replaces `notifications.json`, the Apprise settings the web UI writes and the downloader reads.
 
-Callers use these stores directly. The former `src/url_utils.py` and `src/activity_log.py` adapters were removed so URL policy cannot become a second persistence boundary.
+Callers use these stores directly. The former `src/url_utils.py` and `src/activity_log.py` adapters were removed so URL rules cannot become a second place that writes state.
 
 Both logs use `America/Toronto` through the shared `LOG_TIME_ZONE` setting and omit seconds for easier browser scanning. Docker Compose also sets `TZ=America/Toronto` so other process timestamps stay aligned.
 
@@ -135,7 +135,7 @@ Channel and playlist downloads hold a separate claim lock during the duplicate c
 - Channel and playlist URLs added through the web UI wait for the scheduled full-queue run.
 - Runtime state lives in `PODCAST_DATA_DIR`.
 
-## Trust boundaries
+## Safety boundaries
 
 - `yt-dlp` and SponsorBlock are external dependencies.
 - SponsorBlock is used only for YouTube. Non-YouTube URLs go through `yt-dlp` without SponsorBlock flags and with `--no-playlist`.
