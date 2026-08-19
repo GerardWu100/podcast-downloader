@@ -568,6 +568,41 @@ def _last_activity_label(activity_log_file: Path) -> str:
     )
 
 
+# One activity line looks like "[2026-08-19 15:51] Downloaded: creator - ep.mp3".
+# The timestamp is all the status row needs, so the name is discarded.
+DOWNLOADED_EVENT_PREFIX = "Downloaded: "
+# How far back to look for the most recent finished download. A run that only
+# fails can push completions out of this window, in which case the row reads
+# "None yet" rather than showing a stale time.
+DOWNLOADED_EVENT_SEARCH_LINES = 400
+NO_DOWNLOAD_YET_LABEL = "None yet"
+
+
+def _last_download_label(activity_store: ActivityLogStore) -> str:
+    """Return when the most recent download finished, for the status row.
+
+    Parameters
+    ----------
+    activity_store:
+        Store for the concise browser activity log.
+
+    Returns
+    -------
+    str
+        Toronto-local timestamp of the newest ``Downloaded:`` event, or a short
+        empty-state label when none is in the recent window.
+    """
+    recent_activity = activity_store.read_tail(
+        DOWNLOADED_EVENT_SEARCH_LINES,
+        empty_message="",
+    )
+    for line in reversed(recent_activity.splitlines()):
+        timestamp, separator, message = line.partition("] ")
+        if separator and message.startswith(DOWNLOADED_EVENT_PREFIX):
+            return timestamp.lstrip("[")
+    return NO_DOWNLOAD_YET_LABEL
+
+
 @router.get("/help", response_class=HTMLResponse)
 def help_page() -> HTMLResponse:
     """Return the public usage guide rendered by the template module."""
@@ -828,14 +863,17 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         queue_html = '<p class="empty">No sources are being monitored.</p>'
 
     count = len(safe_queue_urls)
+    activity_store = _activity_store(request)
     last_activity = html.escape(
-        _last_activity_label(_activity_store(request).activity_log_file)
+        _last_activity_label(activity_store.activity_log_file)
     )
+    last_download = html.escape(_last_download_label(activity_store))
 
     return render_queue_page(
         bypass_row_html=bypass_row_html,
         count=count,
         last_activity=last_activity,
+        last_download=last_download,
         msg_html=msg_html,
         queue_html=queue_html,
         safe_token=safe_token,

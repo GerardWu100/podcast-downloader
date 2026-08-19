@@ -704,6 +704,7 @@ def render_queue_page(
     bypass_row_html: str,
     count: int,
     last_activity: str,
+    last_download: str,
     msg_html: str,
     queue_html: str,
     safe_token: str,
@@ -809,33 +810,20 @@ def render_queue_page(
     .log-line--info .log-msg {{ color:var(--log-info); }}
     .log-line--dim .log-msg {{ color:var(--log-dim); }}
     .brand p {{ margin-top:3px; font-size:.8rem; }}
-    .status-strip {{
-      display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); overflow:hidden;
-      background:var(--surface-raised); border:1px solid var(--border);
-      border-radius:var(--r); box-shadow:var(--shadow);
+    /* One quiet line inside the card rather than a full-width panel: these two
+       times are worth glancing at, not worth a third of the screen. */
+    .status-row {{
+      display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:14px;
+      padding-top:12px; border-top:1px solid var(--border);
+      font-size:.76rem; color:var(--text);
+      font-variant-numeric:tabular-nums;
     }}
-    .status-item {{ min-width:0; padding:15px 18px; }}
-    .status-item + .status-item {{ border-left:1px solid var(--border); }}
     .status-label {{
-      display:block; margin-bottom:4px; color:var(--muted); font-size:.67rem;
-      font-weight:700; letter-spacing:.07em; text-transform:uppercase;
-    }}
-    .status-value {{
-      display:flex; align-items:center; gap:7px; min-width:0;
-      color:var(--text); font-size:.83rem; font-weight:650;
-      font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden;
-      text-overflow:ellipsis;
-    }}
-    .status-dot {{
-      width:8px; height:8px; flex:0 0 auto; border-radius:50%;
-      background:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.13);
+      color:var(--muted); font-size:.67rem; font-weight:700;
+      letter-spacing:.07em; text-transform:uppercase; margin-right:4px;
     }}
     @media (max-width:640px) {{
-      .status-strip {{ grid-template-columns:1fr; }}
-      .status-item {{ padding:12px 16px; }}
-      .status-item + .status-item {{
-        border-left:0; border-top:1px solid var(--border);
-      }}
+      .status-row {{ flex-direction:column; gap:6px; }}
       .input-row {{ display:flex; flex-direction:column; }}
       .input-row .btn {{ width:100%; }}
       .q-item {{ display:grid; grid-template-columns:auto minmax(0,1fr); }}
@@ -868,21 +856,6 @@ def render_queue_page(
       </div>
     </header>
 
-    <section class="status-strip" aria-label="System status">
-      <div class="status-item">
-        <span class="status-label">Service</span>
-        <span class="status-value"><span class="status-dot"></span>Online</span>
-      </div>
-      <div class="status-item">
-        <span class="status-label">Monitored sources</span>
-        <span class="status-value">{count}</span>
-      </div>
-      <div class="status-item">
-        <span class="status-label">Last update</span>
-        <span class="status-value">{last_activity}</span>
-      </div>
-    </section>
-
     <div class="card">
       <span class="card-label">Add a source</span>
       {msg_html}
@@ -896,6 +869,10 @@ def render_queue_page(
         </div>
         {bypass_row_html}
       </form>
+      <div class="status-row" aria-label="System status">
+        <span><span class="status-label">Last downloaded</span> {last_download}</span>
+        <span><span class="status-label">Last update</span> {last_activity}</span>
+      </div>
     </div>
 
     <div class="card">

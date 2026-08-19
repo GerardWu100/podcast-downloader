@@ -1,8 +1,8 @@
-# Web Guide
+# Web guide
 
-## Part 1: What belongs in `web/`
+## What belongs in `web/`
 
-`web/` owns the browser interface:
+`web/` owns the browser interface and connects these pieces:
 
 ```text
 src.api:app
@@ -13,33 +13,39 @@ src.api:app
      -> state stores for persistent changes
 ```
 
-`create_app()` builds the application. Production calls it from `src/api.py`;
-tests can provide validated configuration, temporary stores, and a scheduler
-trigger. Missing values use production defaults. Route handlers read these
-objects from the current request, so tests use the stores they provided.
+`create_app()` builds the application. Production calls it from `src/api.py`.
+Tests can provide validated configuration, temporary stores, and a scheduler
+trigger; missing values use the production defaults. Route handlers read these
+objects from the current request, so tests use the stores they provide.
 `src/api.py` contains no route, authentication, or rendering code.
 
 The signed-in interface has two pages:
 
-- `/ui` is the queue. Use it to add a source, see what is monitored, and read logs.
-- `/settings` contains one-time settings: YouTube cookie upload and Apprise notification settings.
+- `/ui` is the queue. Add a source, see what is monitored, and read the logs.
+- `/settings` contains one-time settings for YouTube cookies and Apprise notifications.
 
-Both cookie and notification forms return to `/settings`, not to the queue.
+Both forms return to `/settings`, not to the queue.
+
+The queue shows two timestamps under the add-source form: when the last
+download finished and when the activity log last changed. The download time
+comes from the newest `Downloaded:` event in recent `activity.log` lines. If a
+run fails, the page keeps showing the last real download time instead of a
+misleading failure time.
 
 `APP_LAYOUT_STYLES` and `THEME_SCRIPT` in `templates.py` are shared by both
 pages. `SETTINGS_FORM_STYLES` is used only by `/settings`. These constants are
-plain strings, not f-string fragments, so their braces are not doubled. When
-inserted into an f-string, each value is included unchanged. Shared header
-controls, including navigation links, belong in `APP_LAYOUT_STYLES` so the two
-pages cannot render the same control differently.
+plain strings, not f-string fragments, so their braces must not be doubled. An
+f-string inserts each value unchanged. Put shared header controls, including
+navigation links, in `APP_LAYOUT_STYLES` so both pages render them the same way.
 
-Two endpoints handle Apprise error notifications:
+These endpoints handle Apprise error notifications:
 
 - `POST /save-notifications` validates and stores the settings.
-- `POST /test-notification` sends one message using the current form values, not the saved values, and returns JSON with the connection result.
+- `POST /test-notification` sends one message using the current form values,
+  not the saved values, and returns JSON with the connection result.
 
 Both endpoints require a session and a valid Cross-Site Request Forgery (CSRF)
-token because they make the server send an outbound request.
+token because they make the server send an external request.
 
 `auth.py` handles proxy trust and browser security headers. `AuthStore` in
 `state/` stores sessions and login failures. Route code owns the login flow and
@@ -48,29 +54,35 @@ token maps, so injected stores and separate application instances do not share
 authentication state. Templates do not change queue or authentication state.
 
 The Content Security Policy (CSP) blocks resource loading by default and allows
-only the page's authorized script. Forwarded client headers are trusted only
+only the page's authorized script. The app trusts forwarded client headers only
 when `trust_x_forwarded_for` is enabled.
 
-The queue page polls `/logs`. An invalid session returns `401`, while page
-routes redirect to `/login`. The page reloads when it sees `401`. If `/logs`
-redirected, `fetch` would receive the login page's HTML and show it as log
-lines.
+The queue polls `/logs`. An invalid session returns `401`; page routes redirect
+to `/login`. On `401`, the page reloads. If `/logs` redirected, `fetch` would
+receive the login page's HTML and display it as log lines.
 
-## Part 2: Code reference
+## Code reference
 
 - `app.py`: `create_app()` and application dependencies.
-- `routes.py`: FastAPI route handlers for login, queue, cookie upload, logs, help, and scheduler triggers.
+- `routes.py`: FastAPI handlers for login, queue, cookie upload, logs, help, and scheduler triggers.
 - `auth.py`: `security_headers()`, `client_ip()`, and `request_is_secure()`.
-- `templates.py`: shared CSS plus help, login, queue, and settings page
-  renderers. Route code passes escaped values and security headers in.
+- `templates.py`: shared CSS and renderers for the help, login, queue, and
+  settings pages. Route code passes in escaped values and security headers.
 - `__init__.py`: package marker.
 
-## Part 3: Journal
+## Journal
 
-- 2026-07-26: The deployment entrypoint became a factory call. Request-security policy, rendering, and authentication JSON each gained a clear owner.
-- 2026-07-26: Route handlers began getting configuration, stores, and the scheduler trigger from the application factory instead of rebuilding production dependencies from module globals.
-- 2026-08-10: `/logs` began returning `401` instead of redirecting when the session is invalid. The queue page reloads on that status, preventing expired sessions from filling the log box with escaped login-page HTML. The header also gained a one-line description of the app.
-- 2026-08-10: Application instances stopped sharing session state. Cookie uploads became size-limited and are replaced atomically with owner-only access.
+- 2026-07-26: The deployment entrypoint became a factory call. Request-security
+  policy, rendering, and authentication JSON each gained a clear owner.
+- 2026-07-26: Route handlers began receiving configuration, stores, and the
+  scheduler trigger from the application factory instead of rebuilding
+  production dependencies from module globals.
+- 2026-08-10: `/logs` began returning `401` instead of redirecting when the
+  session is invalid. The queue reloads on that status, preventing an expired
+  session from filling the log box with escaped login-page HTML. The header
+  also gained a one-line app description.
+- 2026-08-10: Application instances stopped sharing session state. Cookie
+  uploads became size-limited and are replaced atomically with owner-only access.
 - 2026-08-19: Queue and settings navigation styles moved into the shared
   signed-in layout after the new settings page rendered its links with browser
   defaults.

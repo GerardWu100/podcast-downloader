@@ -165,7 +165,7 @@ def test_help_page_explains_behavior_and_cookie_setup() -> None:
 
 
 def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
-    """Queue UI should show service, queue count, and empty activity state."""
+    """The queue page shows only the two times, inside the add-source card."""
     session_id = "test-ui-status-session"
     queue_file = tmp_path / "urls.txt"
     queue_file.write_text(
@@ -190,12 +190,17 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
     body = response.body.decode("utf-8")
 
     assert 'aria-label="System status"' in body
-    assert (
-        '<span class="status-value"><span class="status-dot"></span>Online</span>'
-        in body
-    )
-    assert '<span class="status-value">2</span>' in body
-    assert '<span class="status-value">No activity yet</span>' in body
+    assert "Last downloaded" in body
+    assert "Last update" in body
+    assert "No activity yet" in body
+    assert "None yet" in body
+    # The old full-width panel and its two removed values are gone.
+    assert "status-strip" not in body
+    assert "status-dot" not in body
+    assert "Monitored sources" not in body
+    # The status line sits inside the add-source card, after its form.
+    assert body.index('action="/add-url"') < body.index('aria-label="System status"')
+    assert body.index('aria-label="System status"') < body.index("Sources in queue")
     assert '<a class="nav-link" href="/help">Help</a>' in body
 
     api_module.SESSIONS.pop(session_id, None)
@@ -1361,7 +1366,8 @@ def test_ui_shows_monitored_urls_with_remove_controls(tmp_path, monkeypatch) -> 
     response = api_module.ui(request)
     body = response.body.decode("utf-8")
 
-    assert "Monitored sources" in body
+    # The queue count now lives only on the queue card's badge.
+    assert "Sources in queue" in body
     assert "https://www.youtube.com/watch?v=abc123" in body
     assert "https://www.youtube.com/@channelname" in body
     assert 'action="/remove-url"' in body
@@ -1521,3 +1527,34 @@ def test_settings_page_warns_that_testing_does_not_save() -> None:
     assert 'id="notify-unsaved"' in body
 
     api_module.SESSIONS.pop(session_id, None)
+
+
+def test_last_download_label_reads_the_newest_download_event(tmp_path) -> None:
+    """The status row reports the newest finished download, not the newest event."""
+    from src.state.activity_store import ActivityLogStore
+
+    activity_log = tmp_path / "activity.log"
+    activity_log.write_text(
+        "[2026-08-19 10:00] Downloaded: creator - old episode.mp3\n"
+        "[2026-08-19 15:51] Downloaded: creator - new episode.mp3\n"
+        "[2026-08-19 16:20] Failed: https://example.test/v - ERROR: nope\n",
+        encoding="utf-8",
+    )
+
+    label = api_module._last_download_label(ActivityLogStore(activity_log))
+
+    assert label == "2026-08-19 15:51"
+
+
+def test_last_download_label_without_any_download(tmp_path) -> None:
+    """Failures only, or no log at all, must not show a misleading time."""
+    from src.state.activity_store import ActivityLogStore
+
+    missing_log = tmp_path / "activity.log"
+    assert api_module._last_download_label(ActivityLogStore(missing_log)) == "None yet"
+
+    missing_log.write_text(
+        "[2026-08-19 16:20] Failed: https://example.test/v - ERROR: nope\n",
+        encoding="utf-8",
+    )
+    assert api_module._last_download_label(ActivityLogStore(missing_log)) == "None yet"
