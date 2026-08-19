@@ -369,12 +369,86 @@ def render_login_page(
     )
 
 
+def render_notification_settings_card(
+    *,
+    safe_token: str,
+    safe_server_url: str,
+    safe_notification_urls: str,
+    safe_tag: str,
+    enabled: bool,
+) -> str:
+    """Return the Apprise error-notification card for the queue page.
+
+    Every value must already be HTML-escaped by the caller, because these
+    strings are interpolated into attributes without further processing.
+
+    Parameters
+    ----------
+    safe_token:
+        Escaped CSRF token for both the save form and the test button.
+    safe_server_url:
+        Escaped Apprise notify endpoint.
+    safe_notification_urls:
+        Escaped comma-separated destinations for stateless Apprise servers.
+    safe_tag:
+        Escaped Apprise tag.
+    enabled:
+        Whether the enable checkbox starts ticked.
+
+    Returns
+    -------
+    str
+        HTML fragment.
+    """
+    checked_attribute = " checked" if enabled else ""
+    return f"""
+    <div class="card">
+      <span class="card-label">Error notifications</span>
+      <form method="post" action="/save-notifications" id="notify-form">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <div class="notify-row">
+          <label class="notify-check">
+            <input type="checkbox" name="enabled" value="1"{checked_attribute} />
+            Send failed downloads to Apprise
+          </label>
+        </div>
+        <div class="notify-row">
+          <label for="notify-url">Apprise notify URL</label>
+          <input id="notify-url" name="server_url" type="url"
+            placeholder="http://apprise:8000/notify/my-key"
+            value="{safe_server_url}" />
+        </div>
+        <div class="notify-row">
+          <label for="notify-urls">Destination URLs (leave blank if your
+            Apprise instance already stores them)</label>
+          <input id="notify-urls" name="notification_urls" type="text"
+            placeholder="tgram://bottoken/chatid"
+            value="{safe_notification_urls}" />
+        </div>
+        <div class="notify-row">
+          <label for="notify-tag">Tag (optional)</label>
+          <input id="notify-tag" name="tag" type="text" placeholder="all"
+            value="{safe_tag}" />
+        </div>
+        <div class="notify-actions">
+          <button type="submit" class="btn">Save</button>
+          <button type="button" class="btn btn-secondary" id="notify-test">
+            Send test notification
+          </button>
+        </div>
+      </form>
+      <div id="notify-result" class="notify-result"></div>
+    </div>
+    """
+
+
 def render_queue_page(
     *,
     bypass_row_html: str,
     count: int,
     last_activity: str,
     msg_html: str,
+    notifications_html: str,
     queue_html: str,
     safe_token: str,
     script_nonce: str,
@@ -423,6 +497,24 @@ def render_queue_page(
     .input-row {{ display:flex; gap:8px; }}
     .input-row input {{ flex:1; }}
     .file-row {{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }}
+    .notify-row {{ display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }}
+    .notify-row label {{ font-size:.78rem; color:var(--muted); }}
+    .notify-check {{ flex-direction:row; align-items:center; gap:8px;
+      display:flex; font-size:.86rem; color:var(--text); }}
+    .notify-row input[type=text],.notify-row input[type=url] {{
+      width:100%; padding:9px 11px; border:1px solid var(--border);
+      border-radius:6px; background:var(--bg); color:var(--text);
+      font-size:.88rem;
+    }}
+    .notify-actions {{ display:flex; gap:8px; margin-top:12px; }}
+    .notify-actions .btn {{ margin-top:0; width:auto; flex:1; }}
+    .btn-secondary {{ background:var(--surface); color:var(--text);
+      border:1px solid var(--border); }}
+    .btn-secondary:hover {{ border-color:var(--accent); }}
+    .notify-result {{ margin-top:10px; font-size:.82rem; line-height:1.45;
+      word-break:break-word; }}
+    .notify-result.ok {{ color:var(--ok, #15803d); }}
+    .notify-result.err {{ color:var(--err, #b91c1c); }}
     .q-list {{ list-style:none; }}
     .q-item {{ display:flex; align-items:flex-start; gap:9px; padding:8px 0; border-bottom:1px solid var(--border); }}
     .q-item:last-child {{ border-bottom:none; }}
@@ -644,6 +736,8 @@ def render_queue_page(
         </div>
       </form>
     </div>
+
+    {notifications_html}
       </div>
 
       <script nonce="{script_nonce}">
@@ -799,6 +893,43 @@ def render_queue_page(
     function setAuto(on) {{
       clearInterval(timer);
       if (on) timer = setInterval(loadLogs, 15000);
+    }}
+
+    const notifyTestButton = document.getElementById('notify-test');
+    const notifyResult = document.getElementById('notify-result');
+
+    async function sendTestNotification() {{
+      const form = document.getElementById('notify-form');
+      // The unsaved form values are sent so the endpoint can be tried before
+      // it is saved.
+      const body = new FormData();
+      body.append('csrf_token', form.elements['csrf_token'].value);
+      body.append('server_url', form.elements['server_url'].value);
+      body.append('notification_urls', form.elements['notification_urls'].value);
+      body.append('tag', form.elements['tag'].value);
+
+      notifyTestButton.disabled = true;
+      notifyResult.className = 'notify-result';
+      notifyResult.textContent = 'Sending…';
+      try {{
+        const r = await fetch('/test-notification', {{ method: 'POST', body }});
+        if (r.status === 401) {{
+          window.location.reload();
+          return;
+        }}
+        const data = await r.json();
+        notifyResult.className = 'notify-result ' + (data.ok ? 'ok' : 'err');
+        notifyResult.textContent = data.detail;
+      }} catch (e) {{
+        notifyResult.className = 'notify-result err';
+        notifyResult.textContent = 'Request failed: ' + e;
+      }} finally {{
+        notifyTestButton.disabled = false;
+      }}
+    }}
+
+    if (notifyTestButton) {{
+      notifyTestButton.addEventListener('click', sendTestNotification);
     }}
 
     document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));

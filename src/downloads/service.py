@@ -21,6 +21,7 @@ from ..config import (
     DEFAULT_YTDLP_VERBOSE,
 )
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
+from ..notifications.apprise_client import AppriseNotifier
 from ..media.youtube import (
     expand_channel_or_playlist,
     get_video_metadata,
@@ -134,6 +135,7 @@ class PodcastDownloadService:
         download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
         youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
         ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE,
+        notifier: AppriseNotifier | None = None,
         ytdlp_client: YtDlpClient | None = None,
     ) -> None:
         """Create a downloader service for one queue/archive location.
@@ -179,6 +181,10 @@ class PodcastDownloadService:
         ytdlp_verbose:
             When true, run every ``yt-dlp`` attempt with ``-v``. Retry attempts
             are verbose either way.
+        notifier:
+            Optional Apprise sender. Each failure is pushed to it so problems
+            surface without anyone opening the web UI. ``None`` disables
+            notifications entirely.
         """
         self.urls_file = urls_file
         self.downloads_dir = downloads_dir
@@ -198,6 +204,7 @@ class PodcastDownloadService:
         self.download_timeout_seconds = download_timeout_seconds
         self.youtube_player_client = youtube_player_client
         self.ytdlp_verbose = ytdlp_verbose
+        self.notifier = notifier
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
         )
@@ -577,6 +584,19 @@ class PodcastDownloadService:
             self._record_activity(f"Failed: {video_url} - {short_reason}")
         else:
             self._record_activity(f"Failed: {video_url}")
+        self._notify_failure(video_url, short_reason)
+
+    def _notify_failure(self, video_url: str, reason: str) -> None:
+        """Push one failure to Apprise when notifications are configured.
+
+        A notification problem must never become a download problem, so this
+        reports delivery failures to the log and returns either way.
+        """
+        if self.notifier is None or not self.notifier.settings.is_ready():
+            return
+        result = self.notifier.notify_download_failure(video_url, reason)
+        if not result.ok:
+            self.logger.error("Could not send failure notification: %s", result.detail)
 
     def _read_audio_download_date_metadata(self, audio_file: Path) -> str | None:
         """Read the embedded MP3 date metadata written at download completion."""

@@ -11,6 +11,10 @@ from ..state.activity_store import ActivityLogStore, activity_log_file_for
 from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
+from ..state.notification_store import (
+    NotificationStore,
+    notification_settings_file_for,
+)
 from ..state.queue_store import QueueStore
 from ..trigger import DownloadTrigger, in_process_download_trigger
 from . import routes
@@ -26,6 +30,7 @@ def create_app(
     bypass_store: BypassStore | None = None,
     activity_store: ActivityLogStore | None = None,
     auth_store: AuthStore | None = None,
+    notification_store: NotificationStore | None = None,
     trigger: DownloadTrigger | None = None,
 ) -> FastAPI:
     """Return the configured FastAPI application.
@@ -44,6 +49,8 @@ def create_app(
         Optional activity-log collaborator for application tests.
     auth_store:
         Optional remembered-session and login-failure collaborator.
+    notification_store:
+        Optional Apprise settings collaborator.
     trigger:
         Optional in-process scheduler wake-up collaborator.
 
@@ -76,6 +83,10 @@ def create_app(
             session_file=routes.SESSION_STATE_FILE,
             login_state_file=routes.DATA_DIR / ".login_state.json",
         )
+    if notification_store is None:
+        notification_store = NotificationStore(
+            notification_settings_file_for(routes.DATA_DIR)
+        )
     if trigger is None:
         trigger = in_process_download_trigger
 
@@ -93,6 +104,7 @@ def create_app(
     app.state.bypass_store = bypass_store
     app.state.activity_store = activity_store
     app.state.auth_store = auth_store
+    app.state.notification_store = notification_store
     app.state.sessions = auth_store.load_sessions(routes.SESSION_MAX_AGE_SECONDS)
     app.state.csrf_tokens = {}
     app.state.download_trigger = trigger

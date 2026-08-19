@@ -17,7 +17,12 @@ from .media.youtube import (
     is_youtube_url,
     normalize_youtube_url,
 )
+from .notifications.apprise_client import AppriseNotifier
 from .state.bypass_store import BypassStore
+from .state.notification_store import (
+    NotificationStore,
+    notification_settings_file_for,
+)
 from .state.queue_store import QueueStore
 
 _logger = logging.getLogger("cli")
@@ -249,6 +254,10 @@ def main() -> int:
         download_timeout_seconds=config.download_timeout_seconds,
         youtube_player_client=config.youtube_player_client,
         ytdlp_verbose=config.ytdlp_verbose,
+        notifier=AppriseNotifier(
+            NotificationStore(notification_settings_file_for(data_dir)).load(),
+            logging.getLogger("notifications"),
+        ),
     )
 
     if not downloader._check_ytdlp():

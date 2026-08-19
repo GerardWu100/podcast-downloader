@@ -14,7 +14,12 @@ from pathlib import Path
 from typing import TypeVar, cast
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 
 from ..config import ConfigError, PodcastConfig, load_config
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
@@ -33,12 +38,27 @@ from ..state.activity_store import (
     activity_log_file_for,
 )
 from ..state.archive_store import ArchiveStore
+from ..notifications.apprise_client import (
+    APPRISE_INFO_TYPE,
+    AppriseNotifier,
+    AppriseSettings,
+    validate_server_url,
+)
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
+from ..state.notification_store import (
+    NotificationStore,
+    notification_settings_file_for,
+)
 from ..state.queue_store import QueueStore
 from ..trigger import DownloadTrigger, in_process_download_trigger
 from .auth import client_ip, request_is_secure, security_headers
-from .templates import render_help_page, render_login_page, render_queue_page
+from .templates import (
+    render_help_page,
+    render_login_page,
+    render_notification_settings_card,
+    render_queue_page,
+)
 
 _logger = logging.getLogger("api")
 _Dependency = TypeVar("_Dependency")
@@ -113,6 +133,15 @@ def _activity_store(request: Request) -> ActivityLogStore:
     """Return the injected concise activity-log store."""
     fallback = ActivityLogStore(activity_log_file_for(CONFIG.log_file))
     return _app_state_value(request, "activity_store", fallback)
+
+
+def _notification_store(request: Request) -> NotificationStore:
+    """Return the request-scoped Apprise settings store."""
+    return _app_state_value(
+        request,
+        "notification_store",
+        NotificationStore(notification_settings_file_for(DATA_DIR)),
+    )
 
 
 def _download_trigger(request: Request) -> DownloadTrigger:
@@ -724,6 +753,12 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
         "Invalid cookies.txt. Upload a Netscape-format file.",
     ),
     "cookies_error": ("msg-err", "Could not update cookies.txt."),
+    "notifications_saved": ("msg-ok", "Notification settings saved."),
+    "notifications_invalid": (
+        "msg-err",
+        "Check the Apprise notify URL. It must start with http:// or https://",
+    ),
+    "notifications_error": ("msg-err", "Could not save notification settings."),
 }
 
 
@@ -797,11 +832,24 @@ def ui(request: Request, msg: str = "") -> HTMLResponse:
         _last_activity_label(_activity_store(request).activity_log_file)
     )
 
+    notification_settings = _notification_store(request).load()
+    notifications_html = render_notification_settings_card(
+        safe_token=safe_token,
+        safe_server_url=html.escape(notification_settings.server_url, quote=True),
+        safe_notification_urls=html.escape(
+            notification_settings.notification_urls,
+            quote=True,
+        ),
+        safe_tag=html.escape(notification_settings.tag, quote=True),
+        enabled=notification_settings.enabled,
+    )
+
     return render_queue_page(
         bypass_row_html=bypass_row_html,
         count=count,
         last_activity=last_activity,
         msg_html=msg_html,
+        notifications_html=notifications_html,
         queue_html=queue_html,
         safe_token=safe_token,
         script_nonce=script_nonce,
@@ -840,6 +888,117 @@ async def upload_cookies_form(
         return RedirectResponse(url="/ui?msg=cookies_error", status_code=303)
 
     return RedirectResponse(url="/ui?msg=cookies_updated", status_code=303)
+
+
+@router.post("/save-notifications")
+def save_notifications_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    server_url: str = Form(""),
+    notification_urls: str = Form(""),
+    tag: str = Form(""),
+    enabled: str = Form(""),
+) -> RedirectResponse:
+    """Save the Apprise error-notification settings from the queue page.
+
+    Parameters
+    ----------
+    request:
+        Current request carrying the session and the settings store.
+    csrf_token:
+        Token issued with the page that submitted this form.
+    server_url:
+        Apprise notify endpoint, for example ``http://apprise:8000/notify/key``.
+    notification_urls:
+        Optional comma-separated Apprise destinations for stateless mode.
+    tag:
+        Optional Apprise tag limiting which configured destinations fire.
+    enabled:
+        Present and non-empty when the enable checkbox was ticked.
+
+    Returns
+    -------
+    RedirectResponse
+        Back to the queue page with a status message.
+    """
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    if not _verify_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    is_enabled = bool(enabled)
+    # An endpoint is only required once notifications are switched on, so the
+    # settings can be cleared and saved without tripping validation.
+    if is_enabled and validate_server_url(server_url):
+        return RedirectResponse(url="/ui?msg=notifications_invalid", status_code=303)
+
+    settings = AppriseSettings(
+        enabled=is_enabled,
+        server_url=server_url.strip(),
+        notification_urls=notification_urls.strip(),
+        tag=tag.strip(),
+    )
+    try:
+        _notification_store(request).save(settings)
+    except OSError:
+        _logger.exception("Could not save notification settings")
+        return RedirectResponse(url="/ui?msg=notifications_error", status_code=303)
+
+    return RedirectResponse(url="/ui?msg=notifications_saved", status_code=303)
+
+
+@router.post("/test-notification")
+def test_notification(
+    request: Request,
+    csrf_token: str = Form(...),
+    server_url: str = Form(""),
+    notification_urls: str = Form(""),
+    tag: str = Form(""),
+) -> Response:
+    """Send a test notification using the values currently in the form.
+
+    The form values are used rather than the saved ones so the endpoint can be
+    tried before it is saved.
+
+    Returns
+    -------
+    Response
+        JSON with ``ok`` and a ``detail`` string the page shows beside the
+        button. Always HTTP 200 when authorized, because a refused Apprise
+        request is a result to display, not a web-app error.
+    """
+    if not _has_valid_session(request):
+        return JSONResponse(
+            {"ok": False, "detail": "Session expired. Sign in again."},
+            status_code=401,
+        )
+
+    if not _verify_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    url_problem = validate_server_url(server_url)
+    if url_problem:
+        return JSONResponse({"ok": False, "detail": url_problem})
+
+    # `enabled` is forced on: pressing Test is the intent to send, whether or
+    # not notifications are switched on for real downloads yet.
+    notifier = AppriseNotifier(
+        AppriseSettings(
+            enabled=True,
+            server_url=server_url.strip(),
+            notification_urls=notification_urls.strip(),
+            tag=tag.strip(),
+        ),
+        _logger,
+    )
+    result = notifier.send(
+        "Podcast Downloader test",
+        "Apprise is reachable. Download failures will arrive here.",
+        notification_type=APPRISE_INFO_TYPE,
+    )
+    return JSONResponse({"ok": result.ok, "detail": result.detail})
 
 
 _LOG_SOURCES = frozenset({"activity", "download"})

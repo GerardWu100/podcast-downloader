@@ -2193,3 +2193,102 @@ def test_download_failure_log_contains_command_and_full_error(
     assert "WARNING: something harmless" in log_text
     assert "HTTP Error 403: Forbidden" in log_text
     assert "--extract-audio" in log_text
+
+
+class RecordingNotifier:
+    """Capture failure notifications instead of sending them."""
+
+    def __init__(self, settings, *, fails: bool = False) -> None:
+        self.settings = settings
+        self.fails = fails
+        self.sent: list[tuple[str, str]] = []
+
+    def notify_download_failure(self, video_url: str, reason: str):
+        from src.notifications.apprise_client import AppriseSendResult
+
+        self.sent.append((video_url, reason))
+        if self.fails:
+            return AppriseSendResult(False, None, "Could not reach Apprise: refused")
+        return AppriseSendResult(True, 200, "accepted")
+
+
+def _failing_downloader(tmp_path, monkeypatch, notifier):
+    """Build a service whose single yt-dlp call always fails."""
+    video_url = "https://videos.example.com/watch/episode-1"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        notifier=notifier,
+    )
+
+    def fake_run(command: list[str], *args, **kwargs):
+        return subprocess.CompletedProcess(
+            command, 1, stdout="", stderr="ERROR: HTTP Error 403: Forbidden"
+        )
+
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+    return downloader, video_url
+
+
+def test_failure_pushes_a_notification_with_the_cause(tmp_path, monkeypatch) -> None:
+    """A configured notifier should receive the URL and the reason."""
+    from src.notifications.apprise_client import AppriseSettings
+
+    notifier = RecordingNotifier(
+        AppriseSettings(enabled=True, server_url="http://apprise.test/notify/key")
+    )
+    downloader, video_url = _failing_downloader(tmp_path, monkeypatch, notifier)
+
+    downloader._download_video(video_url, index=1, total=1, use_archive=False)
+
+    assert len(notifier.sent) == 1
+    sent_url, sent_reason = notifier.sent[0]
+    assert sent_url == video_url
+    assert "403" in sent_reason
+
+
+def test_unconfigured_notifier_is_never_called(tmp_path, monkeypatch) -> None:
+    """Settings that are enabled but have no endpoint must not be used."""
+    from src.notifications.apprise_client import AppriseSettings
+
+    notifier = RecordingNotifier(AppriseSettings(enabled=True, server_url=""))
+    downloader, video_url = _failing_downloader(tmp_path, monkeypatch, notifier)
+
+    downloader._download_video(video_url, index=1, total=1, use_archive=False)
+
+    assert notifier.sent == []
+
+
+def test_notification_delivery_failure_does_not_break_the_run(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """An unreachable Apprise instance must only add a log line."""
+    from src.notifications.apprise_client import AppriseSettings
+
+    notifier = RecordingNotifier(
+        AppriseSettings(enabled=True, server_url="http://apprise.test/notify/key"),
+        fails=True,
+    )
+    downloader, video_url = _failing_downloader(tmp_path, monkeypatch, notifier)
+
+    _, success = downloader._download_video(
+        video_url,
+        index=1,
+        total=1,
+        use_archive=False,
+    )
+
+    assert success is False
+    log_text = (tmp_path / "download.log").read_text(encoding="utf-8")
+    assert "Could not send failure notification" in log_text
+    # The real failure is still recorded for the browser.
+    activity_text = (tmp_path / "activity.log").read_text(encoding="utf-8")
+    assert "403" in activity_text
