@@ -23,6 +23,11 @@ MINIMUM_DOWNLOAD_TIMEOUT_SECONDS = 60
 # HTTP 403 Forbidden. `web_embedded` still serves usable URLs without a token.
 # An empty value lets yt-dlp pick, which is what fails today.
 DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
+# Run every yt-dlp attempt with `-v`. Off by default because retry attempts
+# are already verbose, so a download that actually breaks logs its full
+# extractor trail without this. Turn it on to inspect a run that succeeds
+# but produces the wrong result.
+DEFAULT_YTDLP_VERBOSE = False
 
 
 class ConfigError(ValueError):
@@ -48,6 +53,7 @@ class PodcastConfig:
     always_use_cookies: bool
     bypass_age_check_file: Path
     youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT
+    ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE
 
 
 def _require_non_blank(raw_value: str, key: str) -> str:
@@ -256,6 +262,13 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         DEFAULT_YOUTUBE_PLAYER_CLIENT,
     ).strip()
 
+    ytdlp_verbose = _get_bool(
+        parser,
+        "podcast",
+        "ytdlp_verbose",
+        DEFAULT_YTDLP_VERBOSE,
+    )
+
     return PodcastConfig(
         urls_file=urls_file,
         output_dir=output_dir,
@@ -272,4 +285,5 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         always_use_cookies=always_use_cookies,
         bypass_age_check_file=bypass_age_check_file,
         youtube_player_client=youtube_player_client,
+        ytdlp_verbose=ytdlp_verbose,
     )

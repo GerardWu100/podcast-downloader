@@ -66,6 +66,7 @@ The checked-in file is in the project root and contains one `[podcast]` section.
 | `cookies_file` | Optional Netscape cookie-jar path. The web UI can create a configured file that is missing | unset |
 | `always_use_cookies` | If true, try cookies first and retry without them; if false, reverse the order | `true` |
 | `youtube_player_client` | YouTube player API used by `yt-dlp`; blank lets `yt-dlp` choose | `web_embedded` |
+| `ytdlp_verbose` | Run every `yt-dlp` attempt with `-v`; retry attempts are verbose either way | `false` |
 | `trust_x_forwarded_for` | Whether the UI trusts client IP headers from your reverse proxy | `true` |
 
 ## Environment variables
@@ -99,6 +100,35 @@ Metadata may still load successfully, so the error often appears only when the a
 `youtube_player_client` selects the client used by `yt-dlp`. The default, `web_embedded`, currently provides usable URLs without a token. Leaving the setting blank lets `yt-dlp` choose, which currently triggers the 403 error.
 
 If YouTube closes this route, the durable fix is a PO token provider plugin. See the [yt-dlp PO Token guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide).
+
+## Failure logging
+
+Every download failure is recorded twice.
+
+`download.log` gets the full picture: the exact `yt-dlp` command, and the
+complete stdout and stderr of every attempt, untruncated. Both attempts of a
+cookie retry are kept, because a YouTube download can fail twice for two
+different reasons.
+
+`activity.log`, which the web UI shows, gets one line naming the cause:
+
+```
+[2026-08-18 21:14] Failed: https://www.youtube.com/watch?v=... - ERROR: [youtube] Video unavailable
+```
+
+The cause is the last `ERROR:` line from the failed attempt, collapsed to one
+line and capped at 160 characters. Timeouts, metadata failures, and publishing
+failures name themselves instead.
+
+The retry attempt always runs with `-v`, so a download that is genuinely broken
+leaves the full extractor trail, including which player client answered and
+whether a PO token provider was available. Runs that succeed the first time add
+nothing. A double failure with the verbose retry costs roughly 7 KB of log.
+
+`ytdlp_verbose = true` adds `-v` to first attempts too. It is off by default
+because the retry already covers real failures. Turn it on to inspect a run that
+reports success but produces the wrong result. `-v` prints the cookie file path,
+never cookie values.
 
 ## Cookie support
 

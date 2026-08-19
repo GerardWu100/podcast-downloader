@@ -248,6 +248,7 @@ def main() -> int:
         bypass_age_check_file=config.bypass_age_check_file,
         download_timeout_seconds=config.download_timeout_seconds,
         youtube_player_client=config.youtube_player_client,
+        ytdlp_verbose=config.ytdlp_verbose,
     )
 
     if not downloader._check_ytdlp():

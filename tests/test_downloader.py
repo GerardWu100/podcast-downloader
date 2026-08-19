@@ -13,7 +13,7 @@ from pathlib import Path
 import src.downloads.service as downloads_service_module
 from src.downloads.audio_metadata import AudioMetadataWriter
 from src.downloads.service import PodcastDownloadService
-from src.downloads.ytdlp_client import AudioSnapshot, YtDlpResult
+from src.downloads.ytdlp_client import AudioSnapshot, YtDlpAttempt, YtDlpResult
 from src.state.bypass_store import BypassStore
 
 
@@ -83,13 +83,19 @@ def ytdlp_result(
         file_stat = audio_file.stat()
         after_files[audio_file] = (file_stat.st_mtime_ns, file_stat.st_size)
     return YtDlpResult(
-        returncode=returncode,
-        stdout=stdout,
-        stderr=stderr,
+        attempts=[
+            YtDlpAttempt(
+                command=["yt-dlp", "--", "https://example.test/video"],
+                used_cookies=False,
+                verbose=False,
+                returncode=returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        ],
         changed_audio_files=changed_audio_files,
         before_snapshot=AudioSnapshot(files={}),
         after_snapshot=AudioSnapshot(files=after_files),
-        attempts=1,
     )
 
 
@@ -326,7 +332,7 @@ def test_ytdlp_command_disables_source_mtime(
 
     execution = downloader._run_ytdlp("https://videos.example.com/watch/episode-1")
 
-    assert execution.returncode == 0
+    assert execution.final.returncode == 0
     assert execution.changed_audio_files == [output_mp3]
     assert "--no-mtime" in commands[0]
 
@@ -1454,7 +1460,10 @@ def test_download_video_writes_concise_failure_activity_event(
     assert success is False
     activity_text = activity_log_file.read_text(encoding="utf-8")
     assert "Failed:" in activity_text
-    assert "unsupported URL" not in activity_text
+    # The feed names the cause so a reader does not have to open download.log
+    # to tell a 403 apart from a timeout, but it stays one bounded line.
+    assert "unsupported URL" in activity_text
+    assert len(activity_text.strip().splitlines()) == 1
 
 
 def test_download_video_writes_concise_success_activity_event(
@@ -2082,3 +2091,105 @@ def test_download_all_retries_channel_item_after_retention_removes_archive_entry
     assert attempted_urls == [channel_video_url]
     assert not expired_audio_file.exists()
     assert archive_file.read_text(encoding="utf-8") == f"{channel_video_url}\n"
+
+
+def test_silent_success_without_mp3_logs_the_ytdlp_report(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A zero exit with no MP3 used to log nothing from yt-dlp.
+
+    A postprocessor can fail after the media transfer and still leave the exit
+    status at zero, so the command output is the only evidence of the cause.
+    """
+    video_url = "https://videos.example.com/watch/episode-1"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+    log_file = tmp_path / "download.log"
+    activity_log_file = tmp_path / "activity.log"
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        log_file=log_file,
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+    )
+
+    def fake_run(
+        command: list[str],
+        *args,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        # Exit 0 and write nothing, the way a failed postprocessor behaves.
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="[download] 100% of 5.00MiB",
+            stderr="ERROR: Postprocessing: ffmpeg exited with code 1",
+        )
+
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+
+    _, success = downloader._download_video(
+        video_url,
+        index=1,
+        total=1,
+        use_archive=False,
+    )
+
+    assert success is False
+    log_text = log_file.read_text(encoding="utf-8")
+    assert "ERROR: Postprocessing: ffmpeg exited with code 1" in log_text
+    assert "[download] 100% of 5.00MiB" in log_text
+    # The command is recorded too, so the exact flags are recoverable.
+    assert "yt-dlp" in log_text and "--extract-audio" in log_text
+    assert "yt-dlp produced no MP3" in activity_log_file.read_text(encoding="utf-8")
+
+
+def test_download_failure_log_contains_command_and_full_error(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A non-zero exit should log the command and untruncated output."""
+    video_url = "https://videos.example.com/watch/episode-1"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloads_dir = tmp_path / "downloads"
+    downloads_dir.mkdir()
+    log_file = tmp_path / "download.log"
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=downloads_dir,
+        log_file=log_file,
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+    )
+
+    stderr_text = (
+        "WARNING: something harmless\n"
+        "ERROR: unable to download video data: HTTP Error 403: Forbidden\n"
+    )
+
+    def fake_run(
+        command: list[str],
+        *args,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr=stderr_text)
+
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+
+    _, success = downloader._download_video(
+        video_url,
+        index=1,
+        total=1,
+        use_archive=False,
+    )
+
+    assert success is False
+    log_text = log_file.read_text(encoding="utf-8")
+    assert "WARNING: something harmless" in log_text
+    assert "HTTP Error 403: Forbidden" in log_text
+    assert "--extract-audio" in log_text

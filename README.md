@@ -72,6 +72,7 @@ Runtime settings live in `config.ini`:
 - `download_timeout_seconds` sets the timeout for one `yt-dlp` attempt (default: 3600 seconds).
 - `cookies_file` and `always_use_cookies` control YouTube cookie use and retry order.
 - `youtube_player_client` selects the YouTube player API that `yt-dlp` uses. Leaving it blank lets `yt-dlp` choose; that currently fails with `HTTP Error 403: Forbidden` after audio begins downloading.
+- `ytdlp_verbose` runs every `yt-dlp` attempt with `-v`. Off by default, because retry attempts are verbose regardless.
 - `trust_x_forwarded_for` controls whether client IP headers from a reverse proxy are trusted.
 
 See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete reference.

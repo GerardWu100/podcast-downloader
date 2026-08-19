@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -14,8 +15,22 @@ from ..media.youtube import is_youtube_url
 SPONSORBLOCK_CATEGORIES = "sponsor,selfpromo"
 DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
 YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
+# The browser activity feed is one line per event, so the cause shown there has
+# to stay short. The full text always remains in the detailed log.
+ACTIVITY_REASON_MAX_CHARS = 160
+# yt-dlp prefixes fatal messages with this marker. Picking the last one out of
+# stderr gives the actual cause rather than a preceding warning.
+YTDLP_ERROR_PREFIX = "ERROR:"
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
+
+
+def shorten_to_one_line(text: str, max_chars: int = ACTIVITY_REASON_MAX_CHARS) -> str:
+    """Collapse text to one bounded line suitable for the activity feed."""
+    collapsed = " ".join(text.split())
+    if len(collapsed) <= max_chars:
+        return collapsed
+    return collapsed[: max_chars - 1].rstrip() + "…"
 
 
 @dataclass(frozen=True)
@@ -33,34 +48,111 @@ class AudioSnapshot:
 
 
 @dataclass(frozen=True)
+class YtDlpAttempt:
+    """One ``yt-dlp`` subprocess run and everything it reported.
+
+    Every attempt is kept, not just the last one. A YouTube download can fail
+    twice for two different reasons, and only seeing the second one hides half
+    the evidence.
+
+    Attributes
+    ----------
+    command:
+        Exact argument list handed to the subprocess.
+    used_cookies:
+        Whether this attempt passed ``--cookies``.
+    verbose:
+        Whether this attempt ran with ``-v``.
+    returncode:
+        Process exit status.
+    stdout:
+        Standard output, unmodified.
+    stderr:
+        Standard error, unmodified. Carries yt-dlp's errors and warnings.
+    """
+
+    command: list[str]
+    used_cookies: bool
+    verbose: bool
+    returncode: int
+    stdout: str
+    stderr: str
+
+    def describe(self, attempt_number: int) -> str:
+        """Return this attempt's full diagnostic block for the detailed log."""
+        cookie_state = "with cookies" if self.used_cookies else "without cookies"
+        verbose_state = ", verbose" if self.verbose else ""
+        sections = [
+            f"attempt {attempt_number} ({cookie_state}{verbose_state}) "
+            f"exited {self.returncode}",
+            f"  command: {shlex.join(self.command)}",
+        ]
+        for stream_name, stream_text in (
+            ("stderr", self.stderr),
+            ("stdout", self.stdout),
+        ):
+            stripped_text = stream_text.strip()
+            if stripped_text:
+                indented = "\n".join(
+                    f"    {line}" for line in stripped_text.splitlines()
+                )
+                sections.append(f"  {stream_name}:\n{indented}")
+        return "\n".join(sections)
+
+    def error_line(self) -> str:
+        """Return the last ``ERROR:`` line, or the last stderr line.
+
+        yt-dlp writes warnings before the fatal message, so the final
+        ``ERROR:`` line is the cause worth surfacing.
+        """
+        stderr_lines = [line.strip() for line in self.stderr.splitlines()]
+        error_lines = [
+            line for line in stderr_lines if line.startswith(YTDLP_ERROR_PREFIX)
+        ]
+        if error_lines:
+            return error_lines[-1]
+        remaining_lines = [line for line in stderr_lines if line]
+        if remaining_lines:
+            return remaining_lines[-1]
+        return f"yt-dlp exited {self.returncode} with no error output"
+
+
+@dataclass(frozen=True)
 class YtDlpResult:
     """Observable result of a complete audio-download request.
 
     Attributes
     ----------
-    returncode:
-        Exit status from the final ``yt-dlp`` attempt.
-    stdout:
-        Standard output from the final attempt.
-    stderr:
-        Standard error from the final attempt.
+    attempts:
+        Every subprocess run, in order. Always at least one.
     changed_audio_files:
         MP3 files created or changed across all attempts.
     before_snapshot:
         MP3 state before the first attempt.
     after_snapshot:
         MP3 state after the final attempt.
-    attempts:
-        Number of subprocess attempts, either one or two.
     """
 
-    returncode: int
-    stdout: str
-    stderr: str
+    attempts: list[YtDlpAttempt]
     changed_audio_files: list[Path]
     before_snapshot: AudioSnapshot
     after_snapshot: AudioSnapshot
-    attempts: int
+
+    @property
+    def final(self) -> YtDlpAttempt:
+        """Return the attempt whose outcome the caller acts on."""
+        return self.attempts[-1]
+
+    def diagnostic_report(self) -> str:
+        """Return every attempt's command and output for the detailed log."""
+        return "\n".join(
+            attempt.describe(attempt_number)
+            for attempt_number, attempt in enumerate(self.attempts, start=1)
+        )
+
+    def activity_reason(self) -> str:
+        """Return one short line naming the cause, for the browser feed."""
+        return shorten_to_one_line(self.final.error_line())
 
 
 class YtDlpClient:
@@ -74,7 +166,7 @@ class YtDlpClient:
         When ``True``, try YouTube with cookies and retry without them. When
         ``False``, try without cookies and retry with them.
     logger:
-        Destination for retry messages.
+        Destination for retry messages and per-attempt command lines.
     run_command:
         Subprocess-compatible callable; tests may inject a deterministic fake.
     download_timeout_seconds:
@@ -82,6 +174,10 @@ class YtDlpClient:
     youtube_player_client:
         YouTube player API yt-dlp requests stream URLs from. An empty string
         leaves the choice to yt-dlp. See ``DEFAULT_YOUTUBE_PLAYER_CLIENT``.
+    verbose:
+        When ``True``, pass ``-v`` on every attempt. The retry attempt is
+        always verbose regardless, so this only affects first attempts and
+        runs that never retry.
     """
 
     def __init__(
@@ -93,6 +189,7 @@ class YtDlpClient:
         run_command: RunCommand = subprocess.run,
         download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
         youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
+        verbose: bool = False,
     ) -> None:
         self.cookies_file = cookies_file
         self.always_use_cookies = always_use_cookies
@@ -100,6 +197,7 @@ class YtDlpClient:
         self.run_command = run_command
         self.download_timeout_seconds = download_timeout_seconds
         self.youtube_player_client = youtube_player_client.strip()
+        self.verbose = verbose
 
     def snapshot_audio(self, work_dir: Path) -> AudioSnapshot:
         """Capture recursive MP3 modification time and size state."""
@@ -134,6 +232,8 @@ class YtDlpClient:
         url: str,
         work_dir: Path,
         cookies_file: Path | None,
+        *,
+        verbose: bool = False,
     ) -> list[str]:
         """Build one audio-download command with a safe URL separator."""
         # `--paths` only applies to relative output templates; an absolute
@@ -157,6 +257,12 @@ class YtDlpClient:
             "--output",
             YTDLP_OUTPUT_FILENAME_TEMPLATE,
         ]
+        if verbose:
+            # `-v` adds the extractor trail: which player client answered,
+            # which formats came back, and whether a PO token provider was
+            # available. It prints the cookie file path but never cookie
+            # values, so it is safe to keep in the log.
+            command.append("-v")
         if is_youtube_url(url):
             command.extend(["--sponsorblock-remove", SPONSORBLOCK_CATEGORIES])
             # Pinning the player client keeps yt-dlp off the API responses whose
@@ -184,15 +290,33 @@ class YtDlpClient:
         url: str,
         work_dir: Path,
         cookies_file: Path | None,
-    ) -> subprocess.CompletedProcess[str]:
-        """Run one bounded ``yt-dlp`` subprocess attempt."""
-        command = self.build_download_command(url, work_dir, cookies_file)
-        return self.run_command(
+        *,
+        verbose: bool,
+    ) -> YtDlpAttempt:
+        """Run one bounded ``yt-dlp`` subprocess attempt and record it."""
+        command = self.build_download_command(
+            url,
+            work_dir,
+            cookies_file,
+            verbose=verbose,
+        )
+        # Debug level reaches the detailed log file but not the terminal, so
+        # the exact flags are always recoverable without console noise.
+        self.logger.debug("yt-dlp command: %s", shlex.join(command))
+        process = self.run_command(
             command,
             capture_output=True,
             text=True,
             timeout=self.download_timeout_seconds,
             check=False,
+        )
+        return YtDlpAttempt(
+            command=command,
+            used_cookies=cookies_file is not None,
+            verbose=verbose,
+            returncode=process.returncode,
+            stdout=process.stdout or "",
+            stderr=process.stderr or "",
         )
 
     def _first_attempt_cookies(self, url: str) -> Path | None:
@@ -239,6 +363,10 @@ class YtDlpClient:
         attempt for retry purposes. The service may still recover one existing
         MP3 after this client returns when a prior metadata pass failed.
 
+        The retry always runs with ``-v`` so that a download which is actually
+        broken leaves a full extractor trail in the log, while runs that
+        succeed the first time stay quiet.
+
         Parameters
         ----------
         url:
@@ -249,17 +377,23 @@ class YtDlpClient:
         Returns
         -------
         YtDlpResult
-            Final process output and MP3 state across one or two attempts.
+            Every attempt's command and output, plus MP3 state around them.
         """
         work_dir.mkdir(parents=True, exist_ok=True)
         before_snapshot = self.snapshot_audio(work_dir)
         first_attempt_cookies = self._first_attempt_cookies(url)
-        process = self._run_attempt(url, work_dir, first_attempt_cookies)
+        attempts = [
+            self._run_attempt(
+                url,
+                work_dir,
+                first_attempt_cookies,
+                verbose=self.verbose,
+            )
+        ]
         after_snapshot = self.snapshot_audio(work_dir)
         changed_files = self.changed_audio_files(before_snapshot, after_snapshot)
-        attempts = 1
 
-        first_attempt_failed = process.returncode != 0 or not changed_files
+        first_attempt_failed = attempts[0].returncode != 0 or not changed_files
         should_retry, retry_cookies = self._retry_cookies(
             url,
             first_attempt_cookies,
@@ -267,27 +401,34 @@ class YtDlpClient:
         if first_attempt_failed and should_retry:
             if first_attempt_cookies is not None:
                 self.logger.info(
-                    "Cookie YouTube download failed; retrying without cookies"
+                    "Cookie YouTube download failed (%s); "
+                    "retrying without cookies, verbosely",
+                    attempts[0].error_line(),
                 )
             else:
                 self.logger.info(
-                    "Plain YouTube download failed; retrying with cookies file: %s",
+                    "Plain YouTube download failed (%s); "
+                    "retrying with cookies file %s, verbosely",
+                    attempts[0].error_line(),
                     self.cookies_file,
                 )
-            process = self._run_attempt(url, work_dir, retry_cookies)
+            attempts.append(
+                self._run_attempt(
+                    url,
+                    work_dir,
+                    retry_cookies,
+                    verbose=True,
+                )
+            )
             after_snapshot = self.snapshot_audio(work_dir)
             changed_files = self.changed_audio_files(
                 before_snapshot,
                 after_snapshot,
             )
-            attempts = 2
 
         return YtDlpResult(
-            returncode=process.returncode,
-            stdout=process.stdout or "",
-            stderr=process.stderr or "",
+            attempts=attempts,
             changed_audio_files=changed_files,
             before_snapshot=before_snapshot,
             after_snapshot=after_snapshot,
-            attempts=attempts,
         )

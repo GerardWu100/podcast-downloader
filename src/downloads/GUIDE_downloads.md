@@ -15,7 +15,20 @@ concrete URL
 
 `YtDlpClient` owns the external download command. It sets the timeout, SponsorBlock flags, YouTube player client, and cookie order. It also records MP3 snapshots and identifies changed files. The timeout comes from `download_timeout_seconds` in `config.ini` and defaults to one hour, enough for a long episode and MP3 conversion.
 
-The client returns a `YtDlpResult` containing the final status, command output, before/after snapshots, changed files, and attempt count.
+The client returns a `YtDlpResult` holding one `YtDlpAttempt` per subprocess run
+plus the before/after snapshots and changed files. Each attempt keeps its own
+command, exit status, stdout, stderr, cookie mode, and verbose flag.
+`result.final` is the attempt the service acts on.
+
+Keeping every attempt matters: a YouTube download can fail once with cookies and
+once without for two different reasons, and storing only the last one hides half
+the evidence. `diagnostic_report()` renders all attempts for `download.log`;
+`activity_reason()` returns one bounded line for the browser feed, taken from the
+last `ERROR:` line rather than a preceding warning.
+
+The retry attempt always runs with `-v`, so failures carry the full extractor
+trail while successful runs stay quiet. The `ytdlp_verbose` setting adds `-v` to
+first attempts as well.
 
 Two command details are easy to break:
 

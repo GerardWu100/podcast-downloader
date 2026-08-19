@@ -18,6 +18,7 @@ from ..config import (
     DEFAULT_CHANNEL_VIDEO_COUNT,
     DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
     DEFAULT_YOUTUBE_PLAYER_CLIENT,
+    DEFAULT_YTDLP_VERBOSE,
 )
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
 from ..media.youtube import (
@@ -40,7 +41,12 @@ from ..state.bypass_store import BypassStore
 from ..state.file_locks import locked_text_file
 from ..state.queue_store import QueueStore
 from .audio_metadata import AudioMetadataWriter
-from .ytdlp_client import AudioSnapshot, YtDlpClient, YtDlpResult
+from .ytdlp_client import (
+    AudioSnapshot,
+    YtDlpClient,
+    YtDlpResult,
+    shorten_to_one_line,
+)
 
 FALLBACK_SINGLE_DOWNLOAD_FOLDER = "singles"
 INTERMEDIATE_ROOT_TEMP_SUFFIXES = (
@@ -78,6 +84,36 @@ class DownloadTarget:
     use_archive: bool
 
 
+def _partial_output_from_timeout(timeout_error: subprocess.TimeoutExpired) -> str:
+    """Return whatever a killed ``yt-dlp`` process had written before the kill.
+
+    ``TimeoutExpired`` carries the captured streams, but they may be missing or
+    still raw bytes depending on how the process was launched, so both cases
+    are normalized to text here.
+
+    Parameters
+    ----------
+    timeout_error:
+        Exception raised when an attempt exceeded its wall-clock limit.
+
+    Returns
+    -------
+    str
+        Combined standard error and standard output, stripped. Empty when the
+        process produced nothing.
+    """
+
+    def as_text(stream: bytes | str | None) -> str:
+        if stream is None:
+            return ""
+        if isinstance(stream, bytes):
+            return stream.decode("utf-8", errors="replace")
+        return stream
+
+    combined = f"{as_text(timeout_error.stderr)}\n{as_text(timeout_error.stdout)}"
+    return combined.strip()
+
+
 class PodcastDownloadService:
     """Run downloads and keep the queue and history files consistent."""
 
@@ -97,6 +133,7 @@ class PodcastDownloadService:
         bypass_age_check_file: Path | None = None,
         download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
         youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
+        ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE,
         ytdlp_client: YtDlpClient | None = None,
     ) -> None:
         """Create a downloader service for one queue/archive location.
@@ -139,6 +176,9 @@ class PodcastDownloadService:
         youtube_player_client:
             YouTube player API ``yt-dlp`` requests stream URLs from. An empty
             string leaves the choice to ``yt-dlp``.
+        ytdlp_verbose:
+            When true, run every ``yt-dlp`` attempt with ``-v``. Retry attempts
+            are verbose either way.
         """
         self.urls_file = urls_file
         self.downloads_dir = downloads_dir
@@ -157,6 +197,7 @@ class PodcastDownloadService:
         self.always_use_cookies = always_use_cookies
         self.download_timeout_seconds = download_timeout_seconds
         self.youtube_player_client = youtube_player_client
+        self.ytdlp_verbose = ytdlp_verbose
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
         )
@@ -182,6 +223,7 @@ class PodcastDownloadService:
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
             download_timeout_seconds=self.download_timeout_seconds,
             youtube_player_client=self.youtube_player_client,
+            verbose=self.ytdlp_verbose,
         )
 
         if self.cookies_file:
@@ -523,6 +565,19 @@ class PodcastDownloadService:
         except OSError as exc:
             self.logger.warning("Could not write activity log: %s", exc)
 
+    def _record_failure(self, video_url: str, reason: str) -> None:
+        """Record a failure in the browser feed together with its cause.
+
+        Without the cause, a timeout, an HTTP 403, and a publishing error all
+        read as the same line, and the only way to tell them apart is to open
+        ``download.log``.
+        """
+        short_reason = shorten_to_one_line(reason)
+        if short_reason:
+            self._record_activity(f"Failed: {video_url} - {short_reason}")
+        else:
+            self._record_activity(f"Failed: {video_url}")
+
     def _read_audio_download_date_metadata(self, audio_file: Path) -> str | None:
         """Read the embedded MP3 date metadata written at download completion."""
         return self._read_audio_metadata_tag(audio_file, "date")
@@ -831,23 +886,33 @@ class PodcastDownloadService:
 
         try:
             execution = self._run_ytdlp(video_url, work_dir)
-        except subprocess.TimeoutExpired:
-            self.logger.error("Timeout downloading: %s", video_url)
-            self._record_activity(f"Failed: {video_url}")
+        except subprocess.TimeoutExpired as timeout_error:
+            self.logger.error(
+                "Timeout after %ss downloading: %s",
+                self.download_timeout_seconds,
+                video_url,
+            )
+            # A killed process still carries whatever it managed to write, and
+            # that partial output usually says where it stalled.
+            partial_output = _partial_output_from_timeout(timeout_error)
+            if partial_output:
+                self.logger.error("yt-dlp partial output:\n%s", partial_output)
+            self._record_failure(
+                video_url,
+                f"timeout after {self.download_timeout_seconds}s",
+            )
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
         except Exception as exc:
-            self.logger.error("Error downloading %s: %s", video_url, exc)
-            self._record_activity(f"Failed: {video_url}")
+            self.logger.exception("Error downloading %s", video_url)
+            self._record_failure(video_url, f"{type(exc).__name__}: {exc}")
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 
-        if execution.returncode != 0:
-            error_text = execution.stderr.strip() or execution.stdout.strip()
+        if execution.final.returncode != 0:
             self.logger.error("Failed: %s", video_url)
-            if error_text:
-                self.logger.error("yt-dlp error: %s", error_text)
-            self._record_activity(f"Failed: {video_url}")
+            self.logger.error("yt-dlp report:\n%s", execution.diagnostic_report())
+            self._record_failure(video_url, execution.activity_reason())
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 
@@ -859,8 +924,12 @@ class PodcastDownloadService:
             )
 
         if not audio_files_to_stamp:
+            # yt-dlp reporting success without producing audio means a
+            # postprocessor gave up after the media transfer. The exit status
+            # says nothing, so the whole report is the only evidence.
             self.logger.error("No MP3 file changed for successful run: %s", video_url)
-            self._record_activity(f"Failed: {video_url}")
+            self.logger.error("yt-dlp report:\n%s", execution.diagnostic_report())
+            self._record_failure(video_url, "yt-dlp produced no MP3")
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 
@@ -870,8 +939,8 @@ class PodcastDownloadService:
                 video_url,
             )
         except Exception as exc:
-            self.logger.error("Metadata stamping failed for %s: %s", video_url, exc)
-            self._record_activity(f"Failed: {video_url}")
+            self.logger.exception("Metadata stamping failed for %s", video_url)
+            self._record_failure(video_url, f"metadata stamping: {exc}")
             self._finalize_intermediate_cleanup(
                 work_dir,
                 preserve_mp3_files=audio_files_to_stamp,
@@ -884,8 +953,8 @@ class PodcastDownloadService:
                 final_output_dir,
             )
         except Exception as exc:
-            self.logger.error("Could not publish MP3 for %s: %s", video_url, exc)
-            self._record_activity(f"Failed: {video_url}")
+            self.logger.exception("Could not publish MP3 for %s", video_url)
+            self._record_failure(video_url, f"publishing MP3: {exc}")
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 

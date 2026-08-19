@@ -40,7 +40,7 @@ exports the production app created by `create_app()`.
 10. A download counts as successful only when an MP3 file was created or changed inside the active source work folder.
 11. Successful MP3 files get an embedded MP3 date tag set to the local download completion time and a comment tag containing the source URL.
 12. Before a scheduled full-queue cycle checks archive-backed channel candidates, YouTube channel MP3 files older than `retention_days` are deleted when embedded metadata proves both the download date and source video URL. Playlist and single-video MP3 files are not retention-deleted.
-13. The downloader writes detailed diagnostics to `download.log` and short browser-facing messages to `activity.log`.
+13. The downloader writes detailed diagnostics to `download.log` and short browser-facing messages to `activity.log`. Failures appear in both: the full yt-dlp command and output in `download.log`, and a one-line cause in `activity.log`.
 14. Successful direct-video URLs are removed from `urls.txt`.
 15. Successful expanded URLs are written to `downloaded_urls.txt` so future channel scans stay idempotent.
 
