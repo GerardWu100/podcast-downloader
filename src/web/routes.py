@@ -569,17 +569,22 @@ def _last_activity_label(activity_log_file: Path) -> str:
 
 
 # One activity line looks like "[2026-08-19 15:51] Downloaded: creator - ep.mp3".
-# The timestamp is all the status row needs, so the name is discarded.
+# The status row shows the episode name, so the timestamp is discarded and the
+# ".mp3" suffix is trimmed off the saved file name.
 DOWNLOADED_EVENT_PREFIX = "Downloaded: "
+DOWNLOADED_FILE_SUFFIX = ".mp3"
 # How far back to look for the most recent finished download. A run that only
 # fails can push completions out of this window, in which case the row reads
-# "None yet" rather than showing a stale time.
+# "None yet" rather than showing a stale name.
 DOWNLOADED_EVENT_SEARCH_LINES = 400
 NO_DOWNLOAD_YET_LABEL = "None yet"
+# Episode names can run very long. Anything past this many characters is cut
+# and replaced with an ellipsis so the status row stays on one line.
+LAST_DOWNLOAD_NAME_MAX_CHARS = 70
 
 
 def _last_download_label(activity_store: ActivityLogStore) -> str:
-    """Return when the most recent download finished, for the status row.
+    """Return the name of the most recent download, for the status row.
 
     Parameters
     ----------
@@ -589,17 +594,27 @@ def _last_download_label(activity_store: ActivityLogStore) -> str:
     Returns
     -------
     str
-        Toronto-local timestamp of the newest ``Downloaded:`` event, or a short
-        empty-state label when none is in the recent window.
+        Episode name from the newest ``Downloaded:`` event, without the ".mp3"
+        suffix and shortened when very long, or a short empty-state label when
+        no completed download is in the recent window.
     """
     recent_activity = activity_store.read_tail(
         DOWNLOADED_EVENT_SEARCH_LINES,
         empty_message="",
     )
     for line in reversed(recent_activity.splitlines()):
-        timestamp, separator, message = line.partition("] ")
-        if separator and message.startswith(DOWNLOADED_EVENT_PREFIX):
-            return timestamp.lstrip("[")
+        _timestamp, separator, message = line.partition("] ")
+        if not separator or not message.startswith(DOWNLOADED_EVENT_PREFIX):
+            continue
+        # "Downloaded: creator - ep.mp3" -> "creator - ep"
+        name = message[len(DOWNLOADED_EVENT_PREFIX) :].strip()
+        if name.endswith(DOWNLOADED_FILE_SUFFIX):
+            name = name[: -len(DOWNLOADED_FILE_SUFFIX)]
+        if not name:
+            continue
+        if len(name) > LAST_DOWNLOAD_NAME_MAX_CHARS:
+            name = name[: LAST_DOWNLOAD_NAME_MAX_CHARS - 1].rstrip() + "\u2026"
+        return name
     return NO_DOWNLOAD_YET_LABEL
 
 

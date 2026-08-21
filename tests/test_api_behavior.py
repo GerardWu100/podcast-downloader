@@ -1530,7 +1530,7 @@ def test_settings_page_warns_that_testing_does_not_save() -> None:
 
 
 def test_last_download_label_reads_the_newest_download_event(tmp_path) -> None:
-    """The status row reports the newest finished download, not the newest event."""
+    """The status row names the newest finished download, not the newest event."""
     from src.state.activity_store import ActivityLogStore
 
     activity_log = tmp_path / "activity.log"
@@ -1543,11 +1543,29 @@ def test_last_download_label_reads_the_newest_download_event(tmp_path) -> None:
 
     label = api_module._last_download_label(ActivityLogStore(activity_log))
 
-    assert label == "2026-08-19 15:51"
+    assert label == "creator - new episode"
+
+
+def test_last_download_label_shortens_a_very_long_name(tmp_path) -> None:
+    """A long episode name is cut to one line and marked with an ellipsis."""
+    from src.state.activity_store import ActivityLogStore
+
+    long_name = "creator - " + "a" * 200
+    activity_log = tmp_path / "activity.log"
+    activity_log.write_text(
+        f"[2026-08-19 15:51] Downloaded: {long_name}.mp3\n",
+        encoding="utf-8",
+    )
+
+    label = api_module._last_download_label(ActivityLogStore(activity_log))
+
+    assert len(label) == api_module.LAST_DOWNLOAD_NAME_MAX_CHARS
+    assert label.endswith("\u2026")
+    assert label.startswith("creator - ")
 
 
 def test_last_download_label_without_any_download(tmp_path) -> None:
-    """Failures only, or no log at all, must not show a misleading time."""
+    """Failures only, or no log at all, must not show a misleading name."""
     from src.state.activity_store import ActivityLogStore
 
     missing_log = tmp_path / "activity.log"

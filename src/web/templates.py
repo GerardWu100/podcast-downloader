@@ -810,14 +810,17 @@ def render_queue_page(
     .log-line--info .log-msg {{ color:var(--log-info); }}
     .log-line--dim .log-msg {{ color:var(--log-dim); }}
     .brand p {{ margin-top:3px; font-size:.8rem; }}
-    /* One quiet line inside the card rather than a full-width panel: these two
-       times are worth glancing at, not worth a third of the screen. */
+    /* One quiet line inside the card rather than a full-width panel: the last
+       episode name and the last update time are worth glancing at, not worth a
+       third of the screen. */
     .status-row {{
       display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:14px;
       padding-top:12px; border-top:1px solid var(--border);
       font-size:.76rem; color:var(--text);
       font-variant-numeric:tabular-nums;
     }}
+    /* Episode names can be long, so let them wrap instead of stretching the card. */
+    .status-row span {{ min-width:0; overflow-wrap:anywhere; }}
     .status-label {{
       color:var(--muted); font-size:.67rem; font-weight:700;
       letter-spacing:.07em; text-transform:uppercase; margin-right:4px;
@@ -870,7 +873,7 @@ def render_queue_page(
         {bypass_row_html}
       </form>
       <div class="status-row" aria-label="System status">
-        <span><span class="status-label">Last downloaded</span> {last_download}</span>
+        <span><span class="status-label">Last downloaded</span> <span title="{last_download}">{last_download}</span></span>
         <span><span class="status-label">Last update</span> {last_activity}</span>
       </div>
     </div>
