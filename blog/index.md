@@ -8,11 +8,11 @@ categories: ["Computer Science", "Data Engineering"]
 
 # A Podcast Downloader That Does Not Trust Exit Code 0
 
-I wanted a small service that could watch a YouTube channel, strip sponsor segments, and place finished episodes in Audiobookshelf. The first version of that sentence sounds like a small tool around one command. The finished project is mostly about everything that can go wrong around that command.
+I wanted a small service to watch a YouTube channel, strip sponsor segments, and place finished episodes in Audiobookshelf. That sounds like one command wrapped in a scheduler. Most of the project turned out to be the failure handling around that command.
 
 `yt-dlp` handles extraction. SponsorBlock supplies community-maintained time ranges for sponsor and self-promotion segments. `ffmpeg` copies the audio while updating its tags. Those tools handle the media work. The application still has to decide whether an episode really exists, whether it is safe to mark the URL as complete, and what happens when two scheduler processes see the same item.
 
-The useful design lesson turned out to be simple: a successful command is only evidence. It does not by itself mean that the application should mark the URL complete.
+A successful command is evidence, not permission to mark the URL complete. That rule became the center of the design.
 
 ## From a URL to a library item
 
@@ -22,7 +22,7 @@ YouTube downloads add SponsorBlock removal for the `sponsor` and `selfpromo` cat
 
 ![The complete URL-to-library pipeline](images/pipeline-flow.png)
 
-The diagram separates three concerns that are easy to blur together. Source policy decides *what* to attempt. Local checks decide whether the attempt produced a usable file. Saved state changes only after that check and publication succeed.
+The diagram keeps three decisions apart. Source policy chooses *what* to attempt. Local checks decide whether the attempt produced a usable file. Saved state changes only after verification and publication succeed.
 
 The scratch directory and the finished library are also separate. `yt-dlp` writes partial files, thumbnails, and converted audio into a per-source work folder. Only a stamped MP3 is moved into the Audiobookshelf-facing directory. A failed attempt cleans its scratch files, except for one narrow recovery case where an existing MP3 may be kept for a later metadata retry.
 
@@ -58,7 +58,7 @@ $$
 S(u) = V(u) \land M(u) \land P(u).
 $$
 
-The queue or archive changes only when $S(u)$ is true. In plain language: the URL is queued, tried, checked, tagged, published, and recorded—in that order.
+The queue or archive changes only when $S(u)$ is true. The order is fixed. Queue the URL, try it, check the file, write the tags, publish it, then record completion.
 
 The implementation is intentionally plain:
 
@@ -78,9 +78,9 @@ def _detect_changed_audio_files(
     return sorted(changed_files)
 ```
 
-There is one cautious recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the active source work folder, the service may retry the tagging step on that file. This covers a previous run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess. The search must stay in the active folder: an earlier implementation searched the whole temporary tree and could use another source's MP3 by mistake.
+There is one narrow recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the active source work folder, the service may retry the tagging step on that file. This covers a previous run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess. The search stays in the active folder because searching the whole temporary tree could select another source's MP3.
 
-## Retry policy: alternate credentials, not blind repetition
+## Retry with a different authentication mode
 
 The application makes at most two download attempts for a YouTube URL when a cookie file exists. If `always_use_cookies=true`, the first attempt uses cookies and the second is plain. If it is `false`, the order is reversed. The second attempt changes the authentication mode; repeating the identical request would add traffic without testing a different failure cause.
 
@@ -94,9 +94,9 @@ Audiobookshelf needs more than audio bytes. After extraction, the service writes
 - the normalized source URL in the `comment` tag;
 - the resolved channel name in the `artist` and `album` tags when one is available.
 
-That local completion timestamp is also the retention clock. It avoids confusing the video’s publication date with the date the file entered the local library.
+That local completion timestamp is also the retention clock. It avoids confusing the video's publication date with the date the file entered the local library.
 
-The rewrite has a subtle constraint. `ffmpeg` needs a temporary output, but replacing the final path with that temporary file can change the file’s inode. An inode is the filesystem identity behind a path, and media-library watchers may interpret a replacement as one item disappearing and another appearing. The writer uses [FFmpeg streamcopy](https://ffmpeg.org/ffmpeg.html#Streamcopy) with `-codec copy`, creates a hidden non-MP3 temporary file, copies the rewritten bytes back into the original MP3, and removes the temporary file. The original path and inode survive; the audio stream is not re-encoded during this metadata pass.
+The rewrite has a subtle constraint. `ffmpeg` needs a temporary output, but replacing the final path with that temporary file can change the file's inode. An inode is the filesystem identity behind a path, and media-library watchers may interpret a replacement as one item disappearing and another appearing. The writer uses [FFmpeg streamcopy](https://ffmpeg.org/ffmpeg.html#Streamcopy) with `-codec copy`, creates a hidden non-MP3 temporary file, copies the rewritten bytes back into the original MP3, and removes the temporary file. The original path and inode survive; the audio stream is not re-encoded during this metadata pass.
 
 Retention is deliberately fail-safe. It applies only to current YouTube channel folders, not playlists or one-off downloads. A file is eligible only when both its embedded completion date and source URL can be read. If either tag is missing or malformed, the service keeps the MP3 because it cannot safely update the archive after deletion.
 
@@ -108,7 +108,7 @@ The asymmetry matters: download uncertainty leaves work retryable, while deletio
 
 Expanded channel and playlist videos are recorded in `downloaded_urls.txt`. That history makes repeated polling safe: seeing the same normalized URL again should not trigger another download.
 
-A quick “check the file, then download, then append” sequence is still racy. Two workers can both check before either one appends. The code holds one exclusive file lock across the duplicate check, the slow download attempt, and the success append:
+A quick "check the file, then download, then append" sequence is still racy. Two workers can both check before either one appends. The code holds one exclusive file lock across the duplicate check, the slow download attempt, and the success append:
 
 ```python
 if use_archive:
@@ -166,7 +166,7 @@ This project is built for a personal Audiobookshelf workflow. Its file-based sta
 
 External behavior remains the largest uncontrolled variable. YouTube changes extraction requirements, browser cookies expire, SponsorBlock coverage varies by video, and `yt-dlp` evolves quickly enough that this project installs a current release outside its lockfile. The Docker image includes Deno for current YouTube JavaScript challenges, but no packaging choice can make an external extractor permanently stable.
 
-Still, the local rule is solid: do not change saved state because a command sounded confident. Check the file, record where it came from, publish it, and only then mark the work complete.
+The local rule is the part I trust. Do not change saved state because a command returned zero. Check the file, record where it came from, publish it, and only then mark the work complete.
 
 ## References
 
