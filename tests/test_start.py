@@ -161,7 +161,9 @@ def test_update_ytdlp_returns_false_when_package_update_fails(monkeypatch) -> No
         "pip",
         "install",
         "--upgrade",
-        "yt-dlp[default]",
+        "--prerelease",
+        "allow",
+        "yt-dlp[default,curl-cffi]",
         "--quiet",
     ]
 
@@ -206,7 +208,9 @@ def test_update_ytdlp_only_upgrades_that_package(monkeypatch) -> None:
         "pip",
         "install",
         "--upgrade",
-        "yt-dlp[default]",
+        "--prerelease",
+        "allow",
+        "yt-dlp[default,curl-cffi]",
         "--quiet",
     ]
     assert commands[1] == ["yt-dlp", "--version"]

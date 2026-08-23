@@ -52,6 +52,8 @@ except ValueError as exc:
 INTERVAL_SECONDS = INTERVAL_HOURS * 3600
 AUTO_UPDATE = os.environ.get("YT_DLP_AUTO_UPDATE", "true") == "true"
 POST_UPDATE_WAIT_SECONDS = 5 * 60
+YTDLP_PACKAGE_SPEC = "yt-dlp[default,curl-cffi]"
+YTDLP_PRERELEASE_MODE = "allow"
 
 
 def update_ytdlp() -> bool:
@@ -70,7 +72,16 @@ def update_ytdlp() -> bool:
         return False
 
     result = subprocess.run(
-        ["uv", "pip", "install", "--upgrade", "yt-dlp[default]", "--quiet"],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--upgrade",
+            "--prerelease",
+            YTDLP_PRERELEASE_MODE,
+            YTDLP_PACKAGE_SPEC,
+            "--quiet",
+        ],
         capture_output=True,
         text=True,
         check=False,

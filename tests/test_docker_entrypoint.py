@@ -40,13 +40,14 @@ def test_dockerfile_installs_deno_for_youtube_javascript_challenges() -> None:
     assert "/usr/local/bin/deno" in dockerfile_text
 
 
-def test_dockerfile_installs_ytdlp_default_dependency_group() -> None:
-    """The Docker image should install yt-dlp's EJS support dependencies."""
+def test_dockerfile_installs_ytdlp_nightly_with_browser_impersonation() -> None:
+    """The image should support YouTube JavaScript and Rumble impersonation."""
     dockerfile = PROJECT_ROOT / "Dockerfile"
 
     dockerfile_text = dockerfile.read_text(encoding="utf-8")
 
-    assert "yt-dlp[default]" in dockerfile_text
+    assert "--prerelease allow" in dockerfile_text
+    assert "yt-dlp[default,curl-cffi]" in dockerfile_text
 
 
 def test_dockerfile_installs_gosu_for_non_root_application_process() -> None:

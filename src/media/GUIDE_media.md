@@ -4,7 +4,7 @@
 
 `media/` interprets URLs without changing saved application state.
 
-- `urls.py` accepts absolute `http` and `https` URLs that `yt-dlp` can try.
+- `urls.py` accepts absolute `http` and `https` URLs that `yt-dlp` can try and identifies exact Rumble hosts for download policy.
 - `youtube.py` recognizes YouTube hosts, makes equivalent video URLs match,
   identifies channels, playlists, and Shorts, resolves display and folder names,
   checks upload age, and finds videos in channels or playlists.
@@ -26,7 +26,7 @@ video into a monitored source.
 
 ## Part 2: Code Reference
 
-- `urls.py`: `normalized_hostname()` and `is_supported_media_url()`.
+- `urls.py`: `normalized_hostname()`, `is_supported_media_url()`, and `is_rumble_url()`.
 - `youtube.py`: URL normalization/classification, metadata lookup, age policy,
   channel/playlist expansion, and YouTube cookie retry order.
 - `__init__.py`: package marker.
@@ -37,3 +37,4 @@ video into a monitored source.
   queue/archive/bypass adapters from the media layer.
 - 2026-08-10: Parsed-path source classification replaced whole-URL substring
   matching, and unusable metadata attempts began using cookie fallback.
+- 2026-08-23: Exact Rumble hostname classification enabled provider-specific browser impersonation without applying it to unrelated sites.

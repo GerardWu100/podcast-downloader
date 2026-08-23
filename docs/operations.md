@@ -45,7 +45,7 @@ When the container starts, it:
 2. Copies the image’s `.env` into the mounted data directory if no mounted `.env` exists. If the repository has no `.env`, it uses `.env.example`. The copied file is owner-only.
 3. Keeps an existing `/data/cookies.txt`, fixes its permissions to owner-only, and seeds it from the image’s repository-root `cookies.txt` only when the mounted data directory has no cookie file.
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, and `.login_state.json`.
-5. Performs a best-effort `yt-dlp` update when `YT_DLP_AUTO_UPDATE=true`.
+5. Performs a best-effort update to the latest `yt-dlp` nightly release and its browser-impersonation dependency when `YT_DLP_AUTO_UPDATE=true`.
 6. Changes existing files in the three mounted application directories to the configured host user and group, then runs the application as that identity. This repairs root-owned files from earlier runs and prevents new ones.
 
 `HOST_UID` and `HOST_GID` default to `1000`, the usual IDs of the first Linux
@@ -110,11 +110,12 @@ The web UI performs this conversion during upload.
 
 - Scheduled runs happen every `DOWNLOAD_INTERVAL_HOURS`.
 - Scheduler subprocesses run `python -m src.cli` from the project root, so Docker behavior does not depend on where the scheduler thread started.
-- `yt-dlp` is not pinned in `uv.lock`. Docker installs the latest PyPI release with `yt-dlp[default]` during `docker build` and upgrades it at each container start when `YT_DLP_AUTO_UPDATE=true`. Locally, run `uv pip install "yt-dlp[default]"` after `uv sync`.
+- `yt-dlp` is not pinned in `uv.lock`. Docker installs the latest nightly release with `yt-dlp[default,curl-cffi]` during `docker build` and upgrades it at each container start when `YT_DLP_AUTO_UPDATE=true`. Locally, run `uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"` after `uv sync`.
 - The Docker image includes Deno, which gives current `yt-dlp` YouTube extraction a supported JavaScript runtime.
+- Rumble downloads pass `--impersonate chrome`; `curl-cffi` supplies the browser-like network transport needed by Rumble's Cloudflare checks.
 - `ERROR: unable to download video data: HTTP Error 403: Forbidden` usually means YouTube now requires a GVS PO Token, not that the network or cookies are broken. Metadata succeeds, but the audio transfer is refused. See `youtube_player_client` in [cli-and-config.md](cli-and-config.md).
 - When a download fails, `download.log` holds the exact `yt-dlp` command and the complete output of every attempt, while `activity.log` holds a one-line cause. Copy the logged command to reproduce the failure by hand.
-- Scheduled updates affect only the `yt-dlp[default]` dependency group.
+- Scheduled updates affect only `yt-dlp` and the dependencies in its `default` and `curl-cffi` groups.
 - After a scheduled update, the downloader waits five minutes before starting the run unless a UI-triggered download arrives during that wait.
 - If the update fails, the scheduler logs a warning, reports the current `yt-dlp` version, and skips the five-minute wait.
 - A direct video URL added through the web UI starts an immediate run for that URL only.

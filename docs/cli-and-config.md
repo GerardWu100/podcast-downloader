@@ -81,13 +81,19 @@ The checked-in file is in the project root and contains one `[podcast]` section.
 | `HOST_UID` | Numeric host user that owns mounted Docker files; defaults to `1000` |
 | `HOST_GID` | Numeric host group that owns mounted Docker files; defaults to `1000` |
 
-`yt-dlp` is not listed in `uv.lock`. After `uv sync`, install the current release and its default YouTube challenge-solving dependencies:
+`yt-dlp` is not listed in `uv.lock`. After `uv sync`, install the current nightly release, its default YouTube dependencies, and its `curl-cffi` browser-impersonation transport:
 
 ```bash
-uv pip install "yt-dlp[default]"
+uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"
 ```
 
-Docker does this during the image build and at container startup. The image includes Deno for YouTube JavaScript challenges.
+Docker does this during the image build and at container startup. The image includes Deno for YouTube JavaScript challenges. Nightly is intentional: media-site fixes often land there before the stable release.
+
+## Rumble browser impersonation
+
+Rumble protects its page and metadata endpoint with Cloudflare checks that can reject a normal command-line HTTP client with `HTTP Error 403: Forbidden`. For exact `rumble.com` URLs, the downloader passes `--impersonate chrome`. The `curl-cffi` dependency makes that option behave like a Chrome network request.
+
+This policy is limited to Rumble. Other non-YouTube sites keep the ordinary `--no-playlist` command because forcing browser impersonation can change compatibility and performance.
 
 ## YouTube player client
 

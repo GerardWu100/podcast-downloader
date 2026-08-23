@@ -52,8 +52,9 @@ does not leave a half-written document.
   starts `python -m src.cli` for scheduled downloads.
 - `config.ini`: checked-in runtime defaults.
 - `docker-entrypoint.sh`: initializes mounted state, `.env` and cookie files,
-  performs the best-effort `yt-dlp` update, repairs mounted-file ownership, and
-  drops to the configured host identity before starting the application.
+  performs the best-effort nightly `yt-dlp` and browser-impersonation dependency
+  update, repairs mounted-file ownership, and drops to the configured host
+  identity before starting the application.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
 - `scripts/sponsorblock_smoke_check.py`: optional live-network check run by hand.
@@ -103,3 +104,4 @@ uv run python -m pytest -q
 - 2026-08-19: Docker startup began repairing the three mounted application
   directories and running the app as `HOST_UID:HOST_GID`, preventing root-owned
   podcast files that require `sudo` to delete on the host.
+- 2026-08-23: Docker and scheduler updates moved to nightly yt-dlp with the `curl-cffi` extra so Rumble's Cloudflare-protected endpoints can use Chrome request impersonation.

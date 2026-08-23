@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..config import DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
+from ..media.urls import is_rumble_url
 from ..media.youtube import is_youtube_url
 
 SPONSORBLOCK_CATEGORIES = "sponsor,selfpromo"
 DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
+RUMBLE_IMPERSONATE_TARGET = "chrome"
 YTDLP_OUTPUT_FILENAME_TEMPLATE = "%(channel,uploader)s - %(title)s [%(id)s].%(ext)s"
 # The browser activity feed is one line per event, so the cause shown there has
 # to stay short. The full text always remains in the detailed log.
@@ -277,6 +279,10 @@ class YtDlpClient:
                 )
         else:
             command.append("--no-playlist")
+            if is_rumble_url(url):
+                # Rumble's Cloudflare checks reject ordinary HTTP clients. The
+                # curl-cffi yt-dlp extra supplies a matching browser transport.
+                command.extend(["--impersonate", RUMBLE_IMPERSONATE_TARGET])
         if cookies_file is not None:
             command.extend(["--cookies", str(cookies_file)])
 

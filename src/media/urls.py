@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+RUMBLE_HOSTNAMES = {"rumble.com", "www.rumble.com"}
+
 
 def normalized_hostname(url: str) -> str:
     """Return the lower-case hostname without its port.
@@ -46,3 +48,19 @@ def is_supported_media_url(url: str) -> bool:
     # Keep this check independent of any provider. Provider modules add their
     # own classification, normalization, and policy.
     return parsed_url.scheme in {"http", "https"} and bool(parsed_url.netloc)
+
+
+def is_rumble_url(url: str) -> bool:
+    """Return whether a URL belongs to Rumble.
+
+    Parameters
+    ----------
+    url:
+        Candidate media URL.
+
+    Returns
+    -------
+    bool
+        ``True`` for Rumble page and embed URLs.
+    """
+    return normalized_hostname(url) in RUMBLE_HOSTNAMES

@@ -35,14 +35,16 @@ Set these values in `.env`; see `.env.example`:
 
 ```bash
 uv sync --dev
-uv pip install "yt-dlp[default]"
+uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"
 cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
 `yt-dlp` is installed separately instead of being pinned in `uv.lock` because
-YouTube extraction changes often. Add one source URL per line to `urls.txt`,
-then review `config.ini` for paths, delays, and retention.
+media sites change often. The nightly release receives extractor fixes before
+stable, and `curl-cffi` lets Rumble requests use the browser fingerprint that
+its Cloudflare checks require. Add one source URL per line to `urls.txt`, then
+review `config.ini` for paths, delays, and retention.
 
 ## Usage
 
@@ -125,6 +127,7 @@ to the values from `id -u` and `id -g` when the host account uses other IDs. See
 
 - Channel and playlist expansion parses `yt-dlp` output. An upstream `yt-dlp` or YouTube change can break it.
 - YouTube is tightening access to player clients that provide stream URLs without a proof-of-origin token. `youtube_player_client` may need to change over time.
+- Rumble uses changing Cloudflare checks. The downloader uses Chrome request impersonation, but a future Rumble change can still require a newer yt-dlp nightly release.
 - SponsorBlock removal depends on community-submitted segment data.
 - The web UI uses shared accounts from `.env` and has no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
 

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.media import youtube
+from src.media.urls import is_rumble_url
 from src.media.youtube import (
     expand_channel_or_playlist,
     get_youtube_playlist_folder_name,
@@ -120,6 +121,13 @@ def test_queue_store_accepts_non_youtube_video_urls(tmp_path) -> None:
 
     assert added == 1
     assert loaded_urls == [non_youtube_url]
+
+
+def test_rumble_url_detection_rejects_lookalike_hosts() -> None:
+    """Provider policy should apply only to Rumble's exact host names."""
+    assert is_rumble_url("https://rumble.com/v7eg1qc-episode.html") is True
+    assert is_rumble_url("https://www.rumble.com/embed/v7c9osu") is True
+    assert is_rumble_url("https://rumble.com.example.test/video") is False
 
 
 def test_queue_store_appends_reads_and_removes_normalized_urls(tmp_path) -> None:

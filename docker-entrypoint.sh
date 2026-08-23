@@ -5,6 +5,7 @@ DATA_DIR="${PODCAST_DATA_DIR:-/app}"
 DOWNLOAD_DIR="${PODCAST_DOWNLOAD_DIR:-$DATA_DIR/downloads}"
 INTERMEDIATE_DIR="${PODCAST_INTERMEDIATE_DIR:-$DATA_DIR/download_work}"
 AUTO_UPDATE="${YT_DLP_AUTO_UPDATE:-true}"
+YTDLP_PACKAGE_SPEC="yt-dlp[default,curl-cffi]"
 HOST_UID="${HOST_UID:-1000}"
 HOST_GID="${HOST_GID:-1000}"
 SCRIPT_DIR="$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)"
@@ -91,7 +92,7 @@ fi
 # Keep yt-dlp current, but do not fail container startup on transient network issues.
 if [ "$AUTO_UPDATE" = "true" ]; then
     echo "[startup] Updating yt-dlp..."
-    if uv pip install --upgrade "yt-dlp[default]" --quiet; then
+    if uv pip install --upgrade --prerelease allow "$YTDLP_PACKAGE_SPEC" --quiet; then
         echo "[startup] yt-dlp $(yt-dlp --version)"
     else
         echo "[startup] Warning: yt-dlp update failed, continuing with bundled version $(yt-dlp --version)"

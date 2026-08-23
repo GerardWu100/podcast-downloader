@@ -30,13 +30,14 @@ Each area has one job. `src/media/` interprets URLs without changing saved state
 4. Direct YouTube videos wait when `min_channel_video_age_hours > 0`, unless the user skips the wait from the CLI or web UI.
 5. Channel results are filtered. YouTube Shorts are skipped, as are videos newer than `min_channel_video_age_hours` when upload age is known. This includes results where `yt-dlp` reports a timestamp placeholder but still provides an upload date.
 6. Each selected video is downloaded as audio. SponsorBlock removal is enabled only for YouTube URLs.
-7. YouTube cookie use follows `always_use_cookies`: the app tries with cookies first or without them first, then makes one attempt using the other choice after a failure, timeout, empty result, or placeholder-only metadata.
-8. MP3 files go under the configured download directory. Channel and playlist sources get their own folders; direct individual videos go into `singles/`. Filenames contain the channel or uploader, title, and extractor media ID.
-9. A download succeeds only when an MP3 is created or changed inside the active source work folder.
-10. Successful MP3 files receive an embedded date tag with the local completion time and a comment tag containing the source URL.
-11. Before a scheduled full-queue cycle checks archived channel candidates, channel MP3 files older than `retention_days` are deleted when their metadata proves both the download date and source video URL. Playlist and single-video MP3 files are not deleted by retention cleanup.
-12. Detailed diagnostics go to `download.log`; short browser messages go to `activity.log`. Failures appear in both: the full command and output in `download.log`, and a one-line cause in `activity.log`.
-13. Successful direct-video URLs are removed from `urls.txt`. Successful expanded URLs are written to `downloaded_urls.txt`, so future channel scans do not download them again.
+7. Exact Rumble hosts use Chrome request impersonation through `curl-cffi` so Cloudflare accepts the page and metadata requests.
+8. YouTube cookie use follows `always_use_cookies`: the app tries with cookies first or without them first, then makes one attempt using the other choice after a failure, timeout, empty result, or placeholder-only metadata.
+9. MP3 files go under the configured download directory. Channel and playlist sources get their own folders; direct individual videos go into `singles/`. Filenames contain the channel or uploader, title, and extractor media ID.
+10. A download succeeds only when an MP3 is created or changed inside the active source work folder.
+11. Successful MP3 files receive an embedded date tag with the local completion time and a comment tag containing the source URL.
+12. Before a scheduled full-queue cycle checks archived channel candidates, channel MP3 files older than `retention_days` are deleted when their metadata proves both the download date and source video URL. Playlist and single-video MP3 files are not deleted by retention cleanup.
+13. Detailed diagnostics go to `download.log`; short browser messages go to `activity.log`. Failures appear in both: the full command and output in `download.log`, and a one-line cause in `activity.log`.
+14. Successful direct-video URLs are removed from `urls.txt`. Successful expanded URLs are written to `downloaded_urls.txt`, so future channel scans do not download them again.
 
 ## Why the downloader checks file changes
 
@@ -139,6 +140,7 @@ Channel and playlist downloads hold a separate claim lock during the duplicate c
 
 - `yt-dlp` and SponsorBlock are external dependencies.
 - SponsorBlock is used only for YouTube. Non-YouTube URLs go through `yt-dlp` without SponsorBlock flags and with `--no-playlist`.
+- Rumble URLs additionally use Chrome request impersonation. Exact hostname matching prevents a lookalike host from receiving provider-specific command policy.
 - Queue URLs are user input and are passed to `yt-dlp` after `--`, so they cannot be interpreted as command-line flags.
 - Proxy headers are trusted only when `trust_x_forwarded_for = true`.
 - Browser sessions are saved in `.ui_sessions.json` and are not tied to the login IP. The client IP is used only for temporary login bans. Public entry pages send a browser with a valid session to `/ui`.

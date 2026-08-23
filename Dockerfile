@@ -18,7 +18,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Install Python deps (cached layer unless pyproject.toml/uv.lock change)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev \
-    && uv pip install "yt-dlp[default]"
+    && uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"
 
 # Unbuffered output so all logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1

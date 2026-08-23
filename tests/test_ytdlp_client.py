@@ -84,6 +84,24 @@ def test_non_youtube_download_disables_playlist_without_cookie_retry(
     assert "--sponsorblock-remove" not in commands[0]
 
 
+def test_rumble_download_impersonates_chrome(tmp_path: Path) -> None:
+    """Rumble commands should use the browser transport Cloudflare accepts."""
+    client = YtDlpClient(
+        cookies_file=None,
+        always_use_cookies=False,
+        logger=logging.getLogger("test.ytdlp"),
+    )
+
+    command = client.build_download_command(
+        "https://rumble.com/v7eg1qc-america-first-ep.-1737.html",
+        tmp_path / "work",
+        None,
+    )
+
+    assert command[command.index("--impersonate") + 1] == "chrome"
+    assert "--no-playlist" in command
+
+
 def test_download_command_pins_youtube_player_client_and_relative_output(
     tmp_path: Path,
 ) -> None:
