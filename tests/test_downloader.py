@@ -10,6 +10,9 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
+import src.downloads.audio_metadata as audio_metadata_module
 import src.downloads.service as downloads_service_module
 from src.downloads.audio_metadata import AudioMetadataWriter
 from src.downloads.service import PodcastDownloadService
@@ -185,7 +188,6 @@ def test_write_audio_download_date_metadata_updates_mp3_date_tag(
         check=False,
     )
     assert create_result.returncode == 0, create_result.stderr
-    original_inode = audio_file.stat().st_ino
 
     downloader._write_audio_download_date_metadata(
         audio_file,
@@ -212,7 +214,9 @@ def test_write_audio_download_date_metadata_updates_mp3_date_tag(
 
     assert probe_result.returncode == 0, probe_result.stderr
     assert probe_result.stdout.strip() == "2026-04-30T12:34:56-04:00"
-    assert audio_file.stat().st_ino == original_inode
+    # The atomic rename replaces the inode, so the property that matters to
+    # library scanners is that one MP3 stays at one path with no leftovers.
+    assert [path.name for path in downloads_dir.iterdir()] == ["episode.mp3"]
 
 
 def test_write_audio_download_date_metadata_avoids_scannable_temp_mp3(
@@ -255,6 +259,63 @@ def test_write_audio_download_date_metadata_avoids_scannable_temp_mp3(
     )
 
     assert audio_file.read_text(encoding="utf-8") == "audio after metadata"
+
+
+def test_write_download_metadata_keeps_original_mp3_when_copy_back_fails(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A failure while publishing the tagged audio must not damage the MP3."""
+    audio_file = tmp_path / "episode.mp3"
+    audio_file.write_bytes(b"original audio")
+
+    def fake_run(
+        command: list[str],
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"tagged audio")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    def failing_copyfileobj(source_file, destination_file, *args, **kwargs) -> None:
+        destination_file.write(b"partial")
+        raise OSError("no space left on device")
+
+    monkeypatch.setattr(audio_metadata_module.shutil, "copyfileobj", failing_copyfileobj)
+
+    writer = AudioMetadataWriter(run_command=fake_run)
+    with pytest.raises(OSError):
+        writer.write_download_metadata(
+            audio_file,
+            "2026-04-30T12:34:56-04:00",
+            "https://videos.example.com/watch/episode-1",
+        )
+
+    assert audio_file.read_bytes() == b"original audio"
+    assert [path.name for path in tmp_path.iterdir()] == ["episode.mp3"]
+
+
+def test_write_download_metadata_leaves_no_temporary_files(
+    tmp_path,
+) -> None:
+    """A successful metadata pass leaves exactly one file at the original path."""
+    audio_file = tmp_path / "episode.mp3"
+    audio_file.write_bytes(b"original audio")
+
+    def fake_run(
+        command: list[str],
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"tagged audio")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    AudioMetadataWriter(run_command=fake_run).write_download_metadata(
+        audio_file,
+        "2026-04-30T12:34:56-04:00",
+        "https://videos.example.com/watch/episode-1",
+    )
+
+    assert audio_file.read_bytes() == b"tagged audio"
+    assert [path.name for path in tmp_path.iterdir()] == ["episode.mp3"]
 
 
 def test_write_download_metadata_tolerates_non_utf8_ffmpeg_stderr(

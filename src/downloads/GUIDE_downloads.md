@@ -41,7 +41,7 @@ $$
 
 - `service.py`: `PodcastDownloadService`, source routing, publication, recovery, retention, and state coordination.
 - `ytdlp_client.py`: `YtDlpClient`, `YtDlpResult`, `AudioSnapshot`, and external download policy.
-- `audio_metadata.py`: `AudioMetadataWriter`, which uses `ffmpeg` to preserve streams while writing project-managed tags.
+- `audio_metadata.py`: `AudioMetadataWriter`, which uses `ffmpeg` to preserve streams while writing project-managed tags. It stages the tagged audio in two hidden temporary files, neither named `*.mp3`, then swaps the finished file onto the original path with an atomic rename. The original MP3 is never opened for writing, so a failure part-way through leaves the untagged file intact.
 - `__init__.py`: package marker.
 
 ## Journal
@@ -49,4 +49,5 @@ $$
 - 2026-07-26: Audio subprocess execution, cookie retries, and snapshots moved into the injectable, typed `YtDlpClient`; the service now consumes its result directly.
 - 2026-08-10: The per-attempt timeout became the configurable `download_timeout_seconds`, with a default of one hour. The old five-minute limit could not finish a full-length episode, and timed-out items were never archived. `download.log` also gained 5 MB rotation with three retained copies.
 - 2026-08-10: Download claims moved off the archive file, direct scratch work gained a process lock, and age bypasses became one-use values consumed before their run.
+- 2026-08-24: The metadata pass now publishes through an atomic rename instead of rewriting the original MP3 in place. A failed copy-back used to leave a truncated audio file behind.
 - 2026-08-23: Rumble downloads began using Chrome request impersonation, paired with nightly yt-dlp and `curl-cffi`, after Cloudflare blocked both page and metadata requests from ordinary clients.

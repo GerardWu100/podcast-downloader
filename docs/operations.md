@@ -130,7 +130,7 @@ The web UI performs this conversion during upload.
 
 Completed MP3 files receive an embedded MP3 `date` tag set to the Toronto/Eastern completion time. Audiobookshelf uses it as the visible episode date. The same metadata pass stores the source URL in the MP3 `comment` tag.
 
-YouTube URLs are stored in canonical watch form, including live URLs. Other URLs are stored as provided. The metadata rewrite uses a non-`.mp3` temporary file and copies the result back to the original path without replacing its inode. This helps Audiobookshelf avoid indexing a temporary or replacement duplicate during a scan.
+YouTube URLs are stored in canonical watch form, including live URLs. Other URLs are stored as provided. The metadata rewrite stages its output in two hidden temporary files, neither of them named `*.mp3`, then swaps the finished file onto the original path with an atomic rename. A directory scan therefore always sees exactly one `.mp3` at one stable path, so Audiobookshelf never indexes a temporary or duplicate file. The rename does replace the file's inode. That is a deliberate trade for safety: the original file is never opened for writing, so a failure part-way through the metadata pass leaves the untagged MP3 intact instead of truncating it.
 
 The downloader also uses `--no-mtime` in the `yt-dlp` command. It does not separately reset the filesystem timestamp for Audiobookshelf.
 
