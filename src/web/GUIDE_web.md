@@ -103,6 +103,10 @@ pages stay consistent.
   defaults.
 - 2026-08-26: The queue moved from `/ui` to `/`, replacing the redirecting
   landing route, and the header title became a link back to it.
+- 2026-08-26: `/help` became the doc page. The links to it now read "Doc"
+  rather than "How it works" or "Help", and it gained a command reference. An
+  agent driving this project has no browser session, so the page it is pointed
+  at has to carry the commands or it falls back to guessing flags.
 - 2026-08-26: The interface became installable as a phone app. The blocker was
   not the missing manifest but the CSP: `default-src 'none'` with no
   `manifest-src` or `worker-src` silently rejected both files, so the browser

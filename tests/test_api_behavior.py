@@ -143,14 +143,21 @@ def test_login_page_redirects_remembered_session_to_the_queue() -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
-def test_help_page_explains_behavior_and_cookie_setup() -> None:
-    """Public help should cover core controls and link to official cookie guidance."""
+def test_doc_page_covers_use_agent_commands_and_cookie_setup() -> None:
+    """The doc page serves two readers: a person driving the UI and an agent.
+
+    An agent that cannot find the commands here falls back to guessing flags,
+    so the command section matters as much as the browser instructions.
+    """
     response = api_module.help_page()
     body = response.body.decode("utf-8")
 
     assert response.status_code == 200
-    assert "What it does" in body
-    assert "Controls" in body
+    assert "Using the queue" in body
+    assert "What happens to a download" in body
+    assert "Commands for agents" in body
+    assert "--add-url" in body
+    assert "--download-full-playlist" in body
     assert "Adding YouTube access cookies" in body
     assert "github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies" in body
     assert "Content-Security-Policy" in response.headers
@@ -193,7 +200,7 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
     # The status line sits inside the add-source card, after its form.
     assert body.index('action="/add-url"') < body.index('aria-label="System status"')
     assert body.index('aria-label="System status"') < body.index("Sources in queue")
-    assert '<a class="nav-link" href="/help">Help</a>' in body
+    assert '<a class="nav-link" href="/help">Doc</a>' in body
 
     api_module.SESSIONS.pop(session_id, None)
     api_module.CSRF_TOKENS.pop(session_id, None)

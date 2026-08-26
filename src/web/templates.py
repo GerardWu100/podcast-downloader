@@ -340,7 +340,7 @@ def render_help_page(
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Podcast Downloader Help</title>
+  <title>Doc - Podcast Downloader</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   {HEAD_APP_TAGS}
   <style>
@@ -366,9 +366,21 @@ def render_help_page(
     .help-card p {{ margin:0 0 10px; }}
     .help-card ol,.help-card ul {{ margin:8px 0 0; padding-left:20px; }}
     .help-card li + li {{ margin-top:7px; }}
+    .help-card h3 {{ margin:18px 0 6px; font-size:.86rem; color:var(--muted); }}
     .help-card code {{
       padding:2px 5px; border:1px solid var(--border); border-radius:5px;
       background:var(--input-bg); font-size:.82em;
+    }}
+    /* Command blocks. A long command scrolls inside its own box instead of
+       widening the page, and the inline `code` border is dropped so a block of
+       commands does not read as a stack of separate chips. */
+    .help-card pre {{
+      margin:0 0 10px; padding:11px 13px; border:1px solid var(--border);
+      border-radius:9px; background:var(--input-bg); overflow-x:auto;
+    }}
+    .help-card pre code {{
+      padding:0; border:none; background:none; font-size:.8rem;
+      line-height:1.65; white-space:pre;
     }}
     .note {{
       margin-top:12px; padding:11px 13px; border:1px solid var(--warn-border);
@@ -388,29 +400,54 @@ def render_help_page(
       <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
     </nav>
     <article class="card help-card">
-      <h1>How Podcast Downloader works</h1>
-      <p class="lead">Add sources, track downloads, and update YouTube access.</p>
+      <h1>Doc</h1>
 
-      <h2>What it does</h2>
+      <h2>Using the queue</h2>
       <ul>
-        <li>Add a YouTube channel, playlist, livestream, or direct video URL.</li>
-        <li>Channels and playlists stay in the queue in <code>urls.txt</code>.</li>
-        <li>Finished audio is saved as MP3, with sponsor segments removed when available.</li>
-        <li>Activity gives a short summary; the detailed log helps diagnose problems.</li>
+        <li><strong>Add:</strong> paste a YouTube channel, playlist, livestream, or direct video URL. Channels and playlists stay in the queue and are checked again on every run; a direct video leaves the queue once it downloads.</li>
+        <li><strong>Run now:</strong> skip the waiting period for a direct video, or download a playlist in full instead of only its most recent videos.</li>
+        <li><strong>Remove:</strong> stop watching a queued URL. Audio already downloaded is kept.</li>
+        <li><strong>Settings:</strong> replace the YouTube cookie file and set where failures are reported.</li>
       </ul>
 
-      <h2>Controls</h2>
+      <h2>What happens to a download</h2>
       <ul>
-        <li><strong>Add:</strong> put a supported URL in the queue.</li>
-        <li><strong>Run now:</strong> skip the waiting period for a direct YouTube video, or download a full playlist.</li>
-        <li><strong>Remove:</strong> stop monitoring a queued URL.</li>
-        <li><strong>Upload:</strong> replace the YouTube cookie file used by <code>yt-dlp</code>.</li>
+        <li>A new video waits before downloading, so SponsorBlock has time to publish its segment data. <strong>Run now</strong> skips that wait.</li>
+        <li>Sponsor segments are cut when data exists. Without it the episode downloads whole.</li>
+        <li>Audio is saved as MP3 and grouped by source. YouTube Shorts are skipped.</li>
+        <li>MP3 files in channel folders are deleted after the retention period. Files from a direct URL are kept.</li>
+        <li>Activity is the short summary. The detailed log is for working out why something failed.</li>
+      </ul>
+
+      <h2>Commands for agents</h2>
+      <p>Run these from the project directory. Everything the browser interface does is also a command, so an agent needs no browser session.</p>
+      <h3>Queue a URL and exit</h3>
+      <pre><code>uv run python main.py --add-url "https://www.youtube.com/watch?v=VIDEO_ID"
+uv run python main.py --add-url "URL_ONE" --add-url "URL_TWO"
+uv run python main.py --add-url-stdin &lt; new_urls.txt</code></pre>
+      <p>Add <code>--skip-age-check</code> to mark a direct YouTube video for an age-gate bypass on its next run.</p>
+      <h3>Download now</h3>
+      <pre><code>uv run python main.py --download-single-url "https://videos.example.com/watch/episode-1"
+uv run python main.py --download-full-playlist "https://www.youtube.com/playlist?list=LIST_ID"</code></pre>
+      <h3>Work through the queue</h3>
+      <pre><code>uv run python main.py
+uv run python main.py -n 10
+uv run python main.py -f custom_urls.txt -o ./custom_downloads</code></pre>
+      <p><code>-n</code> sets how many recent videos to check per channel or playlist, <code>-f</code> the queue file, and <code>-o</code> the download folder.</p>
+
+      <h3>Rules for an agent</h3>
+      <ul>
+        <li>Direct downloads take a file lock, so two commands started at once wait for each other rather than corrupting the scratch folder. They do not fail.</li>
+        <li>A URL already in <code>downloaded_urls.txt</code> is not downloaded again. Adding it a second time is harmless and does nothing.</li>
+        <li>A download can take minutes. Allow a generous timeout instead of retrying, or the retry will simply queue behind the first attempt.</li>
+        <li>Failures are reported through the notification service configured in Settings, not on standard output.</li>
       </ul>
 
       <h2>Adding YouTube access cookies</h2>
+      <p>Do this when downloads start failing with a sign-in or age-restriction error.</p>
       <ol>
         <li>Export browser cookies in Netscape format as a text file.</li>
-        <li>Open the YouTube access cookies card in the downloader.</li>
+        <li>Open Settings in the downloader.</li>
         <li>Select the exported file and choose Upload.</li>
       </ol>
       <p class="note">
@@ -496,7 +533,7 @@ def render_login_page(
         spellcheck="false" required />
       <button type="submit" class="btn">Sign in</button>
     </form>
-    <a class="help-link text-link" href="/help">How it works</a>
+    <a class="help-link text-link" href="/help">Doc</a>
       </div>
       <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
     const savedTheme = localStorage.getItem('podcast-theme');
@@ -589,7 +626,7 @@ def render_settings_page(
       </div>
       <div class="header-actions">
         <a class="nav-link" href="/">Queue</a>
-        <a class="nav-link" href="/help">Help</a>
+        <a class="nav-link" href="/help">Doc</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
         <form method="post" action="/logout" style="margin:0">
           <input type="hidden" name="csrf_token" value="{safe_token}" />
@@ -892,7 +929,7 @@ def render_queue_page(
       </div>
       <div class="header-actions">
         <a class="nav-link" href="/settings">Settings</a>
-        <a class="nav-link" href="/help">Help</a>
+        <a class="nav-link" href="/help">Doc</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
         <form method="post" action="/logout" style="margin:0">
           <input type="hidden" name="csrf_token" value="{safe_token}" />
