@@ -3,7 +3,8 @@
 ## Test strategy
 
 The suite runs offline. It checks the boundaries between application areas and
-replaces subprocesses and external services instead of contacting media sites.
+replaces subprocesses and external services, so it does not contact media
+sites.
 
 It covers:
 
@@ -16,8 +17,8 @@ It covers:
   bootstrap.
 
 The live SponsorBlock check is
-`scripts/sponsorblock_smoke_check.py`. It uses the network and is deliberately
-outside `tests/`, so Pytest does not collect it by accident.
+`scripts/sponsorblock_smoke_check.py`. It uses the network and stays outside
+`tests/`, so Pytest does not collect it by accident.
 
 ## Code reference
 
@@ -43,8 +44,7 @@ outside `tests/`, so Pytest does not collect it by accident.
 
 Regression coverage also checks non-finite settings, strict URL modes,
 YouTube path parsing, empty cookie-fallback results, one-use age bypasses,
-stale credential removal, private authentication files, and isolated factory
-sessions.
+stale credentials, private authentication files, and isolated factory sessions.
 
 Run the offline suite from the project root:
 

@@ -2,8 +2,8 @@
 
 ## Purpose
 
-`docs/` contains user and operator documentation. The `GUIDE_*` files beside
-the code are for developers and future agents.
+`docs/` contains user and operator documentation. The `GUIDE_*` files are for
+developers and future agents.
 
 Suggested reading order:
 
@@ -29,4 +29,4 @@ Suggested reading order:
 - 2026-07-26: Consolidated stale root overviews into the architecture page and updated the module boundaries.
 - 2026-08-18: Added `notifications.md` when Apprise notifications and their settings card were introduced.
 - 2026-08-10: Removed point-in-time engineering records that described code no longer in the project.
-- 2026-08-26: Added `browser-extension.md` with setup steps, API details, and the reason it cannot reuse the web login.
+- 2026-08-26: Added `browser-extension.md` with setup, API details, and the reason it cannot reuse the web login.

@@ -1,9 +1,9 @@
 # Podcast Downloader
 
-Podcast Downloader downloads online videos as local MP3 files for
+Podcast Downloader turns online videos into local MP3 files for
 [Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels
 and playlists, downloads individual URLs, removes SponsorBlock segments when
-available, and can run from the command line or a browser.
+available, and runs from the command line or a browser.
 
 ## Features
 
@@ -20,7 +20,7 @@ available, and can run from the command line or a browser.
   to queue the current page.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
-map. [docs/intro.md](docs/intro.md) is a shorter overview.
+map, or [docs/intro.md](docs/intro.md) for a shorter overview.
 
 ## Requirements
 
@@ -49,9 +49,8 @@ cp .env.example .env
 ```
 
 `yt-dlp` is installed separately because media sites change frequently.
-Nightly releases usually receive fixes first. The `curl-cffi` package lets
-Rumble requests use the browser network fingerprint needed for its Cloudflare
-checks.
+Nightly releases usually receive fixes first. `curl-cffi` lets Rumble requests
+use the browser network fingerprint needed for its Cloudflare checks.
 
 Add one source URL per line to `urls.txt`, then review `config.ini` for
 paths, delays, and retention.
@@ -71,7 +70,7 @@ uv run python scripts/sponsorblock_smoke_check.py
 ```
 
 The first command runs one queue pass. The second overrides the queue file,
-output folder, and number of recent channel or playlist entries. The remaining
+output folder, and number of recent channel or playlist entries. The other
 commands add URLs, download one URL or a full playlist, start the web
 interface, run offline tests, or run the live SponsorBlock check.
 
@@ -118,16 +117,17 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` holds a Chrome extension that adds the page you are on to the
-queue. Click the toolbar icon, right-click a link, or press Alt+Shift+D.
+`extension/` holds a Chrome extension that adds the page you are on—or a link
+on that page—to the queue. Click the toolbar icon, right-click, or press
+Alt+Shift+D.
 
 Load `extension/` through **Load unpacked** at `chrome://extensions`, then open
 its options and enter your server address plus the same username and password
 you use on the web page. Nothing to configure on the server.
 
-It signs in through an `Authorization` header rather than the browser session,
-because that session cookie is `HttpOnly` and `SameSite=lax` and no extension
-script can use it. The same two routes work from any script:
+It signs in through an `Authorization` header rather than the browser session.
+The session cookie is `HttpOnly` and `SameSite=lax`, so an extension script
+cannot use it. The same two routes work from any script:
 
 ```bash
 curl -u "$USERNAME:$PASSWORD" https://your-server/api/ping
@@ -137,7 +137,7 @@ curl -X POST https://your-server/api/add-url \
 ```
 
 Wrong passwords count toward the same ban as the login page: five failures in
-ten minutes blocks that address for fifteen minutes. See
+ten minutes block that address for fifteen minutes. See
 [docs/browser-extension.md](docs/browser-extension.md).
 
 ## Error notifications

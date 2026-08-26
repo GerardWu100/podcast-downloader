@@ -2,7 +2,7 @@
 
 ## Architecture
 
-`src/` is the importable application package. Each area has a focused job:
+`src/` is the importable application package. Each area has one focused job:
 
 ```mermaid
 flowchart LR
@@ -25,9 +25,9 @@ flowchart LR
 - `cli.py` parses commands and sends work to the right store or service.
 
 Notifications report delivery failures as results instead of breaking a
-download. URL rules do not write queue or history files. State stores do not
-run `yt-dlp`. The download service coordinates these areas without taking over
-their jobs.
+download. URL rules do not write queue or history files, and state stores do
+not run `yt-dlp`. The download service coordinates these areas without taking
+over their jobs.
 
 ## Code reference
 

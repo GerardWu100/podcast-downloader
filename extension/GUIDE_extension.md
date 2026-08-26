@@ -3,9 +3,9 @@
 ## Purpose
 
 This folder contains a Chrome extension that sends the current page or a link
-to the download queue. It is a client of the server, not part of the server:
-`.dockerignore` leaves it out of the Docker image, and code in `src/` does not
-import it.
+to the download queue. It is a separate client, not server code:
+`.dockerignore` leaves it out of the Docker image, and `src/` does not import
+it.
 
 User setup is in [`docs/browser-extension.md`](../docs/browser-extension.md).
 
@@ -14,7 +14,7 @@ User setup is in [`docs/browser-extension.md`](../docs/browser-extension.md).
 ```text
 toolbar click / Alt+Shift+D / context menu
   -> background.js reads settings and calls /api/add-url
-  -> src/web/api_routes.py checks the name and password (account_auth.py)
+  -> src/web/api_routes.py checks the username and password (account_auth.py)
   -> src/web/queue_actions.py applies the normal queue rules
   -> urls.txt is updated; immediate direct downloads wake the scheduler
   -> the result updates the badge and, on failure, a notification
@@ -42,9 +42,9 @@ rules.
 
 ## Decisions
 
-- Sign in with the same account as the web page, so there is no extra secret
-  to set up on the server. The cost is that the password sits in extension
-  storage, and revoking it means changing the web password.
+- Sign in with the same account as the web page, so the server needs no extra
+  secret. The trade-off is that the password sits in extension storage, and
+  revoking it means changing the web password.
 - Store settings in `chrome.storage.local`, not `sync`, so the password is not
   copied to every Chrome profile using the same Google account.
 - Treat a bare hostname as `https`; users must type `http://` when they accept
@@ -57,7 +57,7 @@ rules.
   cookies automatically; a header the client fills in from its own settings is
   never automatic.
 - Accept that a badge can remain briefly if Chrome stops the worker before its
-  clear timer runs. The next submission replaces it.
+  clear timer runs; the next submission replaces it.
 
 ## Testing
 
@@ -65,4 +65,3 @@ There are no automated extension tests. The server API is covered by
 `tests/test_api_routes.py`. For a manual check, load the folder unpacked, use
 **Test connection**, submit a real video, and confirm the entry appears in
 `urls.txt`.
-

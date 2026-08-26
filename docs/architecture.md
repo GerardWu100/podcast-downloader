@@ -30,17 +30,16 @@ Each area has one job:
 - `src/web/` builds the app and owns security, routes, and HTML.
 - `src/api.py` exports the production app created by `create_app()`.
 
-The web app has two kinds of client, both signing in with the same `.env`
-accounts. A browser posts a form and carries a session cookie plus a form
-token. The Chrome extension and other programs call `/api` and send the name
-and password in an `Authorization` header. They cannot use the browser cookie:
-it is `HttpOnly` and `SameSite=lax`, so scripts cannot read it and the browser
-does not send it with a cross-site `POST`. `src/web/account_auth.py` holds the
-account check and the ban after repeated failures, so both doors apply one set
-of rules.
+The web app has two clients, both using the same `.env` accounts. A browser
+submits a form with a session cookie and form token. The Chrome extension and
+other programs call `/api` with the username and password in an
+`Authorization` header. They cannot use the browser cookie: it is `HttpOnly`
+and `SameSite=lax`, so scripts cannot read it and the browser does not send it
+with a cross-site `POST`. `src/web/account_auth.py` owns the account check and
+failed-login ban, so both clients follow the same rules.
 
 Both clients add URLs through `src/web/queue_actions.py`. Validation,
-normalization, duplicate handling, and immediate downloads therefore work the
+normalization, duplicate handling, and immediate downloads therefore behave the
 same way from the form and the API.
 
 ## End-to-end flow
@@ -77,8 +76,8 @@ same way from the form and the API.
 ## Why success depends on file changes
 
 A successful process exit is not enough: `yt-dlp` can return `0` without
-creating an MP3. The downloader compares the MP3 files in the active source
-folder before and after each attempt.
+creating an MP3. The downloader therefore compares the MP3 files in the active
+source folder before and after each attempt.
 
 Let:
 
@@ -99,27 +98,26 @@ s_A(p) \ne s_B(p)
 $$
 
 The attempt succeeds only if at least one file changed. Looking only in the
-active folder prevents another process's file from making the attempt look
-successful.
+active folder prevents another process's file from creating a false success.
 
 The downloader passes `--no-mtime`, so source timestamps do not become file
 timestamps. After a successful download, an `ffmpeg` copy pass preserves the
-audio and writes the local completion time to the `date` tag and the source
-URL to the `comment` tag. YouTube URLs are normalized before the comment is
-written. The result is copied back without replacing the original inode, which
-helps Audiobookshelf keep tracking the file.
+audio and writes the local completion time to the `date` tag and source URL to
+the `comment` tag. YouTube URLs are normalized first. The result is copied back
+without replacing the original inode, which helps Audiobookshelf keep tracking
+the file.
 
 Retention uses the embedded local completion date, not the release date or file
 modification time. It applies only to current YouTube channel folders. Files
 without a readable date or source URL stay in place because they cannot be
 identified safely.
 
-When a channel MP3 is deleted, the same concrete video URL is removed from
+When a channel MP3 is deleted, its concrete video URL is also removed from
 `downloaded_urls.txt`, keeping the file and archive in sync.
 
 ## YouTube cookies
 
-A cookie file is authentication state. When one exists,
+A cookie file carries authentication state. When one exists,
 `always_use_cookies` chooses the attempt order:
 
 - `true` (default): use cookies first for downloads, channel/playlist
@@ -148,14 +146,14 @@ downloads/
 
 Channel folder names come from the source URL after filesystem-safe cleanup.
 Playlist names prefer the title from `yt-dlp`; otherwise they use the
-`list=` identifier. The media ID keeps same-titled episodes distinct.
+`list=` identifier. The media ID keeps episodes with the same title distinct.
 
 ## Queue and saved state
 
 The command line and web UI can both change `urls.txt`. The downloader may
 remove completed URLs while the web UI appends new ones, so the stores use
-interprocess locks: shared locks that stop one process from overwriting another
-process's newer changes.
+interprocess locks to stop one process from overwriting another process's newer
+changes.
 
 YouTube `/live/VIDEO_ID` and `/watch?v=VIDEO_ID` URLs become the same watch
 URL before queue and bypass comparisons. `downloaded_urls.txt` uses the same
@@ -170,10 +168,10 @@ The state stores own these rules:
 - `NotificationStore`: reads and replaces `notifications.json`.
 
 Both logs use the `America/Toronto` timezone and omit seconds for easier
-browser scanning. Channel and playlist downloads hold a separate claim lock
-through duplicate checking, downloading, and success recording. Failed attempts
-are not archived. Direct downloads use another process lock because they share
-the `singles` scratch folder.
+scanning in the browser. Channel and playlist downloads hold a separate claim
+lock through duplicate checking, downloading, and success recording. Failed
+attempts are not archived. Direct downloads use another process lock because
+they share the `singles` scratch folder.
 
 ## Deployment modes
 

@@ -24,8 +24,8 @@ uv run python main.py --add-url "https://videos.example.com/watch/episode-1"
 uv run python main.py --add-url "https://www.youtube.com/watch?v=..." --skip-age-check
 ```
 
-For YouTube channels, `/videos` selects normal uploads and `/streams`
-selects livestreams. A bare channel URL uses `/videos`.
+For YouTube channels, `/videos` selects normal uploads and `/streams` selects
+livestreams. A bare channel URL uses `/videos`.
 
 Read URLs from standard input and append them to the queue:
 
@@ -33,8 +33,8 @@ Read URLs from standard input and append them to the queue:
 uv run python main.py --add-url-stdin < new_urls.txt
 ```
 
-Use `--skip-age-check` with either add command to bypass the waiting period
-for a direct YouTube video on its next run. Other sites do not use this wait.
+Use `--skip-age-check` with either add command to bypass the waiting period for
+a direct YouTube video on its next run. Other sites do not use this wait.
 
 The web UI offers the same option. For a direct URL, it starts
 `python -m src.cli --download-single-url "<url>"` and handles only that URL.
@@ -92,18 +92,18 @@ section.
 | `HOST_UID` | Host user for mounted Docker files; default `1000` |
 | `HOST_GID` | Host group for mounted Docker files; default `1000` |
 
-The `/api` routes need no setting of their own: they accept the same
+The `/api` routes need no setting of their own. They accept the same
 `UI_USERNAME` and `UI_PASSWORD` accounts as the web page. `yt-dlp` is not in
-`uv.lock`; install its current nightly release,
-default YouTube dependencies, and `curl-cffi` with:
+`uv.lock`; install its current nightly release, the default YouTube
+dependencies, and `curl-cffi` with:
 
 ```bash
 uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"
 ```
 
 Docker installs it during image build and container startup. The image includes
-Deno for YouTube JavaScript challenges. Nightly is intentional because fixes
-for media sites often arrive there first.
+Deno for YouTube JavaScript challenges. Nightly is intentional because media
+site fixes often arrive there first.
 
 ## Rumble requests
 
@@ -120,7 +120,7 @@ This setting is limited to Rumble. Other non-YouTube sites keep the ordinary
 YouTube exposes streams through several player APIs, called “player clients”
 by `yt-dlp`. Most now return URLs that require a GVS PO Token, a
 proof-of-origin token created by YouTube's web player. Without one, metadata
-may load but audio can fail with:
+may load while audio fails with:
 
 ```text
 ERROR: unable to download video data: HTTP Error 403: Forbidden
@@ -143,13 +143,12 @@ Each failure is recorded in two places:
 
 The cause is the final `ERROR:` line from the failed attempt, reduced to one
 line and capped at 160 characters. Timeouts, metadata failures, and publishing
-failures name themselves.
+failures identify themselves.
 
 Retries always use `-v`, so they record the extractor, player client, and
-available PO Token provider. A run that succeeds on its first attempt adds no
-retry output. Set `ytdlp_verbose = true` when a successful run produces the
-wrong result. The verbose output can show the cookie-file path, but never its
-values.
+available PO Token provider. A first-attempt success adds no retry output. Set
+`ytdlp_verbose = true` when a successful run produces the wrong result. Verbose
+output can show the cookie-file path, but never its values.
 
 ## Cookies
 
