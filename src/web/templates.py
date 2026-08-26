@@ -174,8 +174,13 @@ input:focus,select:focus,button:focus-visible,a:focus-visible {
 # Chrome shared by the signed-in pages: the queue and the settings page. These
 # are plain strings rather than f-string fragments, so their braces stay single.
 APP_LAYOUT_STYLES = """
-body { padding:38px 18px 54px; }
-.page { max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }
+/* The side margin is fluid rather than a fixed pixel cap on the content.
+   Browser zoom scales pixels and rem alike, so a `max-width:900px` column keeps
+   the same 900 CSS pixels while the window grows: zooming out shrinks the
+   content and leaves ever-wider empty margins. A vw-based gutter grows with the
+   window instead, so the page keeps filling it at any zoom level. */
+body { padding:38px clamp(0.75rem, 4vw, 3.2rem) 54px; }
+.page { width:100%; display:flex; flex-direction:column; gap:18px; }
 header {
   display:flex; justify-content:space-between; align-items:center;
   gap:16px; margin-bottom:2px; padding:0 2px;
@@ -214,7 +219,8 @@ header {
 .card { transition:border-color .15s,box-shadow .15s; }
 .card:hover { border-color:var(--border-strong); }
 @media (max-width:640px) {
-  body { padding:22px 12px 36px; }
+  /* Only the vertical padding changes here; the side gutter is already fluid. */
+  body { padding-top:22px; padding-bottom:36px; }
   .page { gap:14px; }
   header { align-items:flex-start; gap:14px; }
   .header-actions { flex-wrap:wrap; justify-content:flex-end; }
@@ -309,8 +315,8 @@ def render_help_page(
   {FAVICON_TAG}
   <style>
         {BASE_STYLES}
-    body {{ padding:36px 16px; }}
-    .help-page {{ width:100%; max-width:720px; margin:0 auto; }}
+    body {{ padding:36px clamp(0.75rem, 4vw, 3.2rem); }}
+    .help-page {{ width:100%; }}
     .help-nav {{
       display:flex; align-items:center; justify-content:space-between;
       margin-bottom:18px;
@@ -340,7 +346,7 @@ def render_help_page(
       font-size:.82rem;
     }}
     @media (max-width:520px) {{
-      body {{ padding:20px 12px; }}
+      body {{ padding-top:20px; padding-bottom:20px; }}
       .help-card {{ padding:19px; }}
     }}
   </style>
@@ -425,7 +431,7 @@ def render_login_page(
       <style>
     {BASE_STYLES}
     body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }}
-    .card {{ width:100%; max-width:360px; }}
+    .card {{ width:clamp(19rem, 26vw, 34rem); max-width:100%; }}
     .theme-toggle {{
       position:fixed; top:16px; right:16px; padding:7px 10px; border:1px solid var(--border);
       border-radius:7px; background:var(--surface); color:var(--muted); cursor:pointer;

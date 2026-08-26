@@ -6,7 +6,7 @@
 # Run it from anywhere. The script works out the project directory from its own
 # location, so it does not matter which folder your shell is in.
 #
-#   ./scripts/update.sh
+#   ./update.sh
 #
 # `set -e` stops at the first failure. That matters here: if `git pull` fails,
 # rebuilding would quietly redeploy the old code and look like it worked.
@@ -14,7 +14,7 @@
 # the middle of a pipe from being hidden by a success at the end.
 set -euo pipefail
 
-project_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+project_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$project_directory"
 
 echo "==> Updating $project_directory"
