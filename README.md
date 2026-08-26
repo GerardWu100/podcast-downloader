@@ -139,7 +139,3 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 - Rumble uses changing Cloudflare checks. The downloader uses Chrome request impersonation, but a future Rumble change may still require a newer `yt-dlp` nightly release.
 - SponsorBlock removal depends on community-submitted segment data.
 - The browser interface uses shared accounts from `.env` and has no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
