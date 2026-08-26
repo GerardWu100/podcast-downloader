@@ -36,6 +36,9 @@ The live SponsorBlock check is
 - `test_api_routes.py`: sign-in with the shared accounts, identical refusals
   for a wrong password and an unknown name, the ban shared with the login page,
   every add-a-URL outcome, and shared YouTube normalization.
+- `test_build_firefox_extension.py`: the Firefox extension build. Checks that
+  the two manifests agree on version and permissions, that the build ships
+  every shared file, and that a stale file from an earlier build is removed.
 - `test_archive_locking.py` and `test_activity_log.py`: locked archive and log
   behavior.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,

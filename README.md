@@ -16,8 +16,8 @@ available, and runs from the command line or a browser.
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
 - Manage sources, activity, logs, cookies, and error notifications in the
   password-protected web interface.
-- Install the web interface on a phone or use the companion Chrome extension
-  to queue the current page.
+- Install the web interface on a phone, or use the companion Chrome and
+  Firefox extension to queue the current page.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
 map, or [docs/intro.md](docs/intro.md) for a shorter overview.
@@ -116,19 +116,79 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` contains a Chrome extension that adds the page you are viewing—or
-a link on that page—to the queue. Click the toolbar icon, right-click a
-YouTube or Rumble link, or press `Alt+Shift+D`. The right-click items appear
-only on those two sites, as set by `MENU_SITE_PATTERNS` in
-`extension/background.js`; the toolbar icon works anywhere.
+`extension/` contains a browser extension that adds the page you are viewing—or
+a link on that page—to the queue, without switching tabs or pasting a URL. It
+works in Chrome and Firefox.
 
-Load `extension/` through **Load unpacked** at `chrome://extensions`, then open
-its options and enter your server address plus the same username and password
-you use on the web page. Nothing needs to be configured on the server.
+You sign in with the same username and password as the web page. Nothing needs
+to be configured on the server.
 
-The extension signs in with an `Authorization` header instead of the browser
-session. The session cookie is `HttpOnly` and `SameSite=lax`, so an extension
-script cannot use it. The same two routes work from any script:
+### Install it in Chrome
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode**.
+3. Click **Load unpacked** and choose this repository's `extension/` folder.
+
+Edge, Brave, and other Chromium browsers work the same way.
+
+### Install it in Firefox
+
+Firefox needs a different manifest, so build its copy first:
+
+```bash
+uv run python scripts/build_firefox_extension.py
+```
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Click **Load Temporary Add-on**.
+3. Choose `build/firefox-extension/manifest.json`.
+
+Firefox removes a temporary add-on when it restarts. To keep it, build the
+archive and have Mozilla sign it:
+
+```bash
+uv run python scripts/build_firefox_extension.py --zip
+```
+
+Upload `build/podcast-downloader-firefox.zip` to
+[addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
+add-on. It stays private, nobody else can find it, and the signed `.xpi`
+installs permanently. Firefox 121 or newer is required.
+
+### Set it up, once
+
+Open the extension's settings — right-click its icon and choose **Options** in
+Chrome, or **Preferences** on its card in `about:addons` in Firefox — then
+enter:
+
+| Field | Value |
+|---|---|
+| Server address | Where you open the web page, such as `https://podcast.example.com` |
+| Username and password | The same ones you type on the web page |
+| Download immediately | Start direct videos now instead of waiting for SponsorBlock data |
+
+Click **Save**, allow the permission your browser asks for, then click
+**Test connection**. **Connected** means you are finished.
+
+### Use it
+
+| Action | What gets added | Where it appears |
+|---|---|---|
+| Click the toolbar icon | The current page | Any page |
+| Press `Alt+Shift+D` | The current page | Any page |
+| Right-click the page, choose the podcast item | The current page | YouTube and Rumble |
+| Right-click a link, choose the podcast item | The link | YouTube and Rumble links, anywhere you find them |
+
+The badge shows `OK` for a new item, `=` for one already queued or downloaded,
+and `!` for a problem, with a notification saying what went wrong. To offer the
+right-click items on another site, add its match pattern to
+`MENU_SITE_PATTERNS` in `extension/background.js`.
+
+### The same API, from a script
+
+The extension signs in with an `Authorization` header rather than the browser
+session, because that session cookie is `HttpOnly` and `SameSite=lax` and no
+extension script can use it. Anything else can call the same two routes:
 
 ```bash
 curl -u "$USERNAME:$PASSWORD" https://your-server/api/ping
@@ -173,9 +233,11 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 
 - `main.py` and `start.py`: command-line entry point and Docker supervisor.
 - `src/`: application code for downloads, media, state, and the web interface.
-- `extension/`: Chrome extension; it is not part of the server or Docker image.
+- `extension/`: browser extension for Chrome and Firefox; not part of the
+  server or the Docker image.
 - `tests/`: automated tests.
-- `scripts/`: manual checks outside the test suite.
+- `scripts/`: manual checks outside the test suite, plus the Firefox
+  extension build.
 - `docs/`: architecture, operations, security, configuration, and extension docs.
 
 ## Known limits

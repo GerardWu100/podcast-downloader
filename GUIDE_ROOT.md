@@ -85,3 +85,10 @@ uv run python -m pytest -q
   ban moved to `account_auth.py`. The API uses the web account in an
   `Authorization: Basic` header because the session cookie is `HttpOnly` and
   `SameSite=lax`; no extra server secret is needed.
+- 2026-08-26: The extension gained a Firefox build. Firefox has no extension
+  service worker, wants a stable add-on id, and reads `options_ui` rather than
+  `options_page`, so it needs its own manifest -- but nothing else differs.
+  Rather than a second folder of the same JavaScript,
+  `extension/manifest.firefox.json` holds the difference and
+  `scripts/build_firefox_extension.py` assembles `build/firefox-extension/`.
+  Chrome still loads `extension/` directly with no build step.

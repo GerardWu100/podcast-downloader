@@ -8,22 +8,54 @@ copy and paste a URL.
 It uses the same username and password as the web interface. No server changes
 are required.
 
-## 1. Install the extension
+## 1. Install it
+
+The extension works in Chrome and Firefox. Both use the same code; only the
+manifest differs, because Firefox has no extension service workers.
+
+### Chrome, Edge, Brave, and other Chromium browsers
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
 3. Select **Load unpacked** and choose the repository's `extension/` folder.
 
-The extension works in Chrome, Edge, Brave, and other Chromium browsers. It
-does not support Firefox because Firefox uses a different background-worker
-setup.
+### Firefox
 
-This extension is intended for a server you control. Do not publish it to the
-Chrome Web Store.
+Build its copy first:
+
+```bash
+uv run python scripts/build_firefox_extension.py
+```
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Select **Load Temporary Add-on**.
+3. Choose `build/firefox-extension/manifest.json`.
+
+Firefox 121 or newer is required, because earlier versions cannot run a
+background script as a module.
+
+**A temporary add-on disappears when Firefox restarts.** That is a Firefox
+rule, not something the extension can change: Firefox only installs a signed
+add-on permanently. To get a signed copy, build the archive:
+
+```bash
+uv run python scripts/build_firefox_extension.py --zip
+```
+
+Upload `build/podcast-downloader-firefox.zip` to
+[addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
+add-on. Unlisted means Mozilla signs it and hands the `.xpi` back to you
+without publishing it: nobody can search for it or install it, and the review
+is automated. Install that `.xpi` and it survives restarts.
+
+This extension is meant for a server you control. Do not publish it as a
+listed add-on or to the Chrome Web Store.
 
 ## 2. Connect it to your server
 
-Right-click the extension's icon and choose **Options**. Enter:
+Open the extension's settings. In Chrome, right-click its icon and choose
+**Options**. In Firefox, open `about:addons`, find Podcast Downloader, and
+choose **Preferences**. Enter:
 
 | Field | Value |
 |---|---|
@@ -31,9 +63,9 @@ Right-click the extension's icon and choose **Options**. Enter:
 | Username and password | The same credentials you use on the web page |
 | Download immediately | Start direct-video downloads without waiting for SponsorBlock data |
 
-Select **Save**. Chrome asks for permission to contact that address. Then
-select **Test connection**. The extension calls `GET /api/ping` and displays
-the response.
+Select **Save**. The browser asks for permission to contact that one address
+and nothing else. Then select **Test connection**, which calls `GET /api/ping`
+and shows what came back.
 
 If you enter a hostname without `http://` or `https://`, the extension assumes
 `https`. For a local server without a certificate, enter `http://` explicitly.
@@ -58,9 +90,9 @@ The toolbar icon and keyboard shortcut work anywhere because they are explicit
 actions. If the downloader cannot use the page, it reports `Not a supported
 media URL` and does not add anything to the queue.
 
-To show the menu on another site, add its Chrome match pattern to
+To show the menu on another site, add its match pattern to
 `MENU_SITE_PATTERNS` at the top of `extension/background.js`, then reload the
-extension. The server accepts any HTTP or HTTPS link because `yt-dlp` supports
+extension. Firefox needs the build script run again first. The server accepts any HTTP or HTTPS link because `yt-dlp` supports
 many sites; this list only controls where the menu appears.
 
 The toolbar badge shows `OK` for a new item, `=` for an item already queued or
@@ -91,14 +123,15 @@ own settings are not attached automatically.
 
 ## What the extension can see
 
-The extension reads a page's address only when you invoke it. Chrome's
-`activeTab` permission gives it access to that tab for that action, so it
-cannot watch your browsing. It never accesses cookies.
+The extension reads a page's address only when you invoke it. The `activeTab`
+permission, which both browsers implement, gives it access to that tab for that
+action alone, so it cannot watch your browsing. It never accesses cookies.
 
-Your password is stored in `chrome.storage.local`, not
-`chrome.storage.sync`, so it is not copied to other machines using the same
-Google account. It remains in your Chrome profile. Anyone with access to that
-profile can read it. To revoke the password, change your web password.
+Your password is stored in the browser's local extension storage, not the
+synced kind, so it is not copied to other machines signed in to the same
+browser account. It still sits in your browser profile, where anyone with
+access to that profile can read it. Revoking it means changing your web
+password.
 
 ## Privacy and safety
 

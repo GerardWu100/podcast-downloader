@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This folder contains a Chrome extension that sends the current page or a link
-to the download queue. It is a separate client, not part of the server:
+This folder contains a browser extension that sends the current page or a link
+to the download queue. It runs in Chrome and Firefox. It is a separate client, not part of the server:
 `.dockerignore` leaves it out of the Docker image, and `src/` does not import
 it.
 
@@ -39,7 +39,19 @@ rules.
 - `options.html`, `options.css`, and `options.js`: settings page. Saving asks
   Chrome for server permission because Chrome allows that request only after a
   user click.
+- `manifest.firefox.json`: the Firefox manifest. Firefox has no extension
+  service worker, so it runs `background.js` as an event page; it also needs a
+  stable add-on id and reads `options_ui` rather than `options_page`. Every
+  other file is shared, which is the whole reason the difference lives in a
+  second manifest instead of a second folder.
 - `icons/`: generated from `src/web/static/icon-512.png`.
+
+`scripts/build_firefox_extension.py` assembles the Firefox build into
+`build/firefox-extension/` and, with `--zip`, the archive that
+addons.mozilla.org signs. Chrome loads `extension/` directly and needs no
+build step. `tests/test_build_firefox_extension.py` checks that the two
+manifests agree on the version and permissions, and that the build ships every
+shared file and no stale ones.
 
 ## Decisions
 

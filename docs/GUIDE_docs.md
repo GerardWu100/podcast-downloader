@@ -12,7 +12,7 @@ Suggested reading order:
 3. `cli-and-config.md` — commands and settings.
 4. `notifications.md` — Apprise error notifications.
 5. `web-ui-security.md` — sign-in and browser protections.
-6. `browser-extension.md` — Chrome extension and `/api` routes.
+6. `browser-extension.md` — the Chrome and Firefox extension, and the `/api` routes.
 7. `operations.md` — local and Docker operation.
 
 ## Code reference
@@ -21,7 +21,7 @@ Suggested reading order:
 - `cli-and-config.md`: `src/cli.py` and `src/config.py`.
 - `notifications.md`: `src/notifications/` and `src/state/notification_store.py`.
 - `web-ui-security.md`: `src/web/auth.py`, `src/web/routes.py`, and `src/state/auth_store.py`.
-- `browser-extension.md`: `extension/`, `src/web/api_routes.py`, and `src/web/account_auth.py`.
+- `browser-extension.md`: `extension/`, `scripts/build_firefox_extension.py`, `src/web/api_routes.py`, and `src/web/account_auth.py`.
 - `operations.md`: `start.py`, `docker-entrypoint.sh`, and the container files.
 
 ## Journal
