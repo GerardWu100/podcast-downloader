@@ -632,7 +632,7 @@ def login_action(
     outcome = check_credentials(
         username,
         password,
-        accounts=load_ui_accounts(_credentials_file()),
+        load_accounts=lambda: load_ui_accounts(_credentials_file()),
         auth_store=_auth_store(request),
         client_address=_client_ip(request),
     )

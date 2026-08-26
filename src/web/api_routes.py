@@ -173,7 +173,7 @@ def _require_account(request: Request) -> None:
     outcome = check_credentials(
         username,
         password,
-        accounts=load_ui_accounts(
+        load_accounts=lambda: load_ui_accounts(
             _dependency(state, "credentials_file", Path)
         ),
         auth_store=_dependency(state, "auth_store", AuthStore),

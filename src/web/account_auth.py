@@ -18,6 +18,7 @@ import math
 import secrets
 import threading
 import time
+from collections.abc import Callable
 from enum import StrEnum
 
 from ..credentials import StoredAccount
@@ -58,7 +59,7 @@ def check_credentials(
     username: str,
     password: str,
     *,
-    accounts: list[StoredAccount],
+    load_accounts: Callable[[], list[StoredAccount]],
     auth_store: AuthStore,
     client_address: str,
 ) -> CredentialCheck:
@@ -70,8 +71,11 @@ def check_credentials(
         Account name submitted by the client.
     password:
         Plain-text password submitted by the client.
-    accounts:
-        Accounts loaded from ``.ui_credentials.json``.
+    load_accounts:
+        Callable returning the accounts from ``.ui_credentials.json``. It is a
+        callable rather than a list so the file is read only once the cheap
+        refusals below have passed: a banned address or an absurdly long
+        submission must not cost a disk read on every attempt.
     auth_store:
         Store that owns the ban ledger.
     client_address:
@@ -96,6 +100,7 @@ def check_credentials(
     ):
         return CredentialCheck.OVERSIZED
 
+    accounts = load_accounts()
     if not accounts:
         return CredentialCheck.NO_ACCOUNTS_CONFIGURED
 

@@ -19,7 +19,12 @@ from src.state.auth_store import AuthStore
 from src.state.bypass_store import BypassStore
 from src.state.queue_store import QueueStore
 from src.web import api_routes, routes
-from src.web.account_auth import MAX_FAILED_ATTEMPTS
+from src.web.account_auth import (
+    MAX_CREDENTIAL_LENGTH,
+    MAX_FAILED_ATTEMPTS,
+    CredentialCheck,
+    check_credentials,
+)
 from src.web.api_routes import AddUrlRequest
 from src.web.queue_actions import AddUrlOutcome, add_url_to_queue
 
@@ -394,3 +399,44 @@ def test_shared_helper_normalizes_before_the_duplicate_check(tmp_path: Path) -> 
     assert first.outcome == AddUrlOutcome.ADDED
     assert second.outcome == AddUrlOutcome.DUPLICATE
     assert stores["queue_store"].read_urls() == [first.url]
+
+
+def test_cheap_refusals_never_read_the_account_file(tmp_path: Path) -> None:
+    """A banned or absurd submission must not cost a disk read.
+
+    ``check_credentials`` takes a callable rather than a ready list precisely so
+    the ban check and the length check run first. Without this, anyone could
+    make every attempt read ``.ui_credentials.json`` from disk.
+    """
+    reads: list[str] = []
+
+    def counting_loader() -> list:
+        reads.append("read")
+        return []
+
+    auth_store = AuthStore(
+        session_file=tmp_path / ".ui_sessions.json",
+        login_state_file=tmp_path / ".login_state.json",
+    )
+
+    # An oversized password is refused before the file is consulted.
+    oversized = check_credentials(
+        "someone",
+        "x" * (MAX_CREDENTIAL_LENGTH + 1),
+        load_accounts=counting_loader,
+        auth_store=auth_store,
+        client_address="10.0.0.9",
+    )
+    assert oversized is CredentialCheck.OVERSIZED
+    assert reads == []
+
+    # A normal attempt does read it, which is what makes the check above mean
+    # something.
+    check_credentials(
+        "someone",
+        "short-enough",
+        load_accounts=counting_loader,
+        auth_store=auth_store,
+        client_address="10.0.0.9",
+    )
+    assert reads == ["read"]
