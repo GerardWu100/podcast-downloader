@@ -52,8 +52,8 @@ cp .env.example .env
 Nightly releases usually receive fixes first. `curl-cffi` lets Rumble requests
 use the browser network fingerprint needed for its Cloudflare checks.
 
-Add one source URL per line to `urls.txt`, then review `config.ini` for
-paths, delays, and retention.
+Add one source URL per line to `urls.txt`, then review `config.ini` for paths,
+delays, and retention.
 
 ## Usage
 
@@ -70,14 +70,13 @@ uv run python scripts/sponsorblock_smoke_check.py
 ```
 
 The first command runs one queue pass. The second overrides the queue file,
-output folder, and number of recent channel or playlist entries. The other
+output folder, and number of recent channel or playlist entries. The remaining
 commands add URLs, download one URL or a full playlist, start the web
 interface, run offline tests, or run the live SponsorBlock check.
 
-To use the web interface, start Uvicorn and open
-`http://127.0.0.1:8000/`. Sign in, then manage the queue from the home page.
-The settings page handles cookies and notifications. Open `/help` for cookie
-export instructions.
+To use the web interface, start Uvicorn and open `http://127.0.0.1:8000/`.
+Sign in, then manage the queue from the home page. The settings page handles
+cookies and notifications. Open `/help` for cookie export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
 **Add to Home Screen**. The app opens without an address bar, and its 30-day
@@ -117,19 +116,19 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` holds a Chrome extension that adds the page you are on—or a link
-on that page—to the queue. Click the toolbar icon, right-click a YouTube or
-Rumble link, or press Alt+Shift+D. The right-click items appear only on those
-two sites, set by `MENU_SITE_PATTERNS` in `extension/background.js`; the
-toolbar icon works anywhere.
+`extension/` contains a Chrome extension that adds the page you are viewing—or
+a link on that page—to the queue. Click the toolbar icon, right-click a
+YouTube or Rumble link, or press `Alt+Shift+D`. The right-click items appear
+only on those two sites, as set by `MENU_SITE_PATTERNS` in
+`extension/background.js`; the toolbar icon works anywhere.
 
 Load `extension/` through **Load unpacked** at `chrome://extensions`, then open
 its options and enter your server address plus the same username and password
-you use on the web page. Nothing to configure on the server.
+you use on the web page. Nothing needs to be configured on the server.
 
-It signs in through an `Authorization` header rather than the browser session.
-The session cookie is `HttpOnly` and `SameSite=lax`, so an extension script
-cannot use it. The same two routes work from any script:
+The extension signs in with an `Authorization` header instead of the browser
+session. The session cookie is `HttpOnly` and `SameSite=lax`, so an extension
+script cannot use it. The same two routes work from any script:
 
 ```bash
 curl -u "$USERNAME:$PASSWORD" https://your-server/api/ping
@@ -144,10 +143,9 @@ ten minutes block that address for fifteen minutes. See
 
 ## Error notifications
 
-The web interface can send failed downloads to Apprise, which can forward
-them to Telegram, email, Discord, or another service. In **Settings**, enter
-the Apprise notification URL and select **Send test notification** before
-saving.
+The web interface can send failed downloads to Apprise, which can forward them
+to Telegram, email, Discord, or another service. In **Settings**, enter the
+Apprise notification URL and select **Send test notification** before saving.
 
 See [docs/notifications.md](docs/notifications.md).
 
@@ -166,8 +164,8 @@ nothing is running, the script starts the deployment.
 On first boot, the container creates missing files and `.env`, points
 Audiobookshelf at the mounted download folder, and stores host cookies at
 `$HOME/.containers/podcast-downloader/cookies.txt`. Mounted files belong to
-user and group `1000:1000` by default. Set `HOST_UID` and `HOST_GID` in
-the repository `.env` when the host uses different IDs.
+user and group `1000:1000` by default. Set `HOST_UID` and `HOST_GID` in the
+repository `.env` when the host uses different IDs.
 
 See [docs/operations.md](docs/operations.md) for the deployment flow.
 
@@ -192,5 +190,6 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 - The web interface uses shared `.env` accounts and has no per-user
   permissions. Keep it on a personal, trusted network.
 - The browser extension keeps your web interface password in Chrome's
-  extension storage. Anyone with that Chrome profile can read it, and revoking
-  it means changing the password, which signs the web interface out too.
+  extension storage. Anyone with access to that Chrome profile can read it,
+  and revoking it means changing the password, which signs the web interface
+  out too.

@@ -3,7 +3,7 @@
 ## Purpose
 
 This folder contains a Chrome extension that sends the current page or a link
-to the download queue. It is a separate client, not server code:
+to the download queue. It is a separate client, not part of the server:
 `.dockerignore` leaves it out of the Docker image, and `src/` does not import
 it.
 
@@ -28,47 +28,47 @@ rules.
 
 - `manifest.json`: Manifest V3 declaration and narrow permissions. `activeTab`
   reveals a tab URL only when the user invokes the extension. The options page
-  requests access to the single server origin entered by the user.
+  requests access only to the server origin entered by the user.
 - `background.js`: service worker for context menus, shortcuts, API calls,
   badges, and error notifications. It re-reads settings for every submission
   because Chrome may stop the worker at any time. `MENU_SITE_PATTERNS` at the
-  top lists where the right-click items appear.
+  top controls where the right-click items appear.
 - `settings.js`: reads and writes `chrome.storage.local` and converts the
-  server address into a URL and permission pattern. The worker and options page
-  use the same conversion.
+  server address into a URL and permission pattern. The worker and options
+  page use the same conversion.
 - `options.html`, `options.css`, and `options.js`: settings page. Saving asks
-  Chrome for the server permission because Chrome allows that request only in
-  response to a user click.
+  Chrome for server permission because Chrome allows that request only after a
+  user click.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
 ## Decisions
 
-- Sign in with the same account as the web page, so the server needs no extra
-  secret. The trade-off is that the password sits in extension storage, and
-  revoking it means changing the web password.
+- Use the same account as the web page, so the server needs no extra secret.
+  The trade-off is that the password sits in extension storage, and revoking
+  it means changing the web password.
 - Store settings in `chrome.storage.local`, not `sync`, so the password is not
   copied to every Chrome profile using the same Google account.
-- Treat a bare hostname as `https`; users must type `http://` when they accept
+- Treat a bare hostname as `https`. Users must type `http://` when they accept
   the risk of sending the password without encryption.
-- Build the `Authorization` header from UTF-8 bytes before base64. `btoa` alone
-  throws on an accented character in a password.
-- Treat `duplicate` and `downloaded` as successful outcomes because the item is
-  already handled.
+- Build the `Authorization` header from UTF-8 bytes before base64 encoding.
+  `btoa` alone throws for an accented character in a password.
+- Treat `duplicate` and `downloaded` as successful outcomes because the item
+  is already handled.
 - Limit the right-click items to YouTube and Rumble so they do not appear in
-  every menu on every site. The page item uses `documentUrlPatterns`, the link
-  item `targetUrlPatterns`, so a YouTube link found on any other site still
-  offers it. The toolbar icon and shortcut stay unfiltered: they are explicit
-  actions, and the server rejects an unusable URL anyway. Adding a site means
-  editing `MENU_SITE_PATTERNS` and reloading the extension.
-- Do not send a CSRF token. CSRF protection exists because browsers attach
-  cookies automatically; a header the client fills in from its own settings is
-  never automatic.
+  every menu on every site. The page item uses `documentUrlPatterns`; the link
+  item uses `targetUrlPatterns`, so a YouTube link found on another site still
+  offers it. The toolbar icon and shortcut stay unfiltered because they are
+  explicit actions, and the server rejects unusable URLs. To add a site, edit
+  `MENU_SITE_PATTERNS` and reload the extension.
+- Do not send a CSRF token. Cross-Site Request Forgery (CSRF) protection is
+  needed because browsers attach cookies automatically; a header the client
+  fills from its own settings is never automatic.
 - Accept that a badge can remain briefly if Chrome stops the worker before its
-  clear timer runs; the next submission replaces it.
+  clear timer runs. The next submission replaces it.
 
 ## Testing
 
 There are no automated extension tests. The server API is covered by
 `tests/test_api_routes.py`. For a manual check, load the folder unpacked, use
-**Test connection**, submit a real video, and confirm the entry appears in
+**Test connection**, submit a real video, and confirm that the entry appears in
 `urls.txt`.
