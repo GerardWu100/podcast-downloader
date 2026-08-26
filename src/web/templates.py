@@ -25,12 +25,18 @@ FAVICON_TAG = (
 # Tags that let a phone install the site as an app from its browser menu. The
 # manifest carries the app name, colors, and Android icons. iOS ignores the
 # manifest icons and uses `apple-touch-icon` instead, so both are listed. The
-# two theme colors tint the phone's status bar to match the page background,
-# which is what makes an installed window stop looking like a web page.
+# `apple-mobile-web-app-*` tags are the older iOS equivalent of the manifest's
+# `display: standalone`; Safari has read the manifest since iOS 16.4, but an
+# iPhone on anything earlier opens the home-screen icon in a normal Safari tab
+# without them. The two theme colors tint the phone's status bar to match the
+# page background, which is what makes an installed window stop looking like a
+# web page.
 HEAD_APP_TAGS = f"""{FAVICON_TAG}
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-title" content="Podcasts" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#f0f2f5" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0d121a" media="(prefers-color-scheme: dark)" />"""
 
