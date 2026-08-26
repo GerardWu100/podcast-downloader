@@ -2,10 +2,9 @@
 
 ## Purpose
 
-This folder contains a browser extension that sends the current page or a link
-to the download queue. It runs in Chrome and Firefox. It is a separate client, not part of the server:
-`.dockerignore` leaves it out of the Docker image, and `src/` does not import
-it.
+This folder contains the browser client for adding pages and links to the
+download queue. It runs in Chrome and Firefox and is separate from the server.
+The Docker image excludes it, and the server does not import it.
 
 User setup is in [`docs/browser-extension.md`](../docs/browser-extension.md).
 
@@ -20,9 +19,8 @@ toolbar click / Alt+Shift+D / context menu
   -> the result updates the badge and, on failure, a notification
 ```
 
-`queue_actions.py` is also used by the web form. Both entry points therefore
-share URL validation, normalization, duplicate handling, and immediate-download
-rules.
+The web form uses the same queue actions. Both entry points therefore share URL
+validation, normalization, duplicate handling, and immediate-download rules.
 
 ## Files
 
@@ -31,27 +29,26 @@ rules.
   requests access only to the server origin entered by the user.
 - `background.js`: service worker for context menus, shortcuts, API calls,
   badges, and error notifications. It re-reads settings for every submission
-  because Chrome may stop the worker at any time. `MENU_SITE_PATTERNS` at the
-  top controls where the right-click items appear.
+  because Chrome may stop the worker at any time. `MENU_SITE_PATTERNS` controls
+  where the right-click items appear.
 - `settings.js`: reads and writes `chrome.storage.local` and converts the
   server address into a URL and permission pattern. The worker and options
   page use the same conversion.
 - `options.html`, `options.css`, and `options.js`: settings page. Saving asks
-  Chrome for server permission because Chrome allows that request only after a
-  user click.
+  the browser for server permission after the user clicks **Save**.
 - `manifest.firefox.json`: the Firefox manifest. Firefox has no extension
   service worker, so it runs `background.js` as an event page; it also needs a
   stable add-on id and reads `options_ui` rather than `options_page`. Every
-  other file is shared, which is the whole reason the difference lives in a
-  second manifest instead of a second folder.
+  other file is shared, so the Firefox-specific differences stay in this
+  manifest instead of a second folder.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
 `scripts/build_firefox_extension.py` assembles the Firefox build into
 `build/firefox-extension/` and, with `--zip`, the archive that
 addons.mozilla.org signs. Chrome loads `extension/` directly and needs no
 build step. `tests/test_build_firefox_extension.py` checks that the two
-manifests agree on the version and permissions, and that the build ships every
-shared file and no stale ones.
+manifests agree on the version and permissions, and that the build contains
+every shared file and no stale files.
 
 ## Decisions
 
@@ -67,10 +64,10 @@ shared file and no stale ones.
 - Treat `duplicate` and `downloaded` as successful outcomes because the item
   is already handled.
 - Limit the right-click items to YouTube and Rumble so they do not appear in
-  every menu on every site. The page item uses `documentUrlPatterns`; the link
-  item uses `targetUrlPatterns`, so a YouTube link found on another site still
-  offers it. The toolbar icon and shortcut stay unfiltered because they are
-  explicit actions, and the server rejects unusable URLs. To add a site, edit
+  every menu. The page item uses `documentUrlPatterns`; the link item uses
+  `targetUrlPatterns`, so a YouTube link found on another site still offers the
+  menu. The toolbar icon and shortcut stay unfiltered because they are explicit
+  actions, and the server rejects unusable URLs. To add a site, edit
   `MENU_SITE_PATTERNS` and reload the extension.
 - Do not send a CSRF token. Cross-Site Request Forgery (CSRF) protection is
   needed because browsers attach cookies automatically; a header the client

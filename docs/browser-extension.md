@@ -1,17 +1,17 @@
 # Browser extension
 
-The extension in `extension/` adds the page you are viewing—or a link on that
-page—to the download queue. Click its toolbar icon, right-click a YouTube or
-Rumble link, or press `Alt+Shift+D`. You do not need to open another window or
-copy and paste a URL.
+The extension in `extension/` adds the current page, or a link on it, to the
+download queue. Click the toolbar icon, press `Alt+Shift+D`, or use the
+right-click menu on YouTube and Rumble. There is no tab switching or copy and
+paste.
 
 It uses the same username and password as the web interface. No server changes
-are required.
+are needed.
 
 ## 1. Install it
 
 The extension works in Chrome and Firefox. Both use the same code; only the
-manifest differs, because Firefox has no extension service workers.
+manifest differs because Firefox has no extension service workers.
 
 ### Chrome, Edge, Brave, and other Chromium browsers
 
@@ -21,7 +21,7 @@ manifest differs, because Firefox has no extension service workers.
 
 ### Firefox
 
-Build its copy first:
+Build the Firefox copy first:
 
 ```bash
 uv run python scripts/build_firefox_extension.py
@@ -34,9 +34,8 @@ uv run python scripts/build_firefox_extension.py
 Firefox 121 or newer is required, because earlier versions cannot run a
 background script as a module.
 
-**A temporary add-on disappears when Firefox restarts.** That is a Firefox
-rule, not something the extension can change: Firefox only installs a signed
-add-on permanently. To get a signed copy, build the archive:
+**A temporary add-on disappears when Firefox restarts.** Firefox permanently
+installs only signed add-ons. To get a signed copy, build the archive:
 
 ```bash
 uv run python scripts/build_firefox_extension.py --zip
@@ -44,9 +43,8 @@ uv run python scripts/build_firefox_extension.py --zip
 
 Upload `build/podcast-downloader-firefox.zip` to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
-add-on. Unlisted means Mozilla signs it and hands the `.xpi` back to you
-without publishing it: nobody can search for it or install it, and the review
-is automated. Install that `.xpi` and it survives restarts.
+add-on. Mozilla signs the add-on and returns an `.xpi` without publishing it;
+install that file and it survives restarts.
 
 This extension is meant for a server you control. Do not publish it as a
 listed add-on or to the Chrome Web Store.
@@ -63,9 +61,9 @@ choose **Preferences**. Enter:
 | Username and password | The same credentials you use on the web page |
 | Download immediately | Start direct-video downloads without waiting for SponsorBlock data |
 
-Select **Save**. The browser asks for permission to contact that one address
-and nothing else. Then select **Test connection**, which calls `GET /api/ping`
-and shows what came back.
+Select **Save**. The browser asks for permission to contact that address and
+nothing else. Then select **Test connection**. It calls `GET /api/ping` and
+shows the result.
 
 If you enter a hostname without `http://` or `https://`, the extension assumes
 `https`. For a local server without a certificate, enter `http://` explicitly.
@@ -80,26 +78,27 @@ Plain HTTP allows anyone between you and the server to read your password.
 | Right-click the page and choose the podcast item | The current page | YouTube and Rumble pages |
 | Right-click a link and choose the podcast item | The link | YouTube and Rumble links, wherever you find them |
 
-The two right-click items appear next to **Copy link address**. They stay
-hidden elsewhere, so they do not clutter menus on other sites.
+The two right-click items appear next to **Copy link address** and stay hidden
+on other sites.
 
 The link item checks the link itself, not the page that contains it. A YouTube
-link on a forum or blog still offers the menu item.
+link on a forum or blog still gets the menu item.
 
 The toolbar icon and keyboard shortcut work anywhere because they are explicit
-actions. If the downloader cannot use the page, it reports `Not a supported
-media URL` and does not add anything to the queue.
+actions. If the page is not usable, the extension reports `Not a supported
+media URL` and leaves the queue unchanged.
 
 To show the menu on another site, add its match pattern to
 `MENU_SITE_PATTERNS` at the top of `extension/background.js`, then reload the
-extension. Firefox needs the build script run again first. The server accepts any HTTP or HTTPS link because `yt-dlp` supports
-many sites; this list only controls where the menu appears.
+extension. Run the build script again before reloading it in Firefox. The
+server accepts any HTTP or HTTPS link that `yt-dlp` supports; this list only
+controls where the menu appears.
 
 The toolbar badge shows `OK` for a new item, `=` for an item already queued or
 downloaded, and `!` for an error. Errors also trigger a desktop notification.
 
 Channel and playlist URLs work. A channel always waits for the next scheduled
-pass, even when immediate downloads are enabled. One click cannot start an
+pass, even when immediate downloads are enabled. One click does not start an
 entire back catalogue.
 
 ## Why it does not reuse your browser login
@@ -114,24 +113,23 @@ The extension cannot reuse the web session for three reasons:
 
 Instead, the extension sends your username and password in an
 `Authorization` header. The server checks them against the same accounts and
-uses the same constant-time comparison and failed-login ban.
+applies the same constant-time comparison and failed-login ban.
 
 The API does not use the web form's Cross-Site Request Forgery (CSRF) check.
-CSRF protection is needed when browsers attach cookies automatically: a
-malicious page could then act as you. Credentials read from the extension's
-own settings are not attached automatically.
+Cross-Site Request Forgery (CSRF) protection is needed when browsers attach
+cookies automatically, because a malicious page could then act as you. The
+credentials read from the extension's settings are not attached automatically.
 
 ## What the extension can see
 
 The extension reads a page's address only when you invoke it. The `activeTab`
-permission, which both browsers implement, gives it access to that tab for that
-action alone, so it cannot watch your browsing. It never accesses cookies.
+permission gives it access to that tab for that action alone, so it cannot
+watch your browsing. It never accesses cookies.
 
-Your password is stored in the browser's local extension storage, not the
-synced kind, so it is not copied to other machines signed in to the same
-browser account. It still sits in your browser profile, where anyone with
-access to that profile can read it. Revoking it means changing your web
-password.
+Your password is stored in local extension storage, not synced storage, so it
+is not copied to other machines signed in to the same browser account. It still
+sits in your browser profile, where anyone with access to that profile can
+read it. Revoking it means changing your web password.
 
 ## Privacy and safety
 
@@ -139,8 +137,8 @@ Failed sign-ins count toward the same ban as the login page: five failures
 from one address within ten minutes block it for fifteen minutes. If you
 change your web password, update it in the extension before trying again.
 
-The server never sends a `WWW-Authenticate` header. Opening one of these URLs
-in a browser tab therefore shows a plain refusal instead of the browser's own
+The server never sends a `WWW-Authenticate` header. Opening an API URL in a
+browser tab therefore shows a plain refusal instead of the browser's own
 sign-in box.
 
 ## API reference

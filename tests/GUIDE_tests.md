@@ -3,8 +3,7 @@
 ## Test strategy
 
 The suite runs offline. It checks the boundaries between application areas and
-replaces subprocesses and external services, so it does not contact media
-sites.
+replaces subprocesses and external services, so it never contacts media sites.
 
 It covers:
 
@@ -18,13 +17,13 @@ It covers:
 
 The live SponsorBlock check is
 `scripts/sponsorblock_smoke_check.py`. It uses the network and stays outside
-`tests/`, so Pytest does not collect it by accident.
+`tests/`, so Pytest does not collect it accidentally.
 
 ## Code reference
 
 - `test_api_behavior.py` and `test_security.py`: browser behavior, sessions,
-  CSRF, Content Security Policy (CSP), proxy trust, upload safety, and command
-  separators.
+  Cross-Site Request Forgery (CSRF), Content Security Policy (CSP), proxy
+  trust, upload safety, and command separators.
 - `test_web_app.py`: dependency wiring through the application factory and
   request-level checks without patching `src.api` globals.
 - `test_auth_store.py`: expiry filtering and atomic authentication updates.
@@ -33,9 +32,9 @@ The live SponsorBlock check is
 - `test_downloader.py`: publication, metadata recovery, retention, archive
   serialization, and queue outcomes.
 - `test_url_utils_behavior.py`: media policy and queue-store concurrency.
-- `test_api_routes.py`: sign-in with the shared accounts, identical refusals
-  for a wrong password and an unknown name, the ban shared with the login page,
-  every add-a-URL outcome, and shared YouTube normalization.
+- `test_api_routes.py`: sign-in with shared accounts, identical refusals for a
+  wrong password and an unknown name, the ban shared with the login page, every
+  add-a-URL outcome, and shared YouTube normalization.
 - `test_build_firefox_extension.py`: the Firefox extension build. Checks that
   the two manifests agree on version and permissions, that the build ships
   every shared file, and that a stale file from an earlier build is removed.
@@ -45,9 +44,9 @@ The live SponsorBlock check is
   `test_docker_entrypoint.py`, `test_passwords.py`, and `test_credentials.py`:
   command and startup boundaries, including `.env` credential synchronization.
 
-Regression coverage also checks non-finite settings, strict URL modes,
-YouTube path parsing, empty cookie-fallback results, one-use age bypasses,
-stale credentials, private authentication files, and isolated factory sessions.
+Regression coverage also checks non-finite settings, strict URL modes, YouTube
+path parsing, empty cookie-fallback results, one-use age bypasses, stale
+credentials, private authentication files, and isolated factory sessions.
 
 Run the offline suite from the project root:
 

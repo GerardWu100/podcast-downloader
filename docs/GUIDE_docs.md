@@ -2,20 +2,23 @@
 
 ## Purpose
 
-`docs/` contains user and operator documentation. The `GUIDE_*` files are for
-developers and future agents.
+`docs/` contains the project's user and operator documentation. Read the guides
+when you need to understand how those documents map to the codebase; the guides
+are written for developers and future agents.
 
 Suggested reading order:
 
-1. `intro.md` — purpose and project map.
-2. `architecture.md` — pipeline, boundaries, saved state, and trust.
-3. `cli-and-config.md` — commands and settings.
-4. `notifications.md` — Apprise error notifications.
-5. `web-ui-security.md` — sign-in and browser protections.
-6. `browser-extension.md` — the Chrome and Firefox extension, and the `/api` routes.
-7. `operations.md` — local and Docker operation.
+1. `intro.md` — purpose and project map
+2. `architecture.md` — pipeline, boundaries, saved state, and trust
+3. `cli-and-config.md` — commands and settings
+4. `notifications.md` — Apprise error notifications
+5. `web-ui-security.md` — sign-in and browser protections
+6. `browser-extension.md` — the browser extension and `/api` routes
+7. `operations.md` — local and Docker operation
 
 ## Code reference
+
+Each document points to the code it describes:
 
 - `architecture.md`: `src/web/`, `src/media/`, `src/downloads/`, and `src/state/`.
 - `cli-and-config.md`: `src/cli.py` and `src/config.py`.
