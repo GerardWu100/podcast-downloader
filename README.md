@@ -115,16 +115,71 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` contains a Chrome and Firefox extension for adding the current
-page—or a link on it—to the queue. It uses the same username and password as
-the web interface and needs no server-side setup.
+`extension/` contains a browser extension that adds the page you are viewing—or
+a link on that page—to the queue, without switching tabs or pasting a URL. It
+works in Chrome and Firefox, and signs in with the same username and password
+as the web page. Nothing needs to be configured on the server.
 
-See [docs/browser-extension.md](docs/browser-extension.md) for installation,
-configuration, API details, and security notes.
+### Install it in Chrome
 
-Once configured, the toolbar button and `Alt+Shift+D` add the current page; the
-context menu can add a page or link on YouTube and Rumble. The badge shows
-`OK`, `=`, or `!` for a new, already handled, or failed submission.
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode**.
+3. Click **Load unpacked** and choose this repository's `extension/` folder.
+
+Edge, Brave, and other Chromium browsers work the same way.
+
+### Install it in Firefox
+
+Firefox needs its own manifest, so build its copy first:
+
+```bash
+uv run python scripts/build_firefox_extension.py
+```
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Click **Load Temporary Add-on**.
+3. Choose `build/firefox-extension/manifest.json`.
+
+Firefox 121 or newer is required, and it drops a temporary add-on when it
+restarts. To keep it, build the archive and have Mozilla sign it:
+
+```bash
+uv run python scripts/build_firefox_extension.py --zip
+```
+
+Upload `build/podcast-downloader-firefox.zip` to
+[addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
+add-on. Unlisted means it is signed but never published: nobody else can find
+or install it, and the signed file survives restarts.
+
+### Set it up, once
+
+Open the extension's settings — right-click its icon and choose **Options** in
+Chrome, or **Preferences** on its card in `about:addons` in Firefox — then
+enter:
+
+| Field | Value |
+|---|---|
+| Server address | Where you open the web page, such as `https://podcast.example.com` |
+| Username and password | The same ones you type on the web page |
+| Download immediately | Start direct videos now instead of waiting for SponsorBlock data |
+
+Click **Save**, allow the permission your browser asks for, then click
+**Test connection**. **Connected** means you are finished.
+
+### Use it
+
+| Action | What gets added | Where it appears |
+|---|---|---|
+| Click the toolbar icon | The current page | Any page |
+| Press `Alt+Shift+D` | The current page | Any page |
+| Right-click the page, choose the podcast item | The current page | YouTube and Rumble |
+| Right-click a link, choose the podcast item | The link | YouTube and Rumble links, anywhere you find them |
+
+The badge shows `OK` for a new item, `=` for one already queued or downloaded,
+and `!` for a problem, with a notification saying what went wrong. To offer the
+right-click items on another site, add its match pattern to
+`MENU_SITE_PATTERNS` in `extension/background.js`.
 
 ### The same API, from a script
 
@@ -141,7 +196,8 @@ curl -X POST https://your-server/api/add-url \
 
 Wrong passwords count toward the same ban as the login page: five failures in
 ten minutes block that address for fifteen minutes. See
-[docs/browser-extension.md](docs/browser-extension.md).
+[docs/browser-extension.md](docs/browser-extension.md) for troubleshooting and
+security notes.
 
 ## Error notifications
 
