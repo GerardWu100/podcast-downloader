@@ -118,8 +118,10 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 ## Browser extension
 
 `extension/` holds a Chrome extension that adds the page you are on—or a link
-on that page—to the queue. Click the toolbar icon, right-click, or press
-Alt+Shift+D.
+on that page—to the queue. Click the toolbar icon, right-click a YouTube or
+Rumble link, or press Alt+Shift+D. The right-click items appear only on those
+two sites, set by `MENU_SITE_PATTERNS` in `extension/background.js`; the
+toolbar icon works anywhere.
 
 Load `extension/` through **Load unpacked** at `chrome://extensions`, then open
 its options and enter your server address plus the same username and password

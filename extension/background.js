@@ -17,6 +17,16 @@ import { basicAuthHeader, buildEndpoint, readSettings } from "./settings.js";
 
 const MENU_ITEM_PAGE = "add-page";
 const MENU_ITEM_LINK = "add-link";
+// Where the right-click menu items are offered. This is only about keeping the
+// menu out of the way on unrelated sites: the server accepts any http or https
+// link, because yt-dlp handles far more sites than these. Chrome match
+// patterns treat "*.youtube.com" as covering youtube.com itself along with
+// m., music., and any other subdomain.
+const MENU_SITE_PATTERNS = [
+  "*://*.youtube.com/*",
+  "*://youtu.be/*",
+  "*://*.rumble.com/*",
+];
 const BADGE_CLEAR_DELAY_MS = 4000;
 const BADGE_COLORS = { success: "#1a7f37", failure: "#b42318" };
 // Outcomes the server reports for a URL it accepted or knowingly skipped.
@@ -25,15 +35,22 @@ const EXPECTED_OUTCOMES = new Set(["added", "duplicate", "downloaded"]);
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
+    // documentUrlPatterns filters on the page you are looking at, so this item
+    // appears only while you are on YouTube or Rumble.
     chrome.contextMenus.create({
       id: MENU_ITEM_PAGE,
       title: "Add this page to the podcast queue",
       contexts: ["page", "video", "audio"],
+      documentUrlPatterns: MENU_SITE_PATTERNS,
     });
+    // targetUrlPatterns filters on the link itself, not the page holding it.
+    // A YouTube link still offers this item when you find it on a forum, a
+    // blog, or anywhere else.
     chrome.contextMenus.create({
       id: MENU_ITEM_LINK,
       title: "Add this link to the podcast queue",
       contexts: ["link"],
+      targetUrlPatterns: MENU_SITE_PATTERNS,
     });
   });
 });

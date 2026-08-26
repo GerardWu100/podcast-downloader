@@ -31,7 +31,8 @@ rules.
   requests access to the single server origin entered by the user.
 - `background.js`: service worker for context menus, shortcuts, API calls,
   badges, and error notifications. It re-reads settings for every submission
-  because Chrome may stop the worker at any time.
+  because Chrome may stop the worker at any time. `MENU_SITE_PATTERNS` at the
+  top lists where the right-click items appear.
 - `settings.js`: reads and writes `chrome.storage.local` and converts the
   server address into a URL and permission pattern. The worker and options page
   use the same conversion.
@@ -53,6 +54,12 @@ rules.
   throws on an accented character in a password.
 - Treat `duplicate` and `downloaded` as successful outcomes because the item is
   already handled.
+- Limit the right-click items to YouTube and Rumble so they do not appear in
+  every menu on every site. The page item uses `documentUrlPatterns`, the link
+  item `targetUrlPatterns`, so a YouTube link found on any other site still
+  offers it. The toolbar icon and shortcut stay unfiltered: they are explicit
+  actions, and the server rejects an unusable URL anyway. Adding a site means
+  editing `MENU_SITE_PATTERNS` and reloading the extension.
 - Do not send a CSRF token. CSRF protection exists because browsers attach
   cookies automatically; a header the client fills in from its own settings is
   never automatic.

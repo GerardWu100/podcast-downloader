@@ -1,8 +1,9 @@
 # Browser extension
 
 The extension in `extension/` adds the page you are viewing—or a link on
-that page—to the download queue. Click its toolbar icon, right-click, or press
-`Alt+Shift+D`. You do not need to open another window or copy and paste a URL.
+that page—to the download queue. Click its toolbar icon, right-click a
+YouTube or Rumble link, or press `Alt+Shift+D`. You do not need to open another
+window or copy and paste a URL.
 
 It uses the same username and password as the web interface. No server
 changes are needed.
@@ -39,12 +40,28 @@ Plain HTTP lets anyone between you and the server read your password.
 
 ## 3. Use it
 
-| Action | URL added |
-|---|---|
-| Click the toolbar icon | The current page |
-| Press `Alt+Shift+D` | The current page |
-| Right-click the page, then choose the podcast item | The current page |
-| Right-click a link, then choose the podcast item | The link |
+| Action | URL added | Shown on |
+|---|---|---|
+| Click the toolbar icon | The current page | Any page |
+| Press `Alt+Shift+D` | The current page | Any page |
+| Right-click the page, then choose the podcast item | The current page | YouTube and Rumble pages |
+| Right-click a link, then choose the podcast item | The link | Links to YouTube and Rumble, wherever you find them |
+
+The two right-click items sit next to **Copy link address** and stay hidden
+elsewhere, so they do not clutter every menu on every site.
+
+The link item filters on the link, not on the page holding it. A YouTube link
+posted on a forum or a blog still offers it.
+
+The toolbar icon and the keyboard shortcut are not filtered. They are explicit
+actions, so they work anywhere; a page the downloader cannot use comes back as
+"Not a supported media URL" and nothing is queued.
+
+To offer the menu on another site, add its Chrome match pattern to
+`MENU_SITE_PATTERNS` at the top of `extension/background.js` and reload the
+extension. The server itself accepts any http or https link, because `yt-dlp`
+handles far more sites than these two; the list only controls where the menu
+appears.
 
 The toolbar badge shows `OK` for a new item, `=` for an item already queued or
 downloaded, and `!` for an error. Errors also trigger a desktop notification.
