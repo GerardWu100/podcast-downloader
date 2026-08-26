@@ -23,6 +23,7 @@ activity.log
 .login_state.json.lock
 
 # Not needed at runtime
+extension/
 tests/
 scripts/
 blog/

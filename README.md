@@ -1,45 +1,45 @@
 # Podcast Downloader
 
-Download online videos as local MP3 files for
-[Audiobookshelf](https://www.audiobookshelf.org/). The self-hosted tool watches
-YouTube channels and playlists, downloads individual video URLs, removes
-SponsorBlock segments, and runs from the command line or a browser.
+Podcast Downloader downloads online videos as local MP3 files for
+[Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels
+and playlists, downloads individual URLs, removes SponsorBlock segments when
+available, and can run from the command line or a browser.
 
-## What it does
+## Features
 
-- Checks YouTube channels and playlists for new videos, and downloads
-  individual URLs.
-- Skips YouTube Shorts and waits before downloading new videos, giving
-  SponsorBlock time to publish segment data.
-- Removes SponsorBlock segments when data is available.
-- Converts downloads to MP3 and groups them by source.
-- Removes channel MP3 files after the retention period.
-- Stores the queue, download history, and URLs allowed to bypass an age check
-  once in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Provides a password-protected browser interface for sources, activity, logs,
-  YouTube cookies, and error notifications.
-- Can be installed on a phone from a browser, without an app store or
-  extension.
+- Check channels and playlists for new videos, or queue individual URLs.
+- Skip YouTube Shorts and wait before downloading new videos so SponsorBlock
+  has time to publish segment data.
+- Convert audio to MP3 and organize it by source.
+- Remove channel MP3 files after the retention period.
+- Keep the queue, download history, and one-use age-check exceptions in
+  `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Manage sources, activity, logs, cookies, and error notifications in the
+  password-protected web interface.
+- Install the web interface on a phone or use the companion Chrome extension
+  to queue the current page.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
 map. [docs/intro.md](docs/intro.md) is a shorter overview.
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.13 or newer
 - `ffmpeg`
 - `uv`
-- `yt-dlp` (installed separately during setup)
+- `yt-dlp`, installed separately during setup
 
-Create `.env` from `.env.example`, then set these values:
+Create `.env` from `.env.example`, then set:
 
-- `UI_USERNAME` and `UI_PASSWORD` are required for the browser interface. Add
-  a second or third account with `UI_USERNAME_2`/`UI_PASSWORD_2` and
-  `UI_USERNAME_3`/`UI_PASSWORD_3` if needed.
-- `PODCAST_DATA_DIR` changes where state files, `.env`, and cookies are stored.
-  Docker uses it for the mounted data folder.
-- `PODCAST_DOWNLOAD_DIR` and `PODCAST_INTERMEDIATE_DIR` override `output_dir`
-  and `intermediate_dir` in `config.ini`.
+- `UI_USERNAME` and `UI_PASSWORD` for the web interface. Add
+  `UI_USERNAME_2`/`UI_PASSWORD_2` or `UI_USERNAME_3`/`UI_PASSWORD_3` for
+  more accounts.
+- `PODCAST_DATA_DIR` to move state files, `.env`, and cookies. Docker uses
+  this directory for its mounted data folder.
+- `PODCAST_DOWNLOAD_DIR` or `PODCAST_INTERMEDIATE_DIR` to override the
+  matching `config.ini` paths.
+- `PODCAST_API_TOKEN` to enable the JSON API used by the browser extension.
+  It must contain at least 32 characters; leave it blank to disable the API.
 
 ## Setup
 
@@ -47,81 +47,109 @@ Create `.env` from `.env.example`, then set these values:
 uv sync --dev
 uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"
 cp .env.example .env
-# edit .env: set UI_USERNAME and UI_PASSWORD
+# Edit .env and set UI_USERNAME and UI_PASSWORD.
 ```
 
-`yt-dlp` is installed separately because media sites change often. Nightly
-releases usually get fixes first. The `curl-cffi` package lets Rumble requests
-use the browser fingerprint needed for its Cloudflare checks.
+`yt-dlp` is installed separately because media sites change frequently.
+Nightly releases usually receive fixes first. The `curl-cffi` package lets
+Rumble requests use the browser network fingerprint needed for its Cloudflare
+checks.
 
-Add one source URL per line to `urls.txt`, then review `config.ini` for paths,
-delays, and retention.
+Add one source URL per line to `urls.txt`, then review `config.ini` for
+paths, delays, and retention.
 
 ## Usage
 
 ```bash
-uv run python main.py                                              # run one queue pass with config.ini defaults
-uv run python main.py -f custom_urls.txt -o ./custom_downloads -n 3  # override the URLs file, output dir, and video count
+uv run python main.py
+uv run python main.py -f custom_urls.txt -o ./custom_downloads -n 3
 uv run python main.py --add-url "https://www.youtube.com/watch?v=..." [--skip-age-check]
-uv run python main.py --add-url-stdin < new_urls.txt                # append URLs from stdin
+uv run python main.py --add-url-stdin < new_urls.txt
 uv run python main.py --download-single-url "https://videos.example.com/watch/episode-1"
 uv run python main.py --download-full-playlist "https://www.youtube.com/playlist?list=..."
-uv run uvicorn src.api:app --host 127.0.0.1 --port 8000            # start the web interface; the queue is at /
-uv run python -m pytest -q                                          # run the test suite
-uv run python scripts/sponsorblock_smoke_check.py                   # run a live SponsorBlock check
+uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
+uv run python -m pytest -q
+uv run python scripts/sponsorblock_smoke_check.py
 ```
 
-On a phone, open the site in Chrome or Safari and choose "Install app" or
-"Add to Home Screen". It opens in its own window without an address bar, and
-the 30-day session keeps you signed in. Installation requires HTTPS, so use a
-deployed instance rather than local `http://127.0.0.1`.
+The first command runs one queue pass. The second overrides the queue file,
+output folder, and number of recent channel or playlist entries. The remaining
+commands add URLs, download one URL or a full playlist, start the web
+interface, run offline tests, or run the live SponsorBlock check.
 
-With the web interface running, open `http://127.0.0.1:8000/` and sign in.
-You return to the queue after signing in. On the settings page, click the title
-in the top-left corner to return to the queue.
+To use the web interface, start Uvicorn and open
+`http://127.0.0.1:8000/`. Sign in, then manage the queue from the home page.
+The settings page handles cookies and notifications. Open `/help` for cookie
+export instructions.
 
-Open `http://127.0.0.1:8000/help` for cookie-export instructions. If YouTube
-blocks downloads, create fresh cookies with:
+On a phone, open the site in Chrome or Safari and choose **Install app** or
+**Add to Home Screen**. The app opens without an address bar, and its 30-day
+session keeps you signed in. Installation needs HTTPS, so use a deployed
+instance rather than `http://127.0.0.1`.
+
+If YouTube blocks downloads, export fresh browser cookies:
 
 ```bash
 yt-dlp --cookies-from-browser chrome --cookies cookies.txt
 ```
 
-Upload the resulting file on the **Settings** page. See
-[docs/web-ui-security.md](docs/web-ui-security.md) for login and session
-details. See [docs/operations.md](docs/operations.md) for cookies and Docker
-deployment.
+Upload the file on the **Settings** page. See
+[docs/web-ui-security.md](docs/web-ui-security.md) for sign-in and session
+details and [docs/operations.md](docs/operations.md) for cookies and Docker.
 
 ## Configuration
 
 Change the main settings in `config.ini`:
 
-- `urls_file`, `output_dir`, and `intermediate_dir` set the queue and download
-  folders.
-- `channel_count` sets how many recent channel or playlist videos to check.
-- `min_channel_video_age_hours` sets how old a YouTube video must be before
-  download.
-- `delay_seconds` sets the pause between downloads.
-- `retention_days` sets how long to keep channel MP3 files.
-- `download_timeout_seconds` sets the timeout for one `yt-dlp` attempt (default:
-  3600 seconds).
-- `cookies_file` and `always_use_cookies` control when YouTube cookies are used and the order of retries.
-- `youtube_player_client` selects the YouTube player API used by `yt-dlp`.
-  Leaving it blank lets `yt-dlp` choose; that currently fails with `HTTP Error
-  403: Forbidden` after audio starts downloading.
-- `ytdlp_verbose` adds `-v` to every `yt-dlp` attempt. It is off by default because retry attempts are already verbose.
-- `trust_x_forwarded_for` controls whether client IP headers from a reverse
-  proxy are trusted.
+- `urls_file`, `output_dir`, and `intermediate_dir`: queue, library, and
+  scratch paths.
+- `channel_count`: recent channel or playlist entries to check.
+- `min_channel_video_age_hours`: minimum age for a YouTube video.
+- `delay_seconds`: pause between downloads.
+- `retention_days`: how long to keep channel MP3 files.
+- `download_timeout_seconds`: limit for one `yt-dlp` attempt; the default is
+  3600 seconds.
+- `cookies_file` and `always_use_cookies`: whether and when YouTube cookies
+  are used.
+- `youtube_player_client`: YouTube player API used by `yt-dlp`; blank lets
+  `yt-dlp` choose.
+- `ytdlp_verbose`: add `-v` to every `yt-dlp` attempt.
+- `trust_x_forwarded_for`: trust client-IP headers from a reverse proxy.
 
-See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete
-reference.
+See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
+
+## Browser extension
+
+The extension in `extension/` queues the current page or a link with one click.
+It also supports `Alt+Shift+D` and the right-click menu.
+
+Generate a token, put it in `.env`, restart the server, then load `extension/`
+through **Load unpacked** at `chrome://extensions`. Paste the same token into
+the extension's options:
+
+```bash
+uv run python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+The token also enables these API routes:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" https://your-server/api/ping
+curl -X POST https://your-server/api/add-url \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"url": "https://www.youtube.com/watch?v=...", "skip_age_check": false}'
+```
+
+Leave `PODCAST_API_TOKEN` blank to keep the API disabled. See
+[docs/browser-extension.md](docs/browser-extension.md) for setup and API
+details.
 
 ## Error notifications
 
-The browser interface can send failed downloads to Apprise, which can forward
-them to Telegram, email, Discord, or another service. Open **Settings**, enter
-the Apprise notification URL under **Error notifications**, and press **Send
-test notification** before saving. Each field includes an example.
+The web interface can send failed downloads to Apprise, which can forward
+them to Telegram, email, Discord, or another service. In **Settings**, enter
+the Apprise notification URL and select **Send test notification** before
+saving.
 
 See [docs/notifications.md](docs/notifications.md).
 
@@ -132,33 +160,38 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
 
-To update a deployment, run `./update.sh`. It pulls committed code and rebuilds
-only when the pull found something new. Use `--force` to rebuild anyway—for
-example, after editing `.env`, when a base image changed under an unchanged
-Dockerfile, or when you want to recreate a container. If nothing is running,
-the script starts the deployment either way. It works from any directory and
-stops at the first failure, so a failed pull cannot silently redeploy old code.
+Run `./update.sh` to update a deployment. It pulls committed code and rebuilds
+only when something changed. Use `./update.sh --force` after editing `.env`,
+when the base image changed, or when you want to recreate the container. If
+nothing is running, the script starts the deployment.
 
 On first boot, the container creates missing files and `.env`, points
 Audiobookshelf at the mounted download folder, and stores host cookies at
 `$HOME/.containers/podcast-downloader/cookies.txt`. Mounted files belong to
-user and group `1000:1000` by default, so downloaded podcasts can be deleted
-without `sudo`. If the host uses different IDs, set `HOST_UID` and `HOST_GID`
-in the repository `.env` to the values from `id -u` and `id -g`.
+user and group `1000:1000` by default. Set `HOST_UID` and `HOST_GID` in
+the repository `.env` when the host uses different IDs.
+
 See [docs/operations.md](docs/operations.md) for the deployment flow.
 
 ## Layout
 
-- `main.py` / `start.py` — command-line entry point and Docker process supervisor.
-- `src/` — application code (`cli.py`, `api.py`, `downloads/`, `media/`, `state/`, `web/`).
-- `tests/` — automated tests.
-- `scripts/` — manual checks that are not part of the test suite.
-- `docs/` — architecture, CLI/configuration, web UI security, and operations documentation.
+- `main.py` and `start.py`: command-line entry point and Docker supervisor.
+- `src/`: application code for downloads, media, state, and the web interface.
+- `extension/`: Chrome extension; it is not part of the server or Docker image.
+- `tests/`: automated tests.
+- `scripts/`: manual checks outside the test suite.
+- `docs/`: architecture, operations, security, configuration, and extension docs.
 
 ## Known limits
 
-- The downloader reads `yt-dlp` output to find videos in channels and playlists, so an update to either `yt-dlp` or YouTube can break this step.
-- YouTube is tightening access to player clients that provide stream URLs without a proof-of-origin token. `youtube_player_client` may need to change over time.
-- Rumble uses changing Cloudflare checks. The downloader uses Chrome request impersonation, but a future Rumble change may still require a newer `yt-dlp` nightly release.
+- The downloader depends on `yt-dlp` output to expand channels and playlists.
+  Changes to `yt-dlp` or YouTube can break that step.
+- YouTube player clients and proof-of-origin requirements change over time.
+  The `youtube_player_client` setting may need to change too.
+- Rumble's Cloudflare checks change over time, even with Chrome request
+  impersonation.
 - SponsorBlock removal depends on community-submitted segment data.
-- The browser interface uses shared accounts from `.env` and has no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
+- The web interface uses shared `.env` accounts and has no per-user
+  permissions. Keep it on a personal, trusted network.
+- `PODCAST_API_TOKEN` is one shared token with no rate limit. Anyone who has it
+  can queue downloads. Rotate it by editing `.env` and restarting.

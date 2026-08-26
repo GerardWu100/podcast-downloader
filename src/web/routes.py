@@ -25,12 +25,6 @@ from ..config import ConfigError, PodcastConfig, load_config
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
 from ..log_timezone import LOG_TIME_ZONE
 from ..media.urls import is_supported_media_url
-from ..media.youtube import (
-    is_channel_or_playlist,
-    is_youtube_playlist,
-    is_youtube_url,
-    normalize_youtube_url,
-)
 from ..passwords import verify_password
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
@@ -53,6 +47,7 @@ from ..state.notification_store import (
 from ..state.queue_store import QueueStore
 from ..trigger import DownloadTrigger, in_process_download_trigger
 from .auth import client_ip, request_is_secure, security_headers
+from .queue_actions import add_url_to_queue
 from .templates import (
     render_help_page,
     render_login_page,
@@ -1196,38 +1191,20 @@ def add_url_form(
     if not _verify_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
-    # Reject malformed or non-web URLs before touching the queue.
-    cleaned_url = url.strip()
-    if not is_supported_media_url(cleaned_url):
-        return RedirectResponse(url="/?msg=invalid", status_code=303)
+    # add_url_to_queue holds the validation, normalization, duplicate, and
+    # scheduler rules, shared with the token API in token_api.py so both entry
+    # points behave identically. Its outcome values are the queue page's
+    # message keys.
+    result = add_url_to_queue(
+        url,
+        skip_age_check=bool(skip_age_check),
+        queue_store=_queue_store(request),
+        archive_store=_archive_store(request),
+        bypass_store=_bypass_store(request),
+        download_trigger=_download_trigger(request),
+    )
 
-    normalized = normalize_youtube_url(cleaned_url)
-
-    # Avoid re-queuing anything already archived as downloaded.
-    downloaded = _archive_store(request).load()
-    if normalized in downloaded:
-        return RedirectResponse(url="/?msg=downloaded", status_code=303)
-
-    added = _queue_store(request).append_urls([normalized])
-
-    if not added:
-        return RedirectResponse(url="/?msg=duplicate", status_code=303)
-
-    # Direct-video additions wake the scheduler with the exact new URL, so an
-    # immediate UI run cannot expand channels or process older urls.txt entries.
-    # Checked playlist additions wake a full-playlist immediate run. Channel URLs
-    # ignore the checkbox and stay queued for the scheduled channel_count run.
-    is_direct_video = not is_channel_or_playlist(normalized)
-    if skip_age_check and is_youtube_playlist(normalized):
-        _download_trigger(request).queue_full_playlist_download(normalized)
-    elif is_direct_video:
-        # The bypass file only affects YouTube's minimum-age policy. Non-YouTube
-        # direct videos are immediate already, so writing them there is noise.
-        if skip_age_check and is_youtube_url(normalized):
-            _bypass_store(request).add(normalized)
-        _download_trigger(request).queue_single_url_download(normalized)
-
-    return RedirectResponse(url="/?msg=added", status_code=303)
+    return RedirectResponse(url=f"/?msg={result.outcome}", status_code=303)
 
 
 @router.post("/remove-url")

@@ -1,15 +1,17 @@
-# Root Guide
+# Root guide
 
-## Part 1: Project Map
+## Project map
 
-Podcast Downloader is one Python application with two ways in:
+Podcast Downloader is one Python application with three entry points:
 
-1. The command-line interface reads a queue file and downloads audio.
+1. The command line reads the queue and downloads audio.
 2. The FastAPI web interface manages the queue, sign-in, cookies, and logs.
+3. The token-authenticated JSON API at `/api` accepts URLs from the Chrome
+   extension and other programs.
 
-The root holds deployment entrypoints and operator-owned files. Product code is
-in [`src/`](src/), offline tests are in [`tests/`](tests/), and user/operator
-documentation is in [`docs/`](docs/).
+The root contains deployment entry points and operator-owned files. Application
+code is in [`src/`](src/), offline tests are in [`tests/`](tests/), and
+user/operator docs are in [`docs/`](docs/).
 
 ```text
 podcast-downloader/
@@ -22,44 +24,45 @@ podcast-downloader/
 │   ├── media/
 │   ├── state/
 │   └── web/
+├── extension/
 ├── tests/
 ├── docs/
 ├── pyproject.toml
 └── uv.lock
 ```
 
-Runtime state deliberately remains plain files:
+`extension/` is browser code, not server code. `.dockerignore` excludes it,
+and nothing in `src/` imports it.
 
-| File | Owner | Meaning |
+Runtime state stays in plain files:
+
+| File | Owner | Purpose |
 |---|---|---|
 | `urls.txt` | `QueueStore` | Monitored sources and direct URLs |
-| `downloaded_urls.txt` | `ArchiveStore` | Completed expanded items |
-| `bypass_age_check_urls.txt` | `BypassStore` | One-shot YouTube age overrides |
-| `.ui_sessions.json` | `AuthStore` | Remembered browser sessions |
-| `.login_state.json` | `AuthStore` | Login failure and ban records |
-| `activity.log` | `ActivityLogStore` | Concise browser-facing events |
+| `downloaded_urls.txt` | `ArchiveStore` | Successfully expanded items |
+| `bypass_age_check_urls.txt` | `BypassStore` | One-use YouTube age overrides |
+| `.ui_sessions.json` | `AuthStore` | Browser sessions |
+| `.login_state.json` | `AuthStore` | Login failures and temporary bans |
+| `activity.log` | `ActivityLogStore` | Short messages for the web interface |
 | `download.log` | Python logging | Detailed diagnostics |
 
-The state stores use advisory locks. Authentication JSON is written to a
-temporary sibling file and then moved into place, so an interrupted process
-does not leave a half-written document.
+State stores use advisory locks so concurrent processes do not overwrite each
+other. Authentication files are written to a temporary sibling and then moved
+into place, so an interrupted write does not leave a partial JSON file.
 
-## Part 2: Root Files
+## Root files
 
-- `README.md`: user-facing goal, setup, commands, configuration, and docs links.
-- `main.py`: compatibility command that calls `src.cli.main()`.
-- `start.py`: Docker process supervisor. It runs Uvicorn in the main process and
-  starts `python -m src.cli` for scheduled downloads.
+- `README.md`: setup, usage, configuration, limits, and links to detailed docs.
+- `main.py`: wrapper that calls `src.cli.main()`.
+- `start.py`: Docker supervisor. It runs Uvicorn in the main process and starts
+  scheduled downloads.
 - `config.ini`: checked-in runtime defaults.
-- `docker-entrypoint.sh`: initializes mounted state, `.env` and cookie files,
-  performs the best-effort nightly `yt-dlp` and browser-impersonation dependency
-  update, repairs mounted-file ownership, and drops to the configured host
-  identity before starting the application.
+- `docker-entrypoint.sh`: prepares mounted state, `.env`, and cookies; updates
+  `yt-dlp`; repairs ownership; and starts the app as the configured host user.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
-- `scripts/sponsorblock_smoke_check.py`: optional live-network check run by hand.
-  It lives outside `tests/` and is not named like a test module so that the
-  offline suite never collects it.
+- `scripts/sponsorblock_smoke_check.py`: optional live check, kept outside
+  `tests/` so the offline suite does not collect it.
 
 Useful commands:
 
@@ -70,38 +73,11 @@ uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 uv run python -m pytest -q
 ```
 
-## Part 3: Journal
+## Journal
 
-- 2026-07-26: The refactor made `src/api.py` a deployment-only entrypoint,
-  split web/media/download/state ownership, and removed the old
-  `downloader.py`, `url_utils.py`, and `activity_log.py` adapters.
-- 2026-08-08: Repository cleanup. `urls.txt` stopped being tracked because it is
-  operator state that the app rewrites and recreates when missing; the live
-  smoke script moved from the root to `scripts/`; a superseded 2025 blog draft
-  under `content/` was deleted in favour of `blog/`. `.dockerignore` now excludes
-  runtime state and session files that `COPY . .` was baking into the image.
-- 2026-08-10: Bug-fix pass. The per-attempt download timeout became the
-  configurable `download_timeout_seconds` with a one-hour default, replacing a
-  hard-coded 300 seconds that could not finish a full-length episode; because a
-  timed-out item is never archived, those episodes failed on every run.
-  `download.log` gained rotation and bounded tail reads, `/logs` answers `401`
-  instead of redirecting into the log box, and the web header states what the
-  app does.
-- 2026-08-10: Removed dead code and stale docs. The scheduler's batch-trigger
-  path (`queue_batch_download`, `pop_batch_download_request`, and the
-  `batch_requested` branch in `start.py`) was unreachable: no production caller
-  ever set the flag, so it could only ever pop `False`. `AuthStore` lost the
-  unreferenced `save_login_state`, and `web/routes.py` lost an `__all__` block
-  that re-exported trigger functions nobody imported from there. Deleted
-  `docs/superpowers/` (a completed 2026-07-26 plan describing three modules that
-  no longer exist) and `docs/review-and-safety.md` (a past review's changelog
-  that still claimed sessions were in-memory and lost on restart, which stopped
-  being true when `AuthStore` began persisting them). The remaining-risk notes
-  worth keeping moved to the README's "Known limits".
-- 2026-08-10: A full correctness and security audit tightened command
-  validation, cookie fallback, one-use bypasses, state locking, credential
-  invalidation, private authentication files, and per-application sessions.
-- 2026-08-19: Docker startup began repairing the three mounted application
-  directories and running the app as `HOST_UID:HOST_GID`, preventing root-owned
-  podcast files that require `sudo` to delete on the host.
-- 2026-08-23: Docker and scheduler updates moved to nightly yt-dlp with the `curl-cffi` extra so Rumble's Cloudflare-protected endpoints can use Chrome request impersonation.
+- 2026-07-26: Split web, media, download, and state ownership and removed the old adapter modules.
+- 2026-08-08: Stopped tracking runtime queue state, moved the live smoke check to `scripts/`, and excluded runtime files from the Docker build.
+- 2026-08-10: Made download timeouts configurable, added log rotation and bounded browser log reads, and removed stale engineering records.
+- 2026-08-19: Docker startup began repairing mounted directories and running the app as `HOST_UID:HOST_GID`.
+- 2026-08-23: Docker and scheduler updates moved to nightly `yt-dlp` with the `curl-cffi` extra for Rumble.
+- 2026-08-26: Added the Chrome extension and JSON API. The web form and API now share URL validation, normalization, duplicate handling, and immediate-download rules.

@@ -1,0 +1,96 @@
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1.125rem;
+  margin: 0;
+  background: #ffffff;
+  color: #16191d;
+}
+
+main {
+  padding: 1.5em clamp(1em, 6vw, 2.5em) 2em;
+  max-width: 40em;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin: 0 0 1em;
+}
+
+label {
+  display: block;
+  margin: 1em 0 0.3em;
+  font-weight: 600;
+}
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: 400;
+  margin-top: 1.4em;
+}
+
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5em 0.6em;
+  font-size: 1rem;
+  border: 1px solid #b9c0c8;
+  border-radius: 6px;
+}
+
+.buttons {
+  display: flex;
+  gap: 0.6em;
+  margin-top: 1.6em;
+}
+
+button {
+  font-size: 1rem;
+  padding: 0.55em 1.1em;
+  border-radius: 6px;
+  border: 1px solid #b9c0c8;
+  background: #f3f5f7;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #e8ebef;
+}
+
+#status {
+  min-height: 1.5em;
+  margin-top: 1.2em;
+}
+
+#status.ok {
+  color: #1a7f37;
+}
+
+#status.error {
+  color: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #16191d;
+    color: #e7eaee;
+  }
+  input[type="text"],
+  input[type="password"],
+  button {
+    background: #22262c;
+    color: #e7eaee;
+    border-color: #3b424b;
+  }
+  button:hover {
+    background: #2c3138;
+  }
+  #status.ok {
+    color: #4ac26b;
+  }
+  #status.error {
+    color: #ff8d85;
+  }
+}

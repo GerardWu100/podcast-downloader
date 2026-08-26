@@ -8,6 +8,10 @@ receives the configuration, persistent stores, and scheduler trigger. Production
 and test runs use the same setup, while tests can provide temporary
 dependencies.
 
+It also serves the JSON API at `/api` that the Chrome extension in
+`extension/` uses. Those routes authenticate with a bearer token instead of a
+session cookie and never render HTML, so they live in their own module.
+
 After signing in, the interface has two pages:
 
 - `/` is the queue: add a source, see monitored sources, and read activity logs.
@@ -47,6 +51,9 @@ from installing the app.
 
 - `app.py`: `create_app()` builds the application and its dependencies. Each application instance has its own session and Cross-Site Request Forgery (CSRF) token maps.
 - `routes.py`: FastAPI handlers for login, the queue, cookie upload, logs, help, notifications, and scheduler triggers. It owns the login flow and CSRF tokens.
+- `queue_actions.py`: `add_url_to_queue()`, the single place that decides what happens to a submitted URL — reject, normalize, refuse as a duplicate or as already downloaded, append, and wake the scheduler. Both `routes.add_url_form` and `token_api.add_url` call it, so the browser form and the extension always behave the same.
+- `token_api.py`: `GET /api/ping` and `POST /api/add-url`, authenticated by the bearer token in `app.state.api_token`. No CSRF token is checked here and none should be: CSRF protection exists because browsers attach cookies automatically, and a header a client fills in from its own settings is never automatic. No CORS headers are sent either — a Manifest V3 extension with host permissions is exempt from CORS, and a normal cross-origin page still cannot call these routes.
+- `api_token.py`: reads `PODCAST_API_TOKEN` from the environment first and `<data_dir>/.env` second. A token under 32 characters is logged and discarded, which leaves the API disabled rather than protected by a guessable secret.
 - `auth.py`: `security_headers()`, `client_ip()`, and `request_is_secure()` enforce browser security and proxy rules.
 - `templates.py`: shared styles and renderers for the help, login, queue, and settings pages. Route code supplies escaped values and security headers. `HEAD_APP_TAGS` and `SERVICE_WORKER_SCRIPT` add install support to every page head and script block.
 - `static/`: icons, the web manifest, and the service worker. These ship with the code, not in the mounted data directory. Regenerate the icons with `uv run --group dev python scripts/generate_app_icons.py` after changing the artwork; the PNG files are committed so the container needs no image library.
@@ -79,3 +86,4 @@ pages stay consistent.
 - 2026-08-26: `/help` became the doc page. The links to it now read “Doc” rather than “How it works” or “Help”, and it gained a command reference. An agent driving this project has no browser session, so the page it is pointed at has to carry the commands or it falls back to guessing flags.
 - 2026-08-26: The interface became installable as a phone app. The blocker was not the missing manifest but the CSP: `default-src 'none'` with no `manifest-src` or `worker-src` silently rejected both files, so the browser never offered to install a site that was serving everything correctly.
 - 2026-08-26: The signed-in pages and the help page stopped capping their content at a pixel width. Zooming out with Ctrl-minus grew the window but left the column at the same 900 CSS pixels, so the page shrank into the middle of an increasingly empty screen. The cap is gone; the side margin is now `clamp(0.75rem, 4vw, 3.2rem)`, which grows with the window.
+- 2026-08-26: `/api` arrived for the Chrome extension. The add-a-URL rules moved out of `add_url_form` into `queue_actions.py` so the form and the API share one implementation. Authentication had to be a bearer token: the session cookie is `HttpOnly`, so no extension script can read it, and `SameSite=lax`, so the browser would not send it on a cross-site POST even if one could.

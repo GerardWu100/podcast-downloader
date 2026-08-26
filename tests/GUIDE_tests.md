@@ -1,58 +1,58 @@
-# Tests Guide
+# Tests guide
 
-## Part 1: Test Strategy
+## Test strategy
 
-The suite runs offline and checks the boundaries between parts of the app. It
-replaces subprocesses and external clients instead of contacting media sites.
+The suite runs offline. It checks the boundaries between application areas and
+replaces subprocesses and external services instead of contacting media sites.
 
-Coverage follows the app's main boundaries:
+It covers:
 
-- `create_app()` and web routes;
-- `YtDlpClient` command/retry/result contracts;
-- `PodcastDownloadService` workflow results;
-- media classification and expansion functions;
+- the application factory and web routes;
+- `yt-dlp` commands, retries, and results;
+- download workflow results;
+- media classification and URL expansion;
 - queue, archive, bypass, activity, and authentication stores;
-- CLI, configuration, scheduler, password, and Docker bootstrap behavior.
+- the command line, configuration, scheduler, password handling, and Docker
+  bootstrap.
 
-The live SponsorBlock check lives at
-`scripts/sponsorblock_smoke_check.py`. It uses the network, so it stays out of
-`tests/` and is not named like a test module. Pytest therefore does not collect
-it by accident.
+The live SponsorBlock check is
+`scripts/sponsorblock_smoke_check.py`. It uses the network and is deliberately
+outside `tests/`, so Pytest does not collect it by accident.
 
-## Part 2: Code Reference
+## Code reference
 
 - `test_api_behavior.py` and `test_security.py`: browser behavior, sessions,
-  CSRF, CSP, proxy trust, upload safety, and URL command separators.
-- `test_web_app.py`: explicit factory collaborator wiring plus a request-level
-  check that route writes and scheduler requests use the injected instances,
-  without patching `src.api` globals.
-- `test_auth_store.py`: expiry filtering and atomic authentication JSON updates.
+  CSRF, Content Security Policy (CSP), proxy trust, upload safety, and command
+  separators.
+- `test_web_app.py`: dependency wiring through the application factory and
+  request-level checks without patching `src.api` globals.
+- `test_auth_store.py`: expiry filtering and atomic authentication updates.
 - `test_ytdlp_client.py`: typed results, command policy, changed files, and
-  alternate-cookie retries.
+  cookie retries.
 - `test_downloader.py`: publication, metadata recovery, retention, archive
   serialization, and queue outcomes.
-- `test_url_utils_behavior.py`: media policy plus queue-store concurrency.
-- `test_archive_locking.py`: archive-store concurrency.
-- `test_activity_log.py`: activity-store path and locked tail behavior.
+- `test_url_utils_behavior.py`: media policy and queue-store concurrency.
+- `test_token_api.py`: token precedence, short-token rejection, `401`/`503`
+  paths, every add-a-URL outcome, and shared YouTube normalization.
+- `test_archive_locking.py` and `test_activity_log.py`: locked archive and log
+  behavior.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,
-  `test_docker_entrypoint.py`, `test_passwords.py`, `test_credentials.py`: entry
-  and boundary behavior, including the `.env` to `.ui_credentials.json` sync.
+  `test_docker_entrypoint.py`, `test_passwords.py`, and `test_credentials.py`:
+  command and startup boundaries, including `.env` credential synchronization.
 
-Regression coverage also includes non-finite configuration, strict CLI URL
-modes, parsed-path YouTube classification, empty-result cookie fallback,
-one-use age bypasses, stale credential removal, private authentication files,
-and isolated factory sessions.
+Regression coverage also checks non-finite settings, strict URL modes,
+YouTube path parsing, empty cookie-fallback results, one-use age bypasses,
+stale credential removal, private authentication files, and isolated factory
+sessions.
 
-Run all offline checks from the project root:
+Run the offline suite from the project root:
 
 ```bash
 uv run python -m pytest -q
 ```
 
-## Part 3: Journal
+## Journal
 
-- 2026-07-26: Private service monkeypatches for cookie retry were replaced by
-  focused `YtDlpClient` contract tests; store and service tests now consume
-  their typed public seams directly.
-- 2026-07-26: Factory tests gained a request-level regression check for injected
-  queue, bypass, activity, authentication, and scheduler collaborators.
+- 2026-07-26: Replaced private monkeypatches with focused public-contract tests for cookie retries and stores.
+- 2026-07-26: Added request-level factory tests for injected stores and scheduler behavior.
+- 2026-08-26: Added API coverage for the extension without requiring an HTTP client dependency.
