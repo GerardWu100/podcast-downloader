@@ -186,7 +186,7 @@ def test_login_action_accepts_valid_credentials_and_rejects_invalid_password(
     assert wrong_user_response.status_code == 303
     assert wrong_user_response.headers["location"] == "/login?msg=bad_credentials"
     assert good_response.status_code == 302
-    assert good_response.headers["location"] == "/ui"
+    assert good_response.headers["location"] == "/"
     assert api.SESSIONS
     assert (tmp_path / ".login_state.json").exists()
     assert session_state_file.exists()
@@ -295,7 +295,7 @@ def test_login_action_accepts_any_configured_account(
 
     assert crossed_response.headers["location"] == "/login?msg=bad_credentials"
     assert second_account_response.status_code == 302
-    assert second_account_response.headers["location"] == "/ui"
+    assert second_account_response.headers["location"] == "/"
     assert api.SESSIONS
 
 
@@ -471,7 +471,7 @@ def test_secure_cookie_respects_forwarded_proto(monkeypatch) -> None:
 
     assert api._request_is_secure(FakeRequest())
 
-    response = api.RedirectResponse(url="/ui")
+    response = api.RedirectResponse(url="/")
     api._set_session_cookie(response, FakeRequest(), "session-id")
     assert "Secure" in response.headers.get("set-cookie", "")
 

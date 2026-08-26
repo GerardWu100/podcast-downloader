@@ -186,6 +186,12 @@ header {
 .header-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .brand h1 { font-size:1.42rem; font-weight:750; letter-spacing:-.025em; }
 .brand p  { font-size:.78rem; color:var(--muted); }
+/* The title is a link back to the queue at "/". It is styled as plain text so
+   the header still reads as a heading, with the colour change on hover as the
+   only hint that it can be clicked. */
+.brand h1 a { color:inherit; text-decoration:none; }
+.brand h1 a:hover { color:var(--accent); }
+.brand h1 a:focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:4px; }
 .nav-link {
   font-size:.78rem; color:var(--muted); background:var(--surface);
   padding:6px 12px; border:1px solid var(--border); border-radius:6px;
@@ -342,7 +348,7 @@ def render_help_page(
 <body>
   <main class="help-page">
     <nav class="help-nav" aria-label="Help page navigation">
-      <a href="/">← Back to downloader</a>
+      <a href="/">Back to the queue</a>
       <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
     </nav>
     <article class="card help-card">
@@ -542,11 +548,11 @@ def render_settings_page(
       <div class="page">
     <header>
       <div class="brand">
-        <h1>Settings</h1>
-        <p>YouTube sign-in cookies and error notifications.</p>
+        <h1><a href="/">Podcast Downloader</a></h1>
+        <p>Settings: YouTube sign-in cookies and error notifications.</p>
       </div>
       <div class="header-actions">
-        <a class="nav-link" href="/ui">Back to queue</a>
+        <a class="nav-link" href="/">Queue</a>
         <a class="nav-link" href="/help">Help</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
         <form method="post" action="/logout" style="margin:0">
@@ -845,7 +851,7 @@ def render_queue_page(
       <div class="page">
     <header>
       <div class="brand">
-        <h1>Podcast Downloader</h1>
+        <h1><a href="/">Podcast Downloader</a></h1>
         <p>Download YouTube audio as MP3. Sponsor segments are removed when available.</p>
       </div>
       <div class="header-actions">

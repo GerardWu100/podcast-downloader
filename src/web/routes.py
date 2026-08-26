@@ -374,7 +374,7 @@ def _has_valid_session(request: Request) -> bool:
     """Return whether the request carries an active remembered session.
 
     Public entry pages such as ``/`` and ``/login`` use this check to send an
-    already-authenticated browser straight to ``/ui``.
+    already-authenticated browser straight to the queue at ``/``.
     """
     return _require_login(request) is None
 
@@ -537,14 +537,6 @@ def _clear_failures(state: dict, ip: str) -> None:
         state[ip] = record
 
 
-@router.get("/")
-def root(request: Request) -> RedirectResponse:
-    """Route returning browsers to either the queue UI or the login form."""
-    if _has_valid_session(request):
-        return RedirectResponse(url="/ui", status_code=302)
-    return RedirectResponse(url="/login", status_code=302)
-
-
 def _last_activity_label(activity_log_file: Path) -> str:
     """Return the latest activity-file update time for the status header.
 
@@ -628,7 +620,7 @@ def help_page() -> HTMLResponse:
 def login_form(request: Request) -> Response:
     """Render the login form and show any login error state."""
     if _has_valid_session(request):
-        return RedirectResponse(url="/ui", status_code=302)
+        return RedirectResponse(url="/", status_code=302)
 
     raw_message = request.query_params.get("msg", "")
     message_map = {
@@ -770,7 +762,7 @@ def login_action(
         sessions = _sessions(request)
         sessions[session_id] = {"created_at": time.time()}
         _save_session_state(sessions, request)
-    response = RedirectResponse(url="/ui", status_code=302)
+    response = RedirectResponse(url="/", status_code=302)
     _set_session_cookie(response, request, session_id)
     return response
 
@@ -812,9 +804,13 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
 }
 
 
-@router.get("/ui", response_class=HTMLResponse)
-def ui(request: Request, msg: str = "") -> HTMLResponse:
+@router.get("/", response_class=HTMLResponse)
+def queue_page(request: Request, msg: str = "") -> HTMLResponse:
     """Render the authenticated queue, controls, and activity status.
+
+    This is the site root, so the address a person types or bookmarks is the
+    page they came for. A browser without a valid session is sent to ``/login``
+    and returns here after signing in.
 
     Parameters
     ----------
@@ -1168,19 +1164,19 @@ def add_url_form(
     # Reject malformed or non-web URLs before touching the queue.
     cleaned_url = url.strip()
     if not is_supported_media_url(cleaned_url):
-        return RedirectResponse(url="/ui?msg=invalid", status_code=303)
+        return RedirectResponse(url="/?msg=invalid", status_code=303)
 
     normalized = normalize_youtube_url(cleaned_url)
 
     # Avoid re-queuing anything already archived as downloaded.
     downloaded = _archive_store(request).load()
     if normalized in downloaded:
-        return RedirectResponse(url="/ui?msg=downloaded", status_code=303)
+        return RedirectResponse(url="/?msg=downloaded", status_code=303)
 
     added = _queue_store(request).append_urls([normalized])
 
     if not added:
-        return RedirectResponse(url="/ui?msg=duplicate", status_code=303)
+        return RedirectResponse(url="/?msg=duplicate", status_code=303)
 
     # Direct-video additions wake the scheduler with the exact new URL, so an
     # immediate UI run cannot expand channels or process older urls.txt entries.
@@ -1196,7 +1192,7 @@ def add_url_form(
             _bypass_store(request).add(normalized)
         _download_trigger(request).queue_single_url_download(normalized)
 
-    return RedirectResponse(url="/ui?msg=added", status_code=303)
+    return RedirectResponse(url="/?msg=added", status_code=303)
 
 
 @router.post("/remove-url")
@@ -1214,10 +1210,10 @@ def remove_url_form(
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     if not is_supported_media_url(url):
-        return RedirectResponse(url="/ui?msg=invalid", status_code=303)
+        return RedirectResponse(url="/?msg=invalid", status_code=303)
 
     removed = _queue_store(request).remove_url(url)
     if not removed:
-        return RedirectResponse(url="/ui?msg=notfound", status_code=303)
+        return RedirectResponse(url="/?msg=notfound", status_code=303)
 
-    return RedirectResponse(url="/ui?msg=removed", status_code=303)
+    return RedirectResponse(url="/?msg=removed", status_code=303)

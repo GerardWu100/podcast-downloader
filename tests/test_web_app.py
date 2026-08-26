@@ -154,7 +154,7 @@ def test_routes_use_collaborators_injected_by_create_app(tmp_path: Path) -> None
     )
 
     normalized_url = "https://www.youtube.com/watch?v=injected123"
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert queue_store.read_urls() == [normalized_url]
     assert bypass_store.load() == {normalized_url}
     assert trigger.single_urls == [normalized_url]

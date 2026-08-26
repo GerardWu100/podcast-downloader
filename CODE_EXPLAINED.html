@@ -806,12 +806,11 @@ leftover temp files: none</pre></div>
 <table>
 <thead><tr><th>Method and path</th><th>What it does</th><th>Sign-in needed</th></tr></thead>
 <tbody>
-<tr><td><code>GET /</code></td><td>Sends a signed-in browser to <code>/ui</code>, everyone else to <code>/login</code>.</td><td>No</td></tr>
+<tr><td><code>GET /</code></td><td>The queue page: current sources, add and remove forms, status row. Sends a signed-out browser to <code>/login</code>.</td><td>Yes</td></tr>
 <tr><td><code>GET /help</code></td><td>A static usage and cookie-export guide.</td><td>No</td></tr>
 <tr><td><code>GET /login</code></td><td>The sign-in form, with a fresh one-time token and any error message.</td><td>No</td></tr>
 <tr><td><code>POST /login</code></td><td>Checks the token, the ban list, then the password. Starts a remembered session.</td><td>No</td></tr>
 <tr><td><code>POST /logout</code></td><td>Drops the session and clears the cookie.</td><td>Yes</td></tr>
-<tr><td><code>GET /ui</code></td><td>The queue page: current sources, add and remove forms, status row.</td><td>Yes</td></tr>
 <tr><td><code>POST /add-url</code></td><td>Validates a URL, adds it to the queue, and may wake the scheduler.</td><td>Yes</td></tr>
 <tr><td><code>POST /remove-url</code></td><td>Removes one source from <code>urls.txt</code>.</td><td>Yes</td></tr>
 <tr><td><code>POST /upload-cookies</code></td><td>Replaces the <code>yt-dlp</code> cookie file from a browser upload.</td><td>Yes</td></tr>

@@ -117,24 +117,16 @@ def test_require_login_accepts_session_from_different_ip() -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
-def test_root_redirects_remembered_session_to_ui() -> None:
-    """Reopening the app root with a valid session should skip the login form."""
-    session_id = "test-root-remembered-session"
-    api_module.SESSIONS[session_id] = {
-        "created_at": time.time(),
-    }
+def test_root_without_a_session_asks_for_the_password() -> None:
+    """The root is the queue itself, so a signed-out browser must be sent away."""
+    request = _FakeRequest(cookies={})
 
-    request = _FakeRequest(
-        cookies={api_module.SESSION_COOKIE: session_id},
-    )
+    response = api_module.queue_page(request)
 
-    response = api_module.root(request)
-
-    assert response.headers["location"] == "/ui"
-    api_module.SESSIONS.pop(session_id, None)
+    assert response.headers["location"] == "/login"
 
 
-def test_login_page_redirects_remembered_session_to_ui() -> None:
+def test_login_page_redirects_remembered_session_to_the_queue() -> None:
     """Reopening /login with a valid session should not ask for the password again."""
     session_id = "test-login-remembered-session"
     api_module.SESSIONS[session_id] = {
@@ -147,7 +139,7 @@ def test_login_page_redirects_remembered_session_to_ui() -> None:
 
     response = api_module.login_form(request)
 
-    assert response.headers["location"] == "/ui"
+    assert response.headers["location"] == "/"
     api_module.SESSIONS.pop(session_id, None)
 
 
@@ -186,7 +178,7 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = api_module.ui(request)
+    response = api_module.queue_page(request)
     body = response.body.decode("utf-8")
 
     assert 'aria-label="System status"' in body
@@ -245,7 +237,7 @@ def test_secure_cookie_respects_cf_visitor(monkeypatch) -> None:
 
     assert api._request_is_secure(FakeRequest())
 
-    response = api.RedirectResponse(url="/ui")
+    response = api.RedirectResponse(url="/")
     api._set_session_cookie(response, FakeRequest(), "session-id")
     assert "Secure" in response.headers.get("set-cookie", "")
 
@@ -471,7 +463,7 @@ def test_ui_uses_nonce_based_script_instead_of_inline_handlers() -> None:
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = api_module.ui(request)
+    response = api_module.queue_page(request)
     body = response.body.decode("utf-8")
 
     assert 'script nonce="' in body
@@ -499,7 +491,7 @@ def test_ui_bypass_label_uses_shorter_immediate_download_text(monkeypatch) -> No
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = api_module.ui(request)
+    response = api_module.queue_page(request)
     body = response.body.decode("utf-8")
 
     assert "Run now (skip the wait or download a full playlist)" in body
@@ -526,7 +518,7 @@ def test_ui_shows_playlist_checkbox_when_age_gate_disabled(monkeypatch) -> None:
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = api_module.ui(request)
+    response = api_module.queue_page(request)
     body = response.body.decode("utf-8")
 
     assert "skip_age_check" in body
@@ -573,7 +565,7 @@ def test_queue_page_links_to_settings_without_embedding_them() -> None:
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    body = api_module.ui(request).body.decode("utf-8")
+    body = api_module.queue_page(request).body.decode("utf-8")
 
     assert 'href="/settings"' in body
     assert "YouTube access cookies" not in body
@@ -841,7 +833,7 @@ def test_add_url_with_bypass_enqueues_single_immediate_video(
         skip_age_check="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert (
         queue_file.read_text(encoding="utf-8")
         == "https://www.youtube.com/watch?v=abc123\n"
@@ -903,7 +895,7 @@ def test_add_playlist_with_bypass_enqueues_full_playlist_immediate_run(
         skip_age_check="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{playlist_url}\n"
     assert not bypass_file.exists()
     assert pop_single_url_download_requests() == []
@@ -958,7 +950,7 @@ def test_add_channel_with_checkbox_does_not_enqueue_immediate_run(
         skip_age_check="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{channel_url}\n"
     assert not bypass_file.exists()
     assert pop_single_url_download_requests() == []
@@ -1011,7 +1003,7 @@ def test_add_direct_url_without_bypass_enqueues_single_immediate_video(
         skip_age_check="",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert (
         queue_file.read_text(encoding="utf-8")
         == "https://www.youtube.com/watch?v=abc123\n"
@@ -1069,7 +1061,7 @@ def test_add_non_youtube_direct_url_enqueues_single_immediate_video(
         skip_age_check="",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{non_youtube_url}\n"
     assert not bypass_file.exists()
     assert pop_single_url_download_requests() == [non_youtube_url]
@@ -1122,7 +1114,7 @@ def test_add_non_youtube_direct_url_with_checkbox_does_not_write_bypass_file(
         skip_age_check="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{non_youtube_url}\n"
     assert not bypass_file.exists()
     assert pop_single_url_download_requests() == [non_youtube_url]
@@ -1175,7 +1167,7 @@ def test_add_channel_url_does_not_trigger_immediate_batch(
         skip_age_check="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert queue_file.read_text(encoding="utf-8") == f"{channel_url}\n"
     assert not bypass_file.exists()
     assert pop_single_url_download_requests() == []
@@ -1227,7 +1219,7 @@ def test_add_url_with_bypass_clears_pending_batch_trigger(
         skip_age_check="1",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=def456"
     ]
@@ -1277,7 +1269,7 @@ def test_add_url_without_bypass_enqueues_single_payload_only(
         skip_age_check="",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert pop_single_url_download_requests() == [
         "https://www.youtube.com/watch?v=abc123"
     ]
@@ -1327,7 +1319,7 @@ def test_add_url_accepts_non_youtube_video_url(
         skip_age_check="",
     )
 
-    assert response.headers["location"] == "/ui?msg=added"
+    assert response.headers["location"] == "/?msg=added"
     assert (
         queue_file.read_text(encoding="utf-8")
         == "https://videos.example.com/watch/episode-1\n"
@@ -1363,7 +1355,7 @@ def test_ui_shows_monitored_urls_with_remove_controls(tmp_path, monkeypatch) -> 
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = api_module.ui(request)
+    response = api_module.queue_page(request)
     body = response.body.decode("utf-8")
 
     # The queue count now lives only on the queue card's badge.
@@ -1431,7 +1423,7 @@ def test_ui_logout_is_a_post_form_not_a_link() -> None:
         client_host="127.0.0.1",
         cookies={api_module.SESSION_COOKIE: session_id},
     )
-    response = api_module.ui(request)
+    response = api_module.queue_page(request)
     body = response.body.decode("utf-8")
 
     assert 'action="/logout"' in body
@@ -1475,7 +1467,7 @@ def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> Non
         csrf_token="csrf-token",
     )
 
-    assert response.headers["location"] == "/ui?msg=removed"
+    assert response.headers["location"] == "/?msg=removed"
     assert (
         queue_file.read_text(encoding="utf-8")
         == "https://www.youtube.com/@channelname\n"
