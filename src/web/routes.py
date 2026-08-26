@@ -25,7 +25,6 @@ from ..config import ConfigError, PodcastConfig, load_config
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
 from ..log_timezone import LOG_TIME_ZONE
 from ..media.urls import is_supported_media_url
-from ..passwords import verify_password
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
@@ -46,6 +45,12 @@ from ..state.notification_store import (
 )
 from ..state.queue_store import QueueStore
 from ..trigger import DownloadTrigger, in_process_download_trigger
+from .account_auth import (
+    LOGIN_STATE_LOCK,
+    CredentialCheck,
+    check_credentials,
+    is_banned,
+)
 from .auth import client_ip, request_is_secure, security_headers
 from .queue_actions import add_url_to_queue
 from .templates import (
@@ -60,18 +65,11 @@ _Dependency = TypeVar("_Dependency")
 
 router = APIRouter()
 
-MAX_FAILED_ATTEMPTS = 5
-FAIL_WINDOW_SECONDS = 10 * 60
-BAN_SECONDS = 15 * 60
-# A failure record is useless once its window has passed and its ban has
-# expired, so records older than this are dropped on the next failed login.
-FAILURE_RECORD_LIFETIME_SECONDS = FAIL_WINDOW_SECONDS + BAN_SECONDS
 LOGIN_CSRF_TTL_SECONDS = 10 * 60
 SESSION_COOKIE = "podcast_session"
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 SESSIONS: dict[str, dict[str, float | str]] = {}
 CSRF_TOKENS: dict[str, dict[str, float | str]] = {}  # session_id -> token metadata
-_LOGIN_STATE_LOCK = threading.Lock()
 _SESSION_STATE_LOCK = threading.Lock()
 _CSRF_STATE_LOCK = threading.RLock()
 
@@ -424,118 +422,6 @@ def _delete_session_cookie(response: RedirectResponse) -> None:
     response.delete_cookie(SESSION_COOKIE)
 
 
-def _is_banned(state: dict, ip: str) -> tuple[bool, float]:
-    """Return whether an IP is banned and when that ban ends."""
-    record = state.get(ip, {})
-    try:
-        banned_until = float(record.get("banned_until", 0))
-    except (TypeError, ValueError):
-        banned_until = 0.0
-    if not math.isfinite(banned_until):
-        banned_until = 0.0
-    return time.time() < banned_until, banned_until
-
-
-def _failure_record_is_stale(record: dict, now: float) -> bool:
-    """Return whether one failure record can no longer affect any decision.
-
-    Parameters
-    ----------
-    record:
-        One address's stored ``failed``, ``last_failed``, and ``banned_until``
-        values.
-    now:
-        Current Unix time in seconds.
-
-    Returns
-    -------
-    bool
-        ``True`` when the address is outside the rolling failure window and is
-        not still banned, or when the record cannot be read at all.
-    """
-    try:
-        last_failed = float(record.get("last_failed", 0) or 0)
-        banned_until = float(record.get("banned_until", 0) or 0)
-    except (TypeError, ValueError):
-        # A record that cannot be read is a record that cannot be trusted.
-        return True
-    if not math.isfinite(last_failed) or not math.isfinite(banned_until):
-        return True
-    if banned_until > now:
-        return False
-    return now - last_failed > FAILURE_RECORD_LIFETIME_SECONDS
-
-
-def _drop_stale_failure_records(state: dict, now: float) -> None:
-    """Remove failure records that no longer change any login decision.
-
-    Without this, one row per address that ever failed a login stays in
-    .login_state.json forever, and every later failure has to read and rewrite
-    the whole file. A caller with no password could therefore grow that file
-    from many addresses and make each login slower. A record matters only while
-    its address is inside the rolling failure window or still banned.
-
-    Parameters
-    ----------
-    state:
-        Mapping of client addresses to failure records, edited in place.
-    now:
-        Current Unix time in seconds.
-    """
-    stale_addresses = [
-        address
-        for address, record in state.items()
-        if not isinstance(record, dict) or _failure_record_is_stale(record, now)
-    ]
-    for address in stale_addresses:
-        del state[address]
-
-
-def _record_failure(state: dict, ip: str) -> None:
-    """Update the failure counters and ban deadline for one IP address.
-
-    Parameters
-    ----------
-    state:
-        Mutable mapping of client IP addresses to login-failure metadata.
-    ip:
-        Client IP address whose failed attempt should be recorded.
-    """
-    now = time.time()
-    _drop_stale_failure_records(state, now)
-    record = state.get(ip, {})
-    try:
-        last_failed = float(record.get("last_failed", 0))
-        failed = int(record.get("failed", 0))
-    except (TypeError, ValueError):
-        last_failed = 0.0
-        failed = 0
-    if not math.isfinite(last_failed) or failed < 0:
-        last_failed = 0.0
-        failed = 0
-
-    # A failure outside the rolling window starts a fresh count.
-    if now - last_failed > FAIL_WINDOW_SECONDS:
-        failed = 0
-
-    failed += 1
-    record.update({"failed": failed, "last_failed": now})
-
-    # Reaching the threshold sets a deadline checked by later login attempts.
-    if failed >= MAX_FAILED_ATTEMPTS:
-        record["banned_until"] = now + BAN_SECONDS
-
-    state[ip] = record
-
-
-def _clear_failures(state: dict, ip: str) -> None:
-    """Reset the failure counters for one IP address."""
-    record = state.get(ip)
-    if record:
-        record.update({"failed": 0, "last_failed": 0, "banned_until": 0})
-        state[ip] = record
-
-
 def _last_activity_label(activity_log_file: Path) -> str:
     """Return the latest activity-file update time for the status header.
 
@@ -667,10 +553,10 @@ def login_form(request: Request) -> Response:
     message_class, message_text = message_map.get(raw_message, ("", ""))
     safe_message_text = html.escape(message_text)
 
-    ip = _client_ip(request)
-    with _LOGIN_STATE_LOCK:
-        state = _load_login_state(request)
-        banned, banned_until = _is_banned(state, ip)
+    with LOGIN_STATE_LOCK:
+        banned, banned_until = is_banned(
+            _load_login_state(request), _client_ip(request)
+        )
     if banned:
         remaining = int(banned_until - time.time())
         message_class = "msg-err"
@@ -738,54 +624,20 @@ def login_action(
     ):
         return RedirectResponse(url="/login?msg=csrf", status_code=303)
 
-    ip = _client_ip(request)
-
-    # Fail fast if the IP is already banned.
-    with _LOGIN_STATE_LOCK:
-        state = _load_login_state(request)
-        banned, banned_until = _is_banned(state, ip)
-    if banned:
-        return RedirectResponse(url="/login?msg=banned", status_code=303)
-
-    # Keep obviously bogus submissions from reaching the file read.
-    if len(password) > 1000 or len(username) > 1000:
-        return RedirectResponse(url="/login?msg=request", status_code=303)
-
-    accounts = load_ui_accounts(_credentials_file())
-    if not accounts:
-        return RedirectResponse(url="/login?msg=unconfigured", status_code=303)
-
-    matched_account = None
-    for account in accounts:
-        if secrets.compare_digest(
-            username.encode("utf-8"), account.username.encode("utf-8")
-        ):
-            matched_account = account
-            break
-
-    # Hash exactly one password either way, using the first account as a decoy
-    # when no name matched, so a wrong username costs the same time as a wrong
-    # password. PBKDF2 stays outside the file lock because it is slow.
-    hash_to_check = (
-        matched_account.password_hash
-        if matched_account is not None
-        else accounts[0].password_hash
+    # account_auth.check_credentials owns the ban ledger, the constant-time
+    # name comparison, and the decoy password hash. The JSON API in
+    # api_routes.py calls the same function, so neither door can end up with
+    # weaker rules than the other. Its outcome values are this page's message
+    # keys, which is why the failure branch can pass one straight through.
+    outcome = check_credentials(
+        username,
+        password,
+        accounts=load_ui_accounts(_credentials_file()),
+        auth_store=_auth_store(request),
+        client_address=_client_ip(request),
     )
-    password_ok = verify_password(password, hash_to_check)
-
-    if matched_account is None or not password_ok:
-        with _LOGIN_STATE_LOCK:
-            updated_state = _auth_store(request).update_login_state(
-                lambda state: _record_failure(state, ip),
-            )
-            is_now_banned, _ban_deadline = _is_banned(updated_state, ip)
-        if is_now_banned:
-            return RedirectResponse(url="/login?msg=banned", status_code=303)
-        return RedirectResponse(url="/login?msg=bad_credentials", status_code=303)
-
-    _auth_store(request).update_login_state(
-        lambda state: _clear_failures(state, ip),
-    )
+    if outcome is not CredentialCheck.ACCEPTED:
+        return RedirectResponse(url=f"/login?msg={outcome}", status_code=303)
 
     session_id = secrets.token_urlsafe(32)
     with _SESSION_STATE_LOCK:
@@ -1192,7 +1044,7 @@ def add_url_form(
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
     # add_url_to_queue holds the validation, normalization, duplicate, and
-    # scheduler rules, shared with the token API in token_api.py so both entry
+    # scheduler rules, shared with the JSON API in api_routes.py so both entry
     # points behave identically. Its outcome values are the queue page's
     # message keys.
     result = add_url_to_queue(

@@ -10,7 +10,7 @@ sidebar_position: 2
 ```mermaid
 flowchart LR
     API["src/api.py"] --> Web["src/web/"]
-    Extension["extension/ (Chrome)"] -->|"bearer token"| Web
+    Extension["extension/ (Chrome)"] -->|"name and password"| Web
     CLI["src/cli.py"] --> Downloads["src/downloads/"]
     CLI --> Media["src/media/"]
     Web --> Media
@@ -30,11 +30,14 @@ Each area has one job:
 - `src/web/` builds the app and owns security, routes, and HTML.
 - `src/api.py` exports the production app created by `create_app()`.
 
-The web app has two kinds of client. A browser signs in with a password, session
-cookie, and form token. The Chrome extension and other programs call `/api`
-with the bearer token from `PODCAST_API_TOKEN`. They cannot use the browser
-cookie: it is `HttpOnly` and `SameSite=lax`, so scripts cannot read it and
-the browser does not send it with a cross-site `POST`.
+The web app has two kinds of client, both signing in with the same `.env`
+accounts. A browser posts a form and carries a session cookie plus a form
+token. The Chrome extension and other programs call `/api` and send the name
+and password in an `Authorization` header. They cannot use the browser cookie:
+it is `HttpOnly` and `SameSite=lax`, so scripts cannot read it and the browser
+does not send it with a cross-site `POST`. `src/web/account_auth.py` holds the
+account check and the ban after repeated failures, so both doors apply one set
+of rules.
 
 Both clients add URLs through `src/web/queue_actions.py`. Validation,
 normalization, duplicate handling, and immediate downloads therefore work the

@@ -195,7 +195,7 @@ def test_login_action_accepts_valid_credentials_and_rejects_invalid_password(
 
 def test_failed_login_records_do_not_accumulate_forever() -> None:
     """Old failure rows must be dropped so the login-state file stays bounded."""
-    from src.web import routes as api
+    from src.web import account_auth as api
 
     now = time.time()
     state = {
@@ -217,7 +217,7 @@ def test_failed_login_records_do_not_accumulate_forever() -> None:
         "10.0.0.4": {"failed": "many", "last_failed": "yesterday"},
     }
 
-    api._record_failure(state, "10.0.0.5")
+    api.record_failure(state, "10.0.0.5")
 
     assert sorted(state) == ["10.0.0.2", "10.0.0.3", "10.0.0.5"]
     assert state["10.0.0.5"]["failed"] == 1

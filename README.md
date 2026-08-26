@@ -38,8 +38,6 @@ Create `.env` from `.env.example`, then set:
   this directory for its mounted data folder.
 - `PODCAST_DOWNLOAD_DIR` or `PODCAST_INTERMEDIATE_DIR` to override the
   matching `config.ini` paths.
-- `PODCAST_API_TOKEN` to enable the JSON API used by the browser extension.
-  It must contain at least 32 characters; leave it blank to disable the API.
 
 ## Setup
 
@@ -120,29 +118,27 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-The extension in `extension/` queues the current page or a link with one click.
-It also supports `Alt+Shift+D` and the right-click menu.
+`extension/` holds a Chrome extension that adds the page you are on to the
+queue. Click the toolbar icon, right-click a link, or press Alt+Shift+D.
 
-Generate a token, put it in `.env`, restart the server, then load `extension/`
-through **Load unpacked** at `chrome://extensions`. Paste the same token into
-the extension's options:
+Load `extension/` through **Load unpacked** at `chrome://extensions`, then open
+its options and enter your server address plus the same username and password
+you use on the web page. Nothing to configure on the server.
 
-```bash
-uv run python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-The token also enables these API routes:
+It signs in through an `Authorization` header rather than the browser session,
+because that session cookie is `HttpOnly` and `SameSite=lax` and no extension
+script can use it. The same two routes work from any script:
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" https://your-server/api/ping
+curl -u "$USERNAME:$PASSWORD" https://your-server/api/ping
 curl -X POST https://your-server/api/add-url \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -u "$USERNAME:$PASSWORD" -H "Content-Type: application/json" \
   -d '{"url": "https://www.youtube.com/watch?v=...", "skip_age_check": false}'
 ```
 
-Leave `PODCAST_API_TOKEN` blank to keep the API disabled. See
-[docs/browser-extension.md](docs/browser-extension.md) for setup and API
-details.
+Wrong passwords count toward the same ban as the login page: five failures in
+ten minutes blocks that address for fifteen minutes. See
+[docs/browser-extension.md](docs/browser-extension.md).
 
 ## Error notifications
 
@@ -193,5 +189,6 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 - SponsorBlock removal depends on community-submitted segment data.
 - The web interface uses shared `.env` accounts and has no per-user
   permissions. Keep it on a personal, trusted network.
-- `PODCAST_API_TOKEN` is one shared token with no rate limit. Anyone who has it
-  can queue downloads. Rotate it by editing `.env` and restarting.
+- The browser extension keeps your web interface password in Chrome's
+  extension storage. Anyone with that Chrome profile can read it, and revoking
+  it means changing the password, which signs the web interface out too.

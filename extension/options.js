@@ -1,5 +1,6 @@
 /**
- * Settings page: server address, API token, and the immediate-download choice.
+ * Settings page: server address, the same sign-in you use on the web page, and
+ * the immediate-download choice.
  *
  * Saving also asks Chrome for permission to talk to that one server. The
  * manifest requests no host permissions up front, so the extension can only
@@ -7,6 +8,7 @@
  */
 
 import {
+  basicAuthHeader,
   buildEndpoint,
   originPattern,
   readSettings,
@@ -14,7 +16,8 @@ import {
 } from "./settings.js";
 
 const serverUrlInput = document.getElementById("server-url");
-const apiTokenInput = document.getElementById("api-token");
+const usernameInput = document.getElementById("username");
+const passwordInput = document.getElementById("password");
 const downloadImmediatelyInput = document.getElementById("download-immediately");
 const statusLine = document.getElementById("status");
 
@@ -23,7 +26,8 @@ document.getElementById("test").addEventListener("click", testConnection);
 
 const settings = await readSettings();
 serverUrlInput.value = settings.serverUrl;
-apiTokenInput.value = settings.apiToken;
+usernameInput.value = settings.username;
+passwordInput.value = settings.password;
 downloadImmediatelyInput.checked = settings.downloadImmediately;
 
 async function save() {
@@ -45,7 +49,8 @@ async function save() {
 
   await writeSettings({
     serverUrl: serverUrlInput.value.trim(),
-    apiToken: apiTokenInput.value.trim(),
+    username: usernameInput.value.trim(),
+    password: passwordInput.value,
     downloadImmediately: downloadImmediatelyInput.checked,
   });
   show("Saved.", true);
@@ -60,16 +65,17 @@ async function testConnection() {
     return;
   }
 
-  const token = apiTokenInput.value.trim();
-  if (!token) {
-    show("Enter the API token first.", false);
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (!username || !password) {
+    show("Enter your username and password first.", false);
     return;
   }
 
   let response;
   try {
     response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: basicAuthHeader(username, password) },
     });
   } catch {
     show(`Could not reach ${endpoint}. Press Save first to grant access, then try again.`, false);
@@ -77,11 +83,15 @@ async function testConnection() {
   }
 
   if (response.status === 401) {
-    show("The server rejected this token.", false);
+    show("The server did not accept that username and password.", false);
+    return;
+  }
+  if (response.status === 429) {
+    show("Too many failed attempts from this machine. Wait a few minutes and try again.", false);
     return;
   }
   if (response.status === 503) {
-    show("The server has no PODCAST_API_TOKEN set. Add one to .env and restart it.", false);
+    show("The server has no accounts configured. Set UI_USERNAME and UI_PASSWORD in its .env and restart it.", false);
     return;
   }
   if (!response.ok) {

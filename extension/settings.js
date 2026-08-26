@@ -1,20 +1,15 @@
 /**
  * Stored settings and the small amount of URL work both pages need.
  *
- * Settings live in chrome.storage.local rather than chrome.storage.sync: the
- * API token is a password for your server, and sync would copy it to every
+ * Settings live in chrome.storage.local rather than chrome.storage.sync: this
+ * holds your actual web interface password, and sync would copy it to every
  * Chrome profile signed in to the same Google account.
  */
 
-export const SETTINGS_KEYS = {
-  serverUrl: "serverUrl",
-  apiToken: "apiToken",
-  downloadImmediately: "downloadImmediately",
-};
-
 export const DEFAULT_SETTINGS = {
   serverUrl: "",
-  apiToken: "",
+  username: "",
+  password: "",
   downloadImmediately: false,
 };
 
@@ -64,6 +59,22 @@ export function normalizeServerUrl(serverUrl) {
     throw new Error(`"${typed}" is not a valid server address.`);
   }
   return parsed.origin;
+}
+
+/**
+ * Build the Authorization header value for a username and password.
+ *
+ * HTTP Basic sends base64("name:password"). btoa cannot encode characters
+ * outside Latin-1, so the text is turned into UTF-8 bytes first; without that
+ * step an accented character in a password throws instead of signing in.
+ */
+export function basicAuthHeader(username, password) {
+  const utf8Bytes = new TextEncoder().encode(`${username}:${password}`);
+  let latin1 = "";
+  for (const byte of utf8Bytes) {
+    latin1 += String.fromCharCode(byte);
+  }
+  return `Basic ${btoa(latin1)}`;
 }
 
 /**

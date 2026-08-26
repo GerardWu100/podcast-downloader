@@ -4,47 +4,10 @@ The extension in `extension/` adds a URL to the download queue from the page
 you are viewing. Click its toolbar icon, right-click a link, or press
 `Alt+Shift+D`. There is no separate window and nothing to copy and paste.
 
-It uses the same server as the web interface through a small JSON API. Any
-other program that can send an HTTP request can use the API too.
+You sign in with the same username and password you already use on the web
+page. There is nothing to configure on the server.
 
-## Why it uses a separate token
-
-The web interface signs in with a username, password, session cookie, and
-hidden form token. An extension cannot reuse that login safely:
-
-- The session cookie is `HttpOnly`, so extension code cannot read it.
-- The cookie is `SameSite=lax`, so the browser does not send it with a
-  cross-site `POST` request.
-- The form token exists only in the queue page's HTML.
-
-The extension therefore uses one long, random token in an `Authorization`
-header. You paste this token into the extension once.
-
-The API does not use the web form's Cross-Site Request Forgery (CSRF) check.
-CSRF protection is needed when a browser attaches cookies automatically. This
-token is stored in the extension and added deliberately, so another site
-cannot forge the request.
-
-## 1. Enable the API
-
-Generate a token and add it to `.env` beside the web-interface accounts:
-
-```bash
-uv run python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-```text
-PODCAST_API_TOKEN=<the generated string>
-```
-
-Restart the server. Until this setting exists, every `/api` route returns
-`503`. Tokens shorter than 32 characters are rejected and logged because a
-short token could be guessed.
-
-In Docker, the token is read from the mounted `/data/.env`; no Compose change
-is needed. Run `./update.sh --force` after editing `.env`.
-
-## 2. Install the extension
+## 1. Install the extension
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
@@ -53,28 +16,28 @@ is needed. Run `./update.sh --force` after editing `.env`.
 It works in Chrome, Edge, Brave, and other Chromium browsers. Firefox is not
 supported because its background-worker setup is different.
 
-This extension is intended for a server you control. Do not publish it to the
+This extension is meant for a server you control. Do not publish it to the
 Chrome Web Store.
 
-## 3. Connect it to the server
+## 2. Connect it to your server
 
-Open the extension's options by right-clicking its icon and choosing
-**Options**. Enter:
+Right-click the extension's icon and choose **Options**. Enter:
 
 | Field | Value |
 |---|---|
-| Server address | The address of the web interface, such as `https://podcast.example.com` |
-| API token | The value of `PODCAST_API_TOKEN` |
+| Server address | The address you open the web page at, such as `https://podcast.example.com` |
+| Username and password | The same ones you type on the web page |
 | Download immediately | Start direct-video downloads without waiting for SponsorBlock data |
 
-Select **Save**, then **Test connection**. The test calls `GET /api/ping`.
-Chrome asks for permission to contact only the address you entered.
+Select **Save**. Chrome asks for permission to contact only the address you
+entered. Then select **Test connection**, which calls `GET /api/ping` and
+reports what came back.
 
-If you enter a hostname without a scheme, the extension assumes `https`. Type
-`http://` explicitly for a local server without a certificate. Plain HTTP lets
-others on the network read the token.
+If you enter a hostname with no scheme, the extension assumes `https`. Type
+`http://` explicitly for a local server without a certificate, but know that
+plain HTTP lets anyone on the network in between read your password.
 
-## Use it
+## 3. Use it
 
 | Action | URL added |
 |---|---|
@@ -84,34 +47,68 @@ others on the network read the token.
 | Right-click a link, then choose the podcast item | The link |
 
 The toolbar badge shows `OK` for a new item, `=` for an item already queued or
-downloaded, and `!` for an error. Errors also create a desktop notification.
+downloaded, and `!` for an error. Errors also raise a desktop notification.
 
 Channel and playlist URLs work. A channel always waits for the next scheduled
-pass, even when immediate downloads are enabled. One click therefore cannot
-start a whole back catalogue.
+pass, even when immediate downloads are enabled, so one click cannot start a
+whole back catalogue.
 
-## Privacy
+## Why it does not just reuse your browser login
 
-The extension reads a page address only when you invoke it. Chrome's `activeTab`
-permission grants access to that tab for that action; the extension cannot
-watch your browsing and never reads cookies.
+You are already signed in on the web page, so it looks like the extension
+should inherit that. It cannot:
 
-The API token is stored in `chrome.storage.local`, not `chrome.storage.sync`.
-It is not copied to other machines using the same Google account.
+- The session cookie is `HttpOnly`, so extension code cannot read it.
+- The cookie is `SameSite=lax`, so the browser does not attach it to a request
+  that starts on another site.
+- The hidden form token that every page submission carries exists only inside
+  the queue page's HTML.
+
+So the extension sends your name and password in an `Authorization` header
+instead. The server checks them against the same accounts, using the same
+constant-time comparison and the same ban after repeated failures.
+
+The API does not use the web form's Cross-Site Request Forgery (CSRF) check.
+That protection exists because browsers attach cookies automatically, which
+lets a hostile page act as you. Credentials the client reads from its own
+settings are never attached automatically, and a page that already knew your
+password would not need to forge anything.
+
+## What the extension can see
+
+It reads a page's address only when you invoke it. Chrome's `activeTab`
+permission grants access to that tab for that action, so the extension cannot
+watch your browsing and never touches cookies.
+
+Your password is stored in `chrome.storage.local`, not `chrome.storage.sync`,
+so it is not copied to other machines signed in to the same Google account. It
+is still a real password sitting on disk in your Chrome profile: anyone with
+that profile can read it, and changing it means changing your web password.
+
+## Privacy and safety
+
+Failed sign-ins count toward the same ban as the login page: five failures from
+one address within ten minutes blocks it for fifteen minutes. A saved password
+that has gone stale will therefore lock you out for a few minutes rather than
+letting the extension retry forever.
+
+The server never sends a `WWW-Authenticate` header, so opening one of these
+URLs in a browser tab shows a plain refusal instead of the browser's own
+sign-in box.
 
 ## API reference
 
-These routes can also be called by a phone shortcut, `curl`, or a scheduled
-job:
+A phone shortcut, `curl`, or a scheduled job can call the same two routes:
 
 ```bash
-TOKEN=<your token>
+USERNAME=<your web interface username>
+PASSWORD=<your web interface password>
 BASE=https://podcast.example.com
 
-curl -H "Authorization: Bearer $TOKEN" "$BASE/api/ping"
+curl -u "$USERNAME:$PASSWORD" "$BASE/api/ping"
 
 curl -X POST "$BASE/api/add-url" \
-  -H "Authorization: Bearer $TOKEN" \
+  -u "$USERNAME:$PASSWORD" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://www.youtube.com/watch?v=...", "skip_age_check": false}'
 ```
@@ -126,17 +123,18 @@ curl -X POST "$BASE/api/add-url" \
 | `immediate` | Whether the downloader started immediately |
 
 The response status is `200` for `added`, `duplicate`, and `downloaded`; `400`
-for `invalid`; `401` for a bad token; and `503` when the API is disabled.
+for `invalid`; `401` for a wrong name or password; `429` while the address is
+banned; and `503` when the server has no accounts configured.
 
-Equivalent YouTube links such as `youtu.be/...` and `watch?v=...` are
-normalized to one URL, so submitting both produces `duplicate` rather than a
-second queue entry.
+Equivalent YouTube links such as `youtu.be/...` and `watch?v=...` normalize to
+one URL, so submitting both gives `duplicate` rather than a second queue entry.
 
 ## Troubleshooting
 
 | Message | Check |
 |---|---|
-| `API disabled on the server` | `PODCAST_API_TOKEN` is missing or shorter than 32 characters. Check the server log. |
-| `Token rejected` | The extension token does not match `.env`. |
-| `Could not reach the server` | Check the address, server status, and permission. Select **Save** again in Options. |
+| `Sign-in rejected` | The username or password does not match your `.env` accounts. |
+| `Too many failed attempts` | Five failures within ten minutes. Wait fifteen minutes, then fix the password in Options. |
+| `Server has no accounts` | `UI_USERNAME` and `UI_PASSWORD` are unset on the server. |
+| `Could not reach the server` | Check the address and server status, then select **Save** again in Options to grant permission. |
 | `Not a supported media URL` | The page is not a media URL, such as a settings or `chrome://` page. |

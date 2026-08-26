@@ -21,7 +21,7 @@ flowchart LR
 - `state/` owns saved-file formats and locks.
 - `downloads/` turns media URLs into published MP3 files.
 - `notifications/` sends failures to Apprise.
-- `web/` builds the FastAPI app and owns security, routes, HTML, and the token API.
+- `web/` builds the FastAPI app and owns security, routes, HTML, and the JSON API the Chrome extension calls.
 - `cli.py` parses commands and sends work to the right store or service.
 
 Notifications report delivery failures as results instead of breaking a

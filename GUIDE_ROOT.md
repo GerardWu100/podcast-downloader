@@ -6,8 +6,8 @@ Podcast Downloader is one Python application with three entry points:
 
 1. The command line reads the queue and downloads audio.
 2. The FastAPI web interface manages the queue, sign-in, cookies, and logs.
-3. The token-authenticated JSON API at `/api` accepts URLs from the Chrome
-   extension and other programs.
+3. The JSON API at `/api` accepts URLs from the Chrome extension and other
+   programs, using the same accounts as the web interface.
 
 The root contains deployment entry points and operator-owned files. Application
 code is in [`src/`](src/), offline tests are in [`tests/`](tests/), and
@@ -80,4 +80,12 @@ uv run python -m pytest -q
 - 2026-08-10: Made download timeouts configurable, added log rotation and bounded browser log reads, and removed stale engineering records.
 - 2026-08-19: Docker startup began repairing mounted directories and running the app as `HOST_UID:HOST_GID`.
 - 2026-08-23: Docker and scheduler updates moved to nightly `yt-dlp` with the `curl-cffi` extra for Rumble.
-- 2026-08-26: Added the Chrome extension and JSON API. The web form and API now share URL validation, normalization, duplicate handling, and immediate-download rules.
+- 2026-08-26: Added the Chrome extension and the JSON API it calls. Two pieces
+  moved out of `routes.py` so both doors share them: `queue_actions.py` for the
+  add-a-URL rules, and `account_auth.py` for the account check and the ban
+  after repeated wrong passwords. The API takes the same username and password
+  as the login page in an `Authorization: Basic` header, because the session
+  cookie is `HttpOnly` and `SameSite=lax` and no extension can use it. A first
+  version used a separate token in `PODCAST_API_TOKEN`, dropped because it made
+  setup mean generating a secret, editing `.env`, and restarting the server
+  before the extension worked at all.

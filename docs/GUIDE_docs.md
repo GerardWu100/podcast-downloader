@@ -21,7 +21,7 @@ Suggested reading order:
 - `cli-and-config.md`: `src/cli.py` and `src/config.py`.
 - `notifications.md`: `src/notifications/` and `src/state/notification_store.py`.
 - `web-ui-security.md`: `src/web/auth.py`, `src/web/routes.py`, and `src/state/auth_store.py`.
-- `browser-extension.md`: `extension/`, `src/web/token_api.py`, and `src/web/api_token.py`.
+- `browser-extension.md`: `extension/`, `src/web/api_routes.py`, and `src/web/account_auth.py`.
 - `operations.md`: `start.py`, `docker-entrypoint.sh`, and the container files.
 
 ## Journal

@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from ..config import PodcastConfig
+from ..credentials import CREDENTIALS_FILENAME
 from ..state.activity_store import ActivityLogStore, activity_log_file_for
 from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
@@ -18,8 +19,7 @@ from ..state.notification_store import (
 )
 from ..state.queue_store import QueueStore
 from ..trigger import DownloadTrigger, in_process_download_trigger
-from . import routes, token_api
-from .api_token import load_api_token
+from . import api_routes, routes
 
 _logger = logging.getLogger("web.app")
 
@@ -34,7 +34,6 @@ def create_app(
     auth_store: AuthStore | None = None,
     notification_store: NotificationStore | None = None,
     trigger: DownloadTrigger | None = None,
-    api_token: str | None = None,
 ) -> FastAPI:
     """Return the configured FastAPI application.
 
@@ -56,10 +55,6 @@ def create_app(
         Optional Apprise settings collaborator.
     trigger:
         Optional in-process scheduler wake-up collaborator.
-    api_token:
-        Optional bearer token for the ``/api`` routes. ``None`` reads
-        ``PODCAST_API_TOKEN`` from the environment or ``.env``; an empty string
-        keeps those routes disabled.
 
     Returns
     -------
@@ -96,8 +91,6 @@ def create_app(
         )
     if trigger is None:
         trigger = in_process_download_trigger
-    if api_token is None:
-        api_token = load_api_token(routes.DATA_DIR)
 
     # Keep dependencies on app.state so every request uses the same objects
     # that were created or supplied here.
@@ -117,11 +110,11 @@ def create_app(
     app.state.sessions = auth_store.load_sessions(routes.SESSION_MAX_AGE_SECONDS)
     app.state.csrf_tokens = {}
     app.state.download_trigger = trigger
-    # Bearer token for the companion browser extension and any other
-    # program. Empty means the /api routes answer 503 for every caller.
-    app.state.api_token = api_token
+    # The /api routes check the same accounts as the login form, so they
+    # need the file those accounts are stored in.
+    app.state.credentials_file = routes.DATA_DIR / CREDENTIALS_FILENAME
     app.include_router(routes.router)
-    app.include_router(token_api.router)
+    app.include_router(api_routes.router)
     # Icons and the web manifest, served so a phone can install the site as an
     # app. These are public: browsers fetch a manifest without the session
     # cookie, so putting them behind the login would break installation.

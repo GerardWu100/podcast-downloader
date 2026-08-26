@@ -13,7 +13,7 @@
  * tab, and nothing else. It never sees your browsing otherwise.
  */
 
-import { buildEndpoint, readSettings } from "./settings.js";
+import { basicAuthHeader, buildEndpoint, readSettings } from "./settings.js";
 
 const MENU_ITEM_PAGE = "add-page";
 const MENU_ITEM_LINK = "add-link";
@@ -79,8 +79,8 @@ async function submitUrl(url, tabId) {
     return;
   }
 
-  if (!settings.apiToken) {
-    await report(false, "No API token", "Open the extension options and paste your token.", tabId);
+  if (!settings.username || !settings.password) {
+    await report(false, "Not signed in", "Open the extension options and enter your username and password.", tabId);
     return;
   }
 
@@ -91,7 +91,7 @@ async function submitUrl(url, tabId) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${settings.apiToken}`,
+        Authorization: basicAuthHeader(settings.username, settings.password),
       },
       body: JSON.stringify({
         url,
@@ -112,11 +112,17 @@ async function submitUrl(url, tabId) {
   }
 
   if (response.status === 401) {
-    await report(false, "Token rejected", "The server did not accept the API token.", tabId);
+    await report(false, "Sign-in rejected", "The server did not accept that username and password.", tabId);
+    return;
+  }
+  if (response.status === 429) {
+    // The server bans an address after repeated failures, the same rule the
+    // login page applies. Usually it means a saved password is out of date.
+    await report(false, "Too many failed attempts", body.detail || "Wait a few minutes, then check your password in the options.", tabId);
     return;
   }
   if (response.status === 503) {
-    await report(false, "API disabled on the server", body.detail || "Set PODCAST_API_TOKEN in .env and restart.", tabId);
+    await report(false, "Server has no accounts", body.detail || "Set UI_USERNAME and UI_PASSWORD in .env and restart.", tabId);
     return;
   }
   if (!EXPECTED_OUTCOMES.has(body.outcome)) {

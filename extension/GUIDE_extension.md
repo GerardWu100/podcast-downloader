@@ -14,7 +14,7 @@ User setup is in [`docs/browser-extension.md`](../docs/browser-extension.md).
 ```text
 toolbar click / Alt+Shift+D / context menu
   -> background.js reads settings and calls /api/add-url
-  -> src/web/token_api.py checks the bearer token
+  -> src/web/api_routes.py checks the name and password (account_auth.py)
   -> src/web/queue_actions.py applies the normal queue rules
   -> urls.txt is updated; immediate direct downloads wake the scheduler
   -> the result updates the badge and, on failure, a notification
@@ -42,21 +42,27 @@ rules.
 
 ## Decisions
 
-- Store the token in `chrome.storage.local`, not `sync`, so it is not copied to
-  every Chrome profile using the same Google account.
+- Sign in with the same account as the web page, so there is no extra secret
+  to set up on the server. The cost is that the password sits in extension
+  storage, and revoking it means changing the web password.
+- Store settings in `chrome.storage.local`, not `sync`, so the password is not
+  copied to every Chrome profile using the same Google account.
 - Treat a bare hostname as `https`; users must type `http://` when they accept
-  the risk of sending the token without encryption.
+  the risk of sending the password without encryption.
+- Build the `Authorization` header from UTF-8 bytes before base64. `btoa` alone
+  throws on an accented character in a password.
 - Treat `duplicate` and `downloaded` as successful outcomes because the item is
   already handled.
-- Do not send a CSRF token. The API uses a deliberate bearer header rather than
-  an automatically attached browser cookie.
+- Do not send a CSRF token. CSRF protection exists because browsers attach
+  cookies automatically; a header the client fills in from its own settings is
+  never automatic.
 - Accept that a badge can remain briefly if Chrome stops the worker before its
   clear timer runs. The next submission replaces it.
 
 ## Testing
 
 There are no automated extension tests. The server API is covered by
-`tests/test_token_api.py`. For a manual check, load the folder unpacked, use
+`tests/test_api_routes.py`. For a manual check, load the folder unpacked, use
 **Test connection**, submit a real video, and confirm the entry appears in
 `urls.txt`.
 

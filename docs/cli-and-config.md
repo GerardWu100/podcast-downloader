@@ -91,10 +91,10 @@ section.
 | `YT_DLP_AUTO_UPDATE` | Enable or disable Docker-time `yt-dlp` upgrades |
 | `HOST_UID` | Host user for mounted Docker files; default `1000` |
 | `HOST_GID` | Host group for mounted Docker files; default `1000` |
-| `PODCAST_API_TOKEN` | Bearer token for `/api`; at least 32 characters, or blank to disable |
 
-`PODCAST_API_TOKEN` is read from the environment first and then
-`.env`. `yt-dlp` is not in `uv.lock`; install its current nightly release,
+The `/api` routes need no setting of their own: they accept the same
+`UI_USERNAME` and `UI_PASSWORD` accounts as the web page. `yt-dlp` is not in
+`uv.lock`; install its current nightly release,
 default YouTube dependencies, and `curl-cffi` with:
 
 ```bash

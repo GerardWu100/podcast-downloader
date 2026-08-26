@@ -32,8 +32,9 @@ outside `tests/`, so Pytest does not collect it by accident.
 - `test_downloader.py`: publication, metadata recovery, retention, archive
   serialization, and queue outcomes.
 - `test_url_utils_behavior.py`: media policy and queue-store concurrency.
-- `test_token_api.py`: token precedence, short-token rejection, `401`/`503`
-  paths, every add-a-URL outcome, and shared YouTube normalization.
+- `test_api_routes.py`: sign-in with the shared accounts, identical refusals
+  for a wrong password and an unknown name, the ban shared with the login page,
+  every add-a-URL outcome, and shared YouTube normalization.
 - `test_archive_locking.py` and `test_activity_log.py`: locked archive and log
   behavior.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,
