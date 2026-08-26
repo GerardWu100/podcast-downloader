@@ -2,18 +2,18 @@
 
 A small, self-hosted downloader that turns online videos into local MP3 files
 for [Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube
-channels and playlists, downloads individual video URLs, removes
-SponsorBlock-marked segments, and can run from the command line or a web UI.
+channels and playlists, downloads individual video URLs, removes segments
+marked by SponsorBlock, and works from either the command line or a web browser.
 
 ## What it does
 
-- Downloads videos with `yt-dlp`, including the newest items in a channel or playlist.
-- Skips YouTube Shorts and waits for a configurable delay before downloading new videos, giving SponsorBlock time to publish segment data.
+- Downloads videos with `yt-dlp`, including recent items from a channel or playlist.
+- Skips YouTube Shorts and waits for a configurable amount of time before downloading new videos, giving SponsorBlock time to publish segment data.
 - Removes SponsorBlock segments when data is available.
 - Converts downloads to MP3 and groups them by source.
 - Deletes old MP3 files from YouTube channel folders after the retention period.
-- Stores the queue, download history, and one-use age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Provides a password-protected web UI for sources, activity, logs, YouTube cookies, and error notifications.
+- Saves the queue, download history, and one-use age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Provides a password-protected browser interface for sources, activity, logs, YouTube cookies, and error notifications.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
 map. [docs/intro.md](docs/intro.md) gives a short overview.
@@ -25,9 +25,9 @@ map. [docs/intro.md](docs/intro.md) gives a short overview.
 - `uv`
 - `yt-dlp` (installed separately during setup)
 
-Set these values in `.env`; see `.env.example`:
+Set these values in `.env`; use `.env.example` as a starting point:
 
-- `UI_USERNAME` and `UI_PASSWORD` are required for the web UI. Optional second and third accounts use `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
+- `UI_USERNAME` and `UI_PASSWORD` are required for the browser interface. You can add a second or third account with `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
 - `PODCAST_DATA_DIR` changes where state files, `.env`, and cookies are stored. Docker uses it for the mounted data volume.
 - `PODCAST_DOWNLOAD_DIR` and `PODCAST_INTERMEDIATE_DIR` override `output_dir` and `intermediate_dir` in `config.ini`.
 
@@ -40,10 +40,10 @@ cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-`yt-dlp` is installed separately rather than pinned in `uv.lock` because media
-sites change often. The nightly release gets extractor fixes before stable,
-and `curl-cffi` lets Rumble requests use the browser fingerprint required by
-its Cloudflare checks. Add one source URL per line to `urls.txt`, then review
+Media sites change often, so `yt-dlp` is installed separately rather than
+pinned in `uv.lock`. Nightly releases usually get extractor fixes first, and
+`curl-cffi` lets Rumble requests use the browser fingerprint required by its
+Cloudflare checks. Add one source URL per line to `urls.txt`, then review
 `config.ini` for paths, delays, and retention.
 
 ## Usage
@@ -60,27 +60,28 @@ uv run python -m pytest -q                                          # test suite
 uv run python scripts/sponsorblock_smoke_check.py                   # manual, live-network SponsorBlock check
 ```
 
-When the API is running, open `http://127.0.0.1:8000/` for the queue. Sign in
-with the configured password; after sign-in, the browser returns to the queue.
-The title in the top left links back to the queue from the settings page. Open
-`http://127.0.0.1:8000/help` for cookie-export instructions. If YouTube blocks
-downloads, create fresh cookies with:
+Once the web interface is running, open `http://127.0.0.1:8000/` to view the
+queue. Sign in with a configured account; you will return to the queue after
+signing in.
+From the settings page, click the title in the top left to return to the queue.
+Open `http://127.0.0.1:8000/help` for cookie-export instructions. If YouTube
+blocks downloads, create fresh cookies with:
 
 ```bash
 yt-dlp --cookies-from-browser chrome --cookies cookies.txt
 ```
 
-Upload the resulting file on the web UI's **Settings** page. See
+Upload the resulting file on the **Settings** page. See
 [docs/web-ui-security.md](docs/web-ui-security.md) for login and session
-details and [docs/operations.md](docs/operations.md) for cookies and Docker
+details, and [docs/operations.md](docs/operations.md) for cookies and Docker
 deployment.
 
 ## Configuration
 
-Runtime settings live in `config.ini`:
+Change the main settings in `config.ini`:
 
-- `urls_file`, `output_dir`, and `intermediate_dir` set the queue and download folders.
-- `channel_count` sets how many recent channel or playlist videos to consider.
+- `urls_file`, `output_dir`, and `intermediate_dir` set the queue and download directories.
+- `channel_count` sets how many recent channel or playlist videos to check.
 - `min_channel_video_age_hours` sets the minimum age of a YouTube video before download.
 - `delay_seconds` sets the pause between downloads.
 - `retention_days` sets how long to keep channel MP3 files.
@@ -95,11 +96,10 @@ reference.
 
 ## Error notifications
 
-The web UI can send each failed download to an Apprise instance. Apprise can
-then forward it to Telegram, email, Discord, or another service. Open
+The browser interface can send failed downloads to an Apprise instance, which
+can forward them to Telegram, email, Discord, or another service. Open
 **Settings**, enter the Apprise notify URL under **Error notifications**, and
-press **Send test notification** before saving. Each field includes a worked
-example.
+press **Send test notification** before saving. Each field includes an example.
 
 See [docs/notifications.md](docs/notifications.md).
 
@@ -110,13 +110,18 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
 
-On first boot, the container creates missing runtime files and `.env`, points
+To update a running deployment, run `./scripts/update.sh`. It pulls the
+committed code, then stops, rebuilds, and restarts the containers. It works from
+any directory and stops at the first failure, so a failed pull cannot quietly
+redeploy the old code.
+
+On first boot, the container creates missing files and `.env`, points
 Audiobookshelf at the mounted download folder, and stores host cookies at
 `$HOME/.containers/podcast-downloader/cookies.txt`. It also gives mounted files
-host user and group `1000:1000` by default, so downloaded podcasts can be
+the host user and group `1000:1000` by default, so downloaded podcasts can be
 deleted without `sudo`. If the host uses different IDs, set `HOST_UID` and
-`HOST_GID` in the repository `.env` to the values from `id -u` and `id -g`. See
-[docs/operations.md](docs/operations.md) for the deployment flow.
+`HOST_GID` in the repository `.env` to the values from `id -u` and `id -g`.
+See [docs/operations.md](docs/operations.md) for the deployment flow.
 
 ## Layout
 
@@ -128,11 +133,11 @@ deleted without `sudo`. If the host uses different IDs, set `HOST_UID` and
 
 ## Known limits
 
-- Channel and playlist expansion parses `yt-dlp` output. An upstream `yt-dlp` or YouTube change can break it.
+- The downloader reads `yt-dlp` output to find videos in channels and playlists, so an update to either `yt-dlp` or YouTube can break this step.
 - YouTube is tightening access to player clients that provide stream URLs without a proof-of-origin token. `youtube_player_client` may need to change over time.
 - Rumble uses changing Cloudflare checks. The downloader uses Chrome request impersonation, but a future Rumble change may still require a newer `yt-dlp` nightly release.
 - SponsorBlock removal depends on community-submitted segment data.
-- The web UI uses shared accounts from `.env` and has no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
+- The browser interface uses shared accounts from `.env` and has no per-user permissions. Use it on a personal, trusted network rather than exposing it publicly.
 
 ## License
 
