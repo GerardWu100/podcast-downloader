@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from ..config import PodcastConfig
 from ..state.activity_store import ActivityLogStore, activity_log_file_for
@@ -109,4 +110,12 @@ def create_app(
     app.state.csrf_tokens = {}
     app.state.download_trigger = trigger
     app.include_router(routes.router)
+    # Icons and the web manifest, served so a phone can install the site as an
+    # app. These are public: browsers fetch a manifest without the session
+    # cookie, so putting them behind the login would break installation.
+    app.mount(
+        "/static",
+        StaticFiles(directory=routes.STATIC_DIR),
+        name="static",
+    )
     return app

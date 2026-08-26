@@ -22,6 +22,30 @@ FAVICON_TAG = (
     '" />'
 )
 
+# Tags that let a phone install the site as an app from its browser menu. The
+# manifest carries the app name, colors, and Android icons. iOS ignores the
+# manifest icons and uses `apple-touch-icon` instead, so both are listed. The
+# two theme colors tint the phone's status bar to match the page background,
+# which is what makes an installed window stop looking like a web page.
+HEAD_APP_TAGS = f"""{FAVICON_TAG}
+  <link rel="manifest" href="/static/manifest.json" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="Podcasts" />
+  <meta name="theme-color" content="#f0f2f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0d121a" media="(prefers-color-scheme: dark)" />"""
+
+# Registering the service worker is what turns "add a bookmark to the home
+# screen" into a real install. The failure is ignored on purpose: the site
+# works normally without it, and registration is refused on plain HTTP, so a
+# local run over http://127.0.0.1 outside localhost should not log an error.
+SERVICE_WORKER_SCRIPT = """
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+"""
+
 BASE_STYLES = """
   :root {
     color-scheme:light dark;
@@ -312,7 +336,7 @@ def render_help_page(
   <meta charset="utf-8" />
   <title>Podcast Downloader Help</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  {FAVICON_TAG}
+  {HEAD_APP_TAGS}
   <style>
         {BASE_STYLES}
     body {{ padding:36px clamp(0.75rem, 4vw, 3.2rem); }}
@@ -390,7 +414,7 @@ def render_help_page(
       </p>
     </article>
   </main>
-  <script nonce="{script_nonce}">
+  <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
     const savedTheme = localStorage.getItem('podcast-theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const themeButton = document.getElementById('theme-toggle');
@@ -427,7 +451,7 @@ def render_login_page(
     <head>
       <meta charset="utf-8" /><title>Podcast Downloader</title>
       <meta name="viewport" content="width=device-width,initial-scale=1" />
-      {FAVICON_TAG}
+      {HEAD_APP_TAGS}
       <style>
     {BASE_STYLES}
     body {{ display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }}
@@ -468,7 +492,7 @@ def render_login_page(
     </form>
     <a class="help-link text-link" href="/help">How it works</a>
       </div>
-      <script nonce="{script_nonce}">
+      <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
     const savedTheme = localStorage.getItem('podcast-theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const themeButton = document.getElementById('theme-toggle');
@@ -543,7 +567,7 @@ def render_settings_page(
       <meta charset="utf-8" />
       <title>Settings - Podcast Downloader</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      {FAVICON_TAG}
+      {HEAD_APP_TAGS}
       <style>
     {BASE_STYLES}
     {APP_LAYOUT_STYLES}
@@ -658,7 +682,7 @@ def render_settings_page(
     </div>
       </div>
 
-      <script nonce="{script_nonce}">
+      <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
     {THEME_SCRIPT}
 
     const notifyTestButton = document.getElementById('notify-test');
@@ -731,7 +755,7 @@ def render_queue_page(
       <meta charset="utf-8" />
       <title>Podcast Downloader</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      {FAVICON_TAG}
+      {HEAD_APP_TAGS}
       <style>
     {BASE_STYLES}
     {APP_LAYOUT_STYLES}
@@ -918,7 +942,7 @@ def render_queue_page(
 
       </div>
 
-      <script nonce="{script_nonce}">
+      <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
     let timer = null;
     {THEME_SCRIPT}
 

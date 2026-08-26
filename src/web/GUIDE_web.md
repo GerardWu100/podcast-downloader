@@ -5,33 +5,49 @@
 `web/` contains the browser interface. It handles login, page rendering, form
 submissions, log updates, and browser security. It uses the application factory
 to receive configuration, persistent state stores, and the scheduler trigger.
-This keeps production setup and tests on the same path while letting tests
-provide temporary dependencies.
+Production and test runs therefore use the same setup, while tests can provide
+temporary dependencies.
 
-The signed-in interface has two pages:
+After signing in, the interface has two pages:
 
 - `/` is the queue: add a source, see monitored sources, and read activity logs.
 - `/settings` handles YouTube cookies and Apprise notifications.
 
-Both forms return to `/settings`. The queue is the site root, with no separate
-landing page. A browser without a valid session goes to `/login`; a browser
-with a valid session that opens `/login` goes back to `/`.
+Both forms return to `/settings`. The queue is the site root; there is no
+separate landing page. A browser without a valid session goes to `/login`. A
+browser with a valid session that opens `/login` goes back to `/`.
 
 The title in the top-left corner of both signed-in pages links to `/`.
 
 The queue displays two times: the last successful download and the latest
 activity-log change. It finds the download time from the newest `Downloaded:`
-event in recent `activity.log` lines. A failed run therefore does not look like
-a completed download.
+event in recent `activity.log` lines, so a failed run does not look complete.
 
-The queue polls `/logs`. An expired session gets `401 Unauthorized`, and the
-page reloads. Page requests redirect to `/login`. Keeping the log request as a
-`401` response matters: otherwise the browser would receive the login page's
-HTML and show it as log text.
+The queue polls `/logs`. An expired session returns `401 Unauthorized`, and
+the page reloads. Other page requests redirect to `/login`. Keeping `/logs`
+as a `401` response matters: otherwise the browser would display the login
+page as log text.
 
-The app uses a Content Security Policy (CSP), which limits where the browser
-can load resources from. Forwarded client IP headers are trusted only when
+The app uses a Content Security Policy (CSP) to limit where the browser can
+load resources from. It trusts forwarded client IP headers only when
 `trust_x_forwarded_for` is enabled.
+
+A phone can install the interface as an app from its browser menu. Three pieces
+are required:
+
+- `static/manifest.json` names the app, sets its colors, and lists the Android
+  icons. `static/apple-touch-icon.png` is the icon iOS uses instead.
+- `static/service-worker.js`, served at `/sw.js`. Browsers only offer to install
+  a site once a service worker is registered. This one caches nothing, so the
+  queue and activity pages stay live and a redeploy is never hidden behind a
+  stale copy.
+- `manifest-src 'self'` and `worker-src 'self'` in the CSP. Without them both
+  fall back to `default-src 'none'`, and the browser rejects the manifest and
+  refuses to register the worker even though the server returns both correctly.
+
+The static files and `/sw.js` are public. Browsers fetch a manifest without
+sending the session cookie, so requiring a login would stop signed-in users
+from installing the app.
 
 ## Code reference
 
@@ -44,24 +60,30 @@ can load resources from. Forwarded client IP headers are trusted only when
   enforce browser security and proxy rules.
 - `templates.py`: shared styles and renderers for the help, login, queue, and
   settings pages. Route code supplies escaped values and security headers.
+  `HEAD_APP_TAGS` and `SERVICE_WORKER_SCRIPT` add the install support to every
+  page head and script block.
+- `static/`: icons, the web manifest, and the service worker. These ship with
+  the code, not in the mounted data directory. Regenerate the icons with
+  `uv run --group dev python scripts/generate_app_icons.py` after changing the
+  artwork; the PNG files are committed so the container needs no image library.
 - `__init__.py`: package marker.
 
-The notification endpoints are:
+Notification endpoints:
 
 - `POST /save-notifications` validates and stores the settings.
 - `POST /test-notification` sends one message using the current form values,
   not the saved values, and returns JSON with the result.
 
 Both endpoints require a signed-in session and a valid CSRF token because they
-can send a request to an external notification service. `AuthStore` in
-`state/` stores sessions and login failures. Templates only render pages; they
-do not change queue or authentication state.
+can contact an external notification service. `AuthStore` in `state/` stores
+sessions and login failures. Templates only render pages; they do not change
+queue or authentication state.
 
 `APP_LAYOUT_STYLES` and `THEME_SCRIPT` in `templates.py` are shared by both
 pages. `SETTINGS_FORM_STYLES` is used only by `/settings`. These are ordinary
-strings, not f-string fragments, so their braces must not be doubled. Shared
-header controls, including navigation links, belong in `APP_LAYOUT_STYLES` so
-both pages stay consistent.
+strings, not f-string fragments, so do not double their braces. Put shared
+header controls, including navigation links, in `APP_LAYOUT_STYLES` so both
+pages stay consistent.
 
 ## Journal
 
@@ -81,6 +103,10 @@ both pages stay consistent.
   defaults.
 - 2026-08-26: The queue moved from `/ui` to `/`, replacing the redirecting
   landing route, and the header title became a link back to it.
+- 2026-08-26: The interface became installable as a phone app. The blocker was
+  not the missing manifest but the CSP: `default-src 'none'` with no
+  `manifest-src` or `worker-src` silently rejected both files, so the browser
+  never offered to install a site that was serving everything correctly.
 - 2026-08-26: The signed-in pages and the help page stopped capping their
   content at a pixel width. Zooming out with Ctrl+minus grew the window but
   left the column at the same 900 CSS pixels, so the page shrank into the

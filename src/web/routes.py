@@ -88,6 +88,10 @@ try:
 except ConfigError as exc:
     raise SystemExit(f"[api] Startup error: {exc}") from exc
 SESSION_STATE_FILE = DATA_DIR / ".ui_sessions.json"
+# Icons, the web manifest, and the service worker ship with the code rather
+# than living in the mounted data directory, so this path follows the package.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+SERVICE_WORKER_SOURCE = (STATIC_DIR / "service-worker.js").read_text(encoding="utf-8")
 COOKIE_FILE_PERMISSION_MODE = 0o600
 NETSCAPE_COOKIE_HEADER = "# Netscape HTTP Cookie File"
 MAX_COOKIE_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -614,6 +618,37 @@ def _last_download_label(activity_store: ActivityLogStore) -> str:
 def help_page() -> HTMLResponse:
     """Return the public usage guide rendered by the template module."""
     return render_help_page(_security_headers)
+
+
+@router.get("/sw.js")
+def service_worker() -> Response:
+    """Serve the service worker from the site root.
+
+    A service worker can only control pages at or below its own address, so
+    this file cannot be served from `/static/` like the icons are. Served from
+    `/static/service-worker.js` it would control nothing but `/static/`, and
+    the browser would never offer to install the site.
+
+    The route is deliberately public. Browsers fetch both this file and the web
+    manifest without sending the session cookie, so requiring a login here
+    would break installation for a signed-in user.
+
+    Returns
+    -------
+    fastapi.responses.Response
+        JavaScript source for the worker registered by every page.
+    """
+    return Response(
+        content=SERVICE_WORKER_SOURCE,
+        media_type="text/javascript",
+        headers={
+            # Browsers re-check the worker on navigation. `no-cache` still
+            # allows storing it, but forces revalidation, so a redeploy is
+            # picked up instead of being pinned by a proxy or Cloudflare.
+            "Cache-Control": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/login", response_class=HTMLResponse)

@@ -1,19 +1,20 @@
 # Podcast Downloader
 
-A small, self-hosted downloader that turns online videos into local MP3 files
-for [Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube
-channels and playlists, downloads individual video URLs, removes segments
-marked by SponsorBlock, and can be run from the command line or a browser.
+A small, self-hosted tool that turns online videos into local MP3 files for
+[Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels
+and playlists, downloads individual video URLs, removes SponsorBlock segments,
+and runs from either the command line or a browser.
 
 ## What it does
 
-- Checks YouTube channels and playlists for new videos and downloads individual URLs.
+- Checks YouTube channels and playlists for new videos, and downloads individual URLs.
 - Skips YouTube Shorts and waits before downloading new videos so SponsorBlock has time to publish segment data.
 - Removes SponsorBlock segments when data is available.
 - Converts downloads to MP3 and groups them by source.
-- Removes old MP3 files from YouTube channel folders after the retention period.
-- Keeps the queue, download history, and one-time age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Removes old channel MP3 files after the retention period.
+- Stores the queue, download history, and one-time age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
 - Provides a password-protected browser interface for sources, activity, logs, YouTube cookies, and error notifications.
+- Can be installed on a phone from any browser, without an app store or extension.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
 map. [docs/intro.md](docs/intro.md) is a shorter overview.
@@ -41,8 +42,8 @@ cp .env.example .env
 ```
 
 `yt-dlp` is installed separately because media sites change often. Nightly
-releases usually receive extractor fixes first. The `curl-cffi` package lets
-Rumble requests use the browser fingerprint needed for its Cloudflare checks.
+releases usually get extractor fixes first. The `curl-cffi` package lets Rumble
+requests use the browser fingerprint needed for its Cloudflare checks.
 
 Add one source URL per line to `urls.txt`, then review `config.ini` for paths,
 delays, and retention.
@@ -61,9 +62,14 @@ uv run python -m pytest -q                                          # run the te
 uv run python scripts/sponsorblock_smoke_check.py                   # run a live SponsorBlock check
 ```
 
+On a phone, open the site in Chrome or Safari and choose "Install app" or
+"Add to Home Screen". It opens in its own window without an address bar, and
+the 30-day session keeps you signed in. Installation requires HTTPS, so use a
+deployed instance rather than local `http://127.0.0.1`.
+
 With the web interface running, open `http://127.0.0.1:8000/` and sign in.
-You will return to the queue after signing in. Click the title in the top-left
-corner of the settings page to return to the queue.
+You return to the queue after signing in. On the settings page, click the title
+in the top-left corner to return to the queue.
 
 Open `http://127.0.0.1:8000/help` for cookie-export instructions. If YouTube
 blocks downloads, create fresh cookies with:
@@ -113,7 +119,7 @@ docker compose up --build -d
 
 To update a running deployment, run `./update.sh`. It pulls the committed code,
 then stops, rebuilds, and restarts the containers. It works from any directory
-and stops at the first failure, so a failed pull cannot quietly redeploy the old
+and stops at the first failure, so a failed pull cannot quietly redeploy old
 code.
 
 On first boot, the container creates missing files and `.env`, points

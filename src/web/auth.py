@@ -17,6 +17,12 @@ def security_headers(script_nonce: str | None = None) -> dict[str, str]:
         "form-action 'self'",
         "base-uri 'none'",
         "frame-ancestors 'none'",
+        # Both directives fall back to "default-src 'none'" when absent, which
+        # silently blocks installing the site as a phone app: the browser
+        # refuses the web manifest and refuses to register the service worker
+        # even though both are served correctly.
+        "manifest-src 'self'",
+        "worker-src 'self'",
     ]
     if script_nonce is not None:
         content_security_policy.append(f"script-src 'nonce-{script_nonce}'")
