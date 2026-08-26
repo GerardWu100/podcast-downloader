@@ -1,20 +1,25 @@
 # Podcast Downloader
 
-A small, self-hosted tool that turns online videos into local MP3 files for
-[Audiobookshelf](https://www.audiobookshelf.org/). It watches YouTube channels
-and playlists, downloads individual video URLs, removes SponsorBlock segments,
-and runs from either the command line or a browser.
+Download online videos as local MP3 files for
+[Audiobookshelf](https://www.audiobookshelf.org/). The self-hosted tool watches
+YouTube channels and playlists, downloads individual video URLs, removes
+SponsorBlock segments, and runs from the command line or a browser.
 
 ## What it does
 
-- Checks YouTube channels and playlists for new videos, and downloads individual URLs.
-- Skips YouTube Shorts and waits before downloading new videos so SponsorBlock has time to publish segment data.
+- Checks YouTube channels and playlists for new videos, and downloads
+  individual URLs.
+- Skips YouTube Shorts and waits before downloading new videos, giving
+  SponsorBlock time to publish segment data.
 - Removes SponsorBlock segments when data is available.
 - Converts downloads to MP3 and groups them by source.
-- Removes old channel MP3 files after the retention period.
-- Stores the queue, download history, and one-time age-check exceptions in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Provides a password-protected browser interface for sources, activity, logs, YouTube cookies, and error notifications.
-- Can be installed on a phone from any browser, without an app store or extension.
+- Removes channel MP3 files after the retention period.
+- Stores the queue, download history, and URLs allowed to bypass an age check
+  once in `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
+- Provides a password-protected browser interface for sources, activity, logs,
+  YouTube cookies, and error notifications.
+- Can be installed on a phone from a browser, without an app store or
+  extension.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
 map. [docs/intro.md](docs/intro.md) is a shorter overview.
@@ -28,9 +33,13 @@ map. [docs/intro.md](docs/intro.md) is a shorter overview.
 
 Create `.env` from `.env.example`, then set these values:
 
-- `UI_USERNAME` and `UI_PASSWORD` are required for the browser interface. Add a second or third account with `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3` if needed.
-- `PODCAST_DATA_DIR` changes where state files, `.env`, and cookies are stored. Docker uses it for the mounted data folder.
-- `PODCAST_DOWNLOAD_DIR` and `PODCAST_INTERMEDIATE_DIR` override `output_dir` and `intermediate_dir` in `config.ini`.
+- `UI_USERNAME` and `UI_PASSWORD` are required for the browser interface. Add
+  a second or third account with `UI_USERNAME_2`/`UI_PASSWORD_2` and
+  `UI_USERNAME_3`/`UI_PASSWORD_3` if needed.
+- `PODCAST_DATA_DIR` changes where state files, `.env`, and cookies are stored.
+  Docker uses it for the mounted data folder.
+- `PODCAST_DOWNLOAD_DIR` and `PODCAST_INTERMEDIATE_DIR` override `output_dir`
+  and `intermediate_dir` in `config.ini`.
 
 ## Setup
 
@@ -42,8 +51,8 @@ cp .env.example .env
 ```
 
 `yt-dlp` is installed separately because media sites change often. Nightly
-releases usually get extractor fixes first. The `curl-cffi` package lets Rumble
-requests use the browser fingerprint needed for its Cloudflare checks.
+releases usually get fixes first. The `curl-cffi` package lets Rumble requests
+use the browser fingerprint needed for its Cloudflare checks.
 
 Add one source URL per line to `urls.txt`, then review `config.ini` for paths,
 delays, and retention.
@@ -87,16 +96,22 @@ deployment.
 
 Change the main settings in `config.ini`:
 
-- `urls_file`, `output_dir`, and `intermediate_dir` set the queue and download folders.
+- `urls_file`, `output_dir`, and `intermediate_dir` set the queue and download
+  folders.
 - `channel_count` sets how many recent channel or playlist videos to check.
-- `min_channel_video_age_hours` sets how old a YouTube video must be before download.
+- `min_channel_video_age_hours` sets how old a YouTube video must be before
+  download.
 - `delay_seconds` sets the pause between downloads.
 - `retention_days` sets how long to keep channel MP3 files.
-- `download_timeout_seconds` sets the timeout for one `yt-dlp` attempt (default: 3600 seconds).
+- `download_timeout_seconds` sets the timeout for one `yt-dlp` attempt (default:
+  3600 seconds).
 - `cookies_file` and `always_use_cookies` control when YouTube cookies are used and the order of retries.
-- `youtube_player_client` selects the YouTube player API used by `yt-dlp`. Leaving it blank lets `yt-dlp` choose; that currently fails with `HTTP Error 403: Forbidden` after audio starts downloading.
+- `youtube_player_client` selects the YouTube player API used by `yt-dlp`.
+  Leaving it blank lets `yt-dlp` choose; that currently fails with `HTTP Error
+  403: Forbidden` after audio starts downloading.
 - `ytdlp_verbose` adds `-v` to every `yt-dlp` attempt. It is off by default because retry attempts are already verbose.
-- `trust_x_forwarded_for` controls whether client IP headers from a reverse proxy are trusted.
+- `trust_x_forwarded_for` controls whether client IP headers from a reverse
+  proxy are trusted.
 
 See [docs/cli-and-config.md](docs/cli-and-config.md) for the complete
 reference.
@@ -117,10 +132,12 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
 
-To update a running deployment, run `./update.sh`. It pulls the committed code,
-then stops, rebuilds, and restarts the containers. It works from any directory
-and stops at the first failure, so a failed pull cannot quietly redeploy old
-code.
+To update a deployment, run `./update.sh`. It pulls committed code and rebuilds
+only when the pull found something new. Use `--force` to rebuild anyway—for
+example, after editing `.env`, when a base image changed under an unchanged
+Dockerfile, or when you want to recreate a container. If nothing is running,
+the script starts the deployment either way. It works from any directory and
+stops at the first failure, so a failed pull cannot silently redeploy old code.
 
 On first boot, the container creates missing files and `.env`, points
 Audiobookshelf at the mounted download folder, and stores host cookies at
