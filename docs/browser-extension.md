@@ -28,11 +28,15 @@ manifest differs because Firefox has no extension service worker support.
 
 ### Firefox
 
-> **Do not open the `.zip` with Firefox, and do not use "Install Add-on From
-> File".** Both fail with *"This add-on could not be installed because it
-> appears to be corrupt."* The file is fine; Firefox refuses any add-on that
-> Mozilla has not signed, and reports it with that misleading message. Use
-> **Load Temporary Add-on** below, or get the file signed.
+**The easy way:** download `podcast-downloader-firefox-<version>.xpi` from the
+[latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest) and open it with Firefox. It is signed, so it
+installs in one click and stays installed. Firefox 140 or newer. Everything
+below is the unsigned route, which you need only when developing.
+
+> The Firefox `.zip` is unsigned. Opening it with Firefox, or using **Install
+> Add-on From File**, fails with *"This add-on could not be installed because
+> it appears to be corrupt."* The file is fine; that is simply how Firefox
+> reports an add-on Mozilla has not signed.
 
 Build the Firefox copy first, or unzip the archive from the release:
 
