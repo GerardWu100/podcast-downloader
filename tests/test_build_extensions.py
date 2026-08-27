@@ -18,6 +18,7 @@ from scripts.build_extensions import (
     BUILD_ROOT,
     CHROME_MANIFEST,
     FIREFOX_MANIFEST,
+    SHARED_FILES,
     SOURCE_DIR,
     TARGETS,
     build_target,
@@ -26,6 +27,12 @@ from scripts.build_extensions import (
 )
 
 TARGETS_BY_NAME = {target.name: target for target in TARGETS}
+FIREFOX_MINIMUM_VERSION = 140
+FIREFOX_REQUIRED_DATA = {
+    "authenticationInfo",
+    "browsingActivity",
+    "websiteContent",
+}
 
 
 def test_the_two_manifests_agree_on_the_version() -> None:
@@ -34,12 +41,27 @@ def test_the_two_manifests_agree_on_the_version() -> None:
 
 
 def test_the_firefox_manifest_matches_what_firefox_needs() -> None:
-    """Firefox has no extension service worker and wants a stable add-on id."""
+    """Firefox needs an event page, stable ID, and honest data declaration."""
     firefox = json.loads((SOURCE_DIR / FIREFOX_MANIFEST).read_text())
+    gecko_settings = firefox["browser_specific_settings"]["gecko"]
 
     assert firefox["background"] == {"scripts": ["background.js"], "type": "module"}
     assert "service_worker" not in firefox["background"]
-    assert firefox["browser_specific_settings"]["gecko"]["id"]
+    assert gecko_settings["id"]
+    assert int(gecko_settings["strict_min_version"].split(".")[0]) >= (
+        FIREFOX_MINIMUM_VERSION
+    )
+    assert set(gecko_settings["data_collection_permissions"]["required"]) == (
+        FIREFOX_REQUIRED_DATA
+    )
+    assert (
+        int(
+            firefox["browser_specific_settings"]["gecko_android"][
+                "strict_min_version"
+            ].split(".")[0]
+        )
+        >= 142
+    )
     assert "options_ui" in firefox
     assert "options_page" not in firefox
 
@@ -60,9 +82,11 @@ def test_the_two_manifests_request_the_same_permissions() -> None:
 
 
 def test_shared_files_exclude_the_manifests_and_the_guide() -> None:
-    """No build should ship a second manifest or the developer guide."""
-    shared_names = {path.name for path in collect_shared_files()}
+    """Only the audited runtime allowlist should enter a browser build."""
+    shared_files = set(collect_shared_files())
+    shared_names = {path.name for path in shared_files}
 
+    assert shared_files == set(SHARED_FILES)
     assert CHROME_MANIFEST not in shared_names
     assert FIREFOX_MANIFEST not in shared_names
     assert "GUIDE_extension.md" not in shared_names
@@ -140,3 +164,30 @@ def test_build_refuses_a_version_mismatch(monkeypatch, tmp_path) -> None:
 
     with pytest.raises(ValueError, match="version mismatch"):
         build_module.manifest_version()
+
+
+def test_build_refuses_an_allowlisted_symbolic_link(monkeypatch, tmp_path) -> None:
+    """A release file must not point outside the reviewed extension tree."""
+    import scripts.build_extensions as build_module
+
+    source = tmp_path / "extension"
+    source.mkdir()
+    outside_file = tmp_path / "private.txt"
+    outside_file.write_text("secret", encoding="utf-8")
+    (source / SHARED_FILES[0]).symlink_to(outside_file)
+    monkeypatch.setattr(build_module, "SOURCE_DIR", source)
+
+    with pytest.raises(ValueError, match="symbolic link"):
+        build_module.collect_shared_files()
+
+
+def test_build_removes_old_archives_for_the_same_browser() -> None:
+    """A release glob must not pick up an archive from an earlier version."""
+    target = TARGETS_BY_NAME["chrome"]
+    old_archive = BUILD_ROOT / "podcast-downloader-chrome-0.0.1.zip"
+    old_archive.parent.mkdir(parents=True, exist_ok=True)
+    old_archive.write_bytes(b"stale")
+
+    build_target(target, make_zip=True)
+
+    assert not old_archive.exists()

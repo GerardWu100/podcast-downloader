@@ -23,10 +23,10 @@ RUN uv sync --frozen --no-dev \
 # Unbuffered output so all logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1
 
-# Copy application files. This intentionally includes a repo-root `.env`
-# when present so first-boot Docker deploys can seed `/data/.env` with the
-# UI account name and password without extra server-side steps.
-COPY . .
+# Copy only the runtime application. Explicit sources keep ignored files and
+# local secrets out even if `.dockerignore` is changed incorrectly later.
+COPY main.py start.py config.ini .env.example ./
+COPY src ./src
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh

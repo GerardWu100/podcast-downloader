@@ -61,6 +61,10 @@ router = APIRouter(prefix="/api")
 # Longest URL the API accepts. Real media URLs are a few hundred characters at
 # most; the limit stops a client from writing an enormous line into urls.txt.
 MAX_URL_LENGTH = 2048
+# The complete JSON document is only one URL and one boolean. Requiring a small
+# declared body length lets middleware reject unauthenticated oversized uploads
+# before FastAPI reads and validates them in memory.
+MAX_API_REQUEST_BODY_BYTES = 4096
 
 # What each refusal means to the caller. The messages avoid saying whether the
 # account name exists, which is the same reason the login page says only
@@ -232,7 +236,10 @@ def add_url(request: Request, payload: AddUrlRequest) -> JSONResponse:
         download_trigger=_dependency(state, "download_trigger", DownloadTrigger),
     )
 
-    _logger.info("API add-url: %s -> %s", payload.url, result.outcome)
+    # URLs can contain signed query strings or user information. Queue and
+    # downloader logs already record operational details where needed; the API
+    # access line should not make another plaintext copy of those secrets.
+    _logger.info("API add-url outcome: %s", result.outcome)
 
     status_code = 400 if result.outcome is AddUrlOutcome.INVALID else 200
     return JSONResponse(

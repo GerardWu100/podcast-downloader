@@ -33,6 +33,9 @@ At startup, the app applies these rules to the account slots:
 - A slot with both values set becomes an account; a blank slot is skipped, and slots need not be filled in order.
 - A slot with only one of the two values set is ignored and logged as a warning, because half an account cannot log in.
 - Two slots may not share an account name; the later one is ignored and logged, because it could never be reached.
+- Account names may not contain a colon (`:`). HTTP Basic authentication uses
+  the first colon to separate the name and password, so such an account could
+  sign in through the form but not through the browser extension or API.
 - A wrong account name takes the same time as a wrong password, because the app always checks one password hash.
 
 To change a password, edit `.env` and restart. The app regenerates and checks

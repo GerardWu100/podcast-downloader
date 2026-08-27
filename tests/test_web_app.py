@@ -20,7 +20,7 @@ from src.state.notification_store import (
 )
 from src.state.queue_store import QueueStore
 from src.web import routes
-from src.web.app import create_app
+from src.web.app import api_body_size_refusal, create_app
 
 
 class _RecordingDownloadTrigger:
@@ -60,6 +60,45 @@ def test_create_app_returns_independent_fastapi_instances() -> None:
     assert len(first_app.routes) == len(second_app.routes)
     assert first_app.state.sessions is not second_app.state.sessions
     assert first_app.state.csrf_tokens is not second_app.state.csrf_tokens
+
+
+def test_api_body_limit_rejects_unbounded_or_oversized_json() -> None:
+    """Unauthenticated clients must not make FastAPI buffer arbitrary bodies."""
+    request_without_length = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/api/add-url"),
+        headers={},
+    )
+    oversized_request = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/api/add-url"),
+        headers={"content-length": "1000000"},
+    )
+
+    missing_length_response = api_body_size_refusal(request_without_length)
+    oversized_response = api_body_size_refusal(oversized_request)
+
+    assert missing_length_response is not None
+    assert missing_length_response.status_code == 411
+    assert oversized_response is not None
+    assert oversized_response.status_code == 413
+
+
+def test_api_body_limit_allows_small_json_and_unrelated_routes() -> None:
+    """Normal extension submissions and web pages should continue to routing."""
+    small_request = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/api/add-url"),
+        headers={"content-length": "256"},
+    )
+    web_request = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/"),
+        headers={},
+    )
+
+    assert api_body_size_refusal(small_request) is None
+    assert api_body_size_refusal(web_request) is None
 
 
 def test_create_app_uses_injected_temporary_collaborators(tmp_path: Path) -> None:

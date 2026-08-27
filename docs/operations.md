@@ -29,7 +29,12 @@ cp .env.example .env
 
 At startup, the app reads `.env`, hashes each `UI_PASSWORD` with PBKDF2, and stores only the hashes in `.ui_credentials.json`. You do not need to hash passwords yourself. To change a password, edit `.env` and restart. Optional second and third accounts use `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
 
-For Docker, create `.env` in the repository before copying the project to the server or running `docker compose up -d`. The image places it at `/app/.env`; the first start copies it to the mounted `/data/.env`. After that, edit `$HOME/.containers/podcast-downloader/.env` on the host.
+For Docker, create `.env` in the repository before running
+`docker compose up -d`. Compose mounts it as a read-only runtime secret; it
+never enters an image layer. The first start copies it to the mounted
+`/data/.env`. After that, edit
+`$HOME/.containers/podcast-downloader/.env` on the host. The repository file is
+still required because Compose resolves the secret before the container starts.
 
 Compose expects a shared proxy network named `single`. Create it once if needed:
 
@@ -42,8 +47,8 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 When the container starts, it:
 
 1. Copies the repository `config.ini` into the mounted data directory if it is missing.
-2. Copies the image’s `.env` into the mounted data directory if no mounted `.env` exists. If the repository has no `.env`, it uses `.env.example`. The copied file is owner-only.
-3. Keeps an existing `/data/cookies.txt`, makes it owner-only, and seeds it from the image’s repository-root `cookies.txt` only when the mounted data directory has no cookie file.
+2. Copies the runtime `.env` secret into the mounted data directory if no mounted `.env` exists. Outside Compose, it falls back to `.env.example`. The copied file is owner-only.
+3. Keeps an existing `/data/cookies.txt` and makes it owner-only. Cookie files are never copied into the image; add one to the host data directory or upload it through the web UI.
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, and `.login_state.json`.
 5. Attempts to update the latest `yt-dlp` nightly release and its browser-impersonation dependency when `YT_DLP_AUTO_UPDATE=true`.
 6. Changes existing files in the three mounted application directories to the configured host user and group, then runs the application as that identity. This repairs files owned by root from earlier runs and prevents new ones.
@@ -80,7 +85,9 @@ Inside Docker, `localhost` in the notify URL means the downloader container. Use
 
 If YouTube blocks a normal request, provide a Netscape-format cookie file named `cookies.txt`. With Docker Compose, it lives at `$HOME/.containers/podcast-downloader/cookies.txt` on the host and `/data/cookies.txt` in the container.
 
-The app uses the mounted cookie file. Restarts and rebuilds do not replace it; the entrypoint only applies `chmod 600`. If `/data/cookies.txt` is missing, it copies `/app/cookies.txt` when that file exists.
+The app uses the mounted cookie file. Restarts and rebuilds do not replace it;
+the entrypoint only applies `chmod 600`. If `/data/cookies.txt` is missing, use
+the web UI or copy the file directly to the host data directory.
 
 You can update cookies through the web UI instead of copying a file over SSH. Uploads require a signed-in session, must have the Netscape header, convert line endings to LF, and write the file with mode `600`.
 
@@ -108,17 +115,19 @@ The web UI performs this conversion during upload.
 
 ## What goes into the image
 
-The Dockerfile copies the whole repository with one `COPY . .`, so
-`.dockerignore` decides what ships. The container runs only the server, so
-these stay out:
+The Dockerfile copies only named runtime entry points plus `src/`. This is the
+primary boundary that prevents a forgotten local file from entering an image.
+`.dockerignore` also removes secrets, state, developer material, and generated
+output from the build context as defense in depth:
 
 | Excluded | Why |
 |---|---|
 | `extension/` and `build/` | Browser code. It runs in your browser, never on the server. `build/` holds the generated Firefox copy |
 | `tests/`, `scripts/`, `docs/`, `blog/` | Developer material. Nothing under `src/`, `start.py`, or `docker-entrypoint.sh` imports them |
-| Queue files, logs, sessions, credentials, cookies | Runtime state. The entrypoint creates these in the mounted data directory; a copy baked into the image would leak yours and be overwritten anyway |
+| `.env`, cookies, notification settings, queue files, logs, sessions, credentials | Secrets and runtime state belong in the runtime secret or mounted data directory; image layers are durable and may be pushed to a registry |
 
-`tests/test_docker_build_context.py` fails if one of those entries is removed.
+`tests/test_docker_build_context.py` fails if one of those entries is removed,
+and `tests/test_docker_entrypoint.py` refuses a broad `COPY . .` instruction.
 Generated folders matter most: they are absent from a clean checkout, so a
 missing entry appears only on a machine that ran the generator before building.
 

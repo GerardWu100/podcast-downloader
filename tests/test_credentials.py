@@ -114,6 +114,16 @@ def test_sync_ignores_half_filled_and_repeated_slots(tmp_path: Path) -> None:
     assert "WARNING" in message
 
 
+def test_sync_rejects_a_username_with_basic_auth_separator(tmp_path: Path) -> None:
+    """Every configured account must work in both the form and JSON API."""
+    _write_env(tmp_path, ("ops:toronto", "correct-password"))
+
+    message = sync_ui_credentials(tmp_path)
+
+    assert "must not contain ':'" in message
+    assert not (tmp_path / CREDENTIALS_FILENAME).exists()
+
+
 def test_sync_leaves_matching_credentials_untouched(tmp_path: Path) -> None:
     """A second sync with the same .env should keep the same salts and hashes."""
     _write_env(tmp_path, ("alice", "correct-password"), ("bob", "bob-password"))

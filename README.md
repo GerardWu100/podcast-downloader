@@ -149,7 +149,7 @@ uv run python scripts/build_extensions.py
 2. Click **Load Temporary Add-on**.
 3. Choose the `manifest.json` inside that folder.
 
-Firefox 121 or newer is required, and it removes a temporary add-on when it
+Firefox 140 or newer is required, and it removes a temporary add-on when it
 restarts. To keep it, build the archive and have Mozilla sign it:
 
 ```bash
@@ -232,7 +232,8 @@ On first boot, the container creates missing files and `.env`, points
 Audiobookshelf at the mounted download folder, and stores host cookies at
 `$HOME/.containers/podcast-downloader/cookies.txt`. Mounted files belong to
 user and group `1000:1000` by default. Set `HOST_UID` and `HOST_GID` in the
-repository `.env` when the host uses different IDs.
+repository `.env` when the host uses different IDs. Compose mounts that file as
+a runtime secret; passwords and cookies are never copied into the image.
 
 See [docs/operations.md](docs/operations.md) for the deployment flow.
 

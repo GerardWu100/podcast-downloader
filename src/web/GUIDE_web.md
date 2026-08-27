@@ -7,7 +7,7 @@ submissions, log updates, and browser security. The application factory
 receives the configuration, persistent stores, and scheduler trigger. Tests use
 the same setup as production but can provide temporary dependencies.
 
-It also serves the JSON API at `/api` used by the Chrome extension in
+It also serves the JSON API at `/api` used by the browser extension in
 `extension/`. Those routes use HTTP Basic credentials instead of a session
 cookie and return JSON, so they live in their own module.
 
@@ -52,6 +52,9 @@ from installing the app.
 - `routes.py`: FastAPI handlers for login, the queue, cookie upload, logs, help, notifications, and scheduler triggers. It owns the login flow and CSRF tokens.
 - `queue_actions.py`: `add_url_to_queue()`, the single place that decides what happens to a submitted URL — reject, normalize, refuse as a duplicate or as already downloaded, append, and wake the scheduler. Both `routes.add_url_form` and `api_routes.add_url` call it, so the browser form and the extension always behave the same.
 - `api_routes.py`: `GET /api/ping` and `POST /api/add-url`. Clients send the same account name and password as the login form in an `Authorization: Basic` header. These routes do not check a CSRF token: CSRF protection is for credentials that browsers attach automatically, while this header comes from the client's own settings. They also omit `WWW-Authenticate`, so a browser tab shows the JSON refusal instead of its own sign-in box. No CORS headers are sent. A Manifest V3 extension with host permissions can call the routes, while an ordinary cross-origin page cannot.
+- `app.py` rejects an undeclared or oversized `/api/add-url` body before
+  FastAPI buffers JSON or verifies a password. The route then applies the
+  smaller URL-field limit during normal validation.
 - `account_auth.py`: `check_credentials()` plus the failed-attempt ban ledger, shared by the login form and the API. It owns the constant-time name comparison and decoy password hash, so an unknown name takes about as long to reject as a wrong password. Keeping one implementation ensures both entry points apply the ban.
 - `auth.py`: `security_headers()`, `client_ip()`, and `request_is_secure()` enforce browser security and proxy rules.
 - `templates.py`: shared styles and renderers for the help, login, queue, and settings pages. Route code supplies escaped values and security headers. `HEAD_APP_TAGS` and `SERVICE_WORKER_SCRIPT` add install support to each page.
@@ -86,3 +89,5 @@ pages stay consistent.
 - 2026-08-26: The interface became installable as a phone app. The blocker was not the missing manifest but the CSP: `default-src 'none'` with no `manifest-src` or `worker-src` silently rejected both files, so the browser never offered to install a site that was serving everything correctly.
 - 2026-08-26: The signed-in pages and the help page stopped capping their content at a pixel width. Zooming out with Ctrl-minus grew the window but left the column at the same 900 CSS pixels, so the page shrank into the middle of an increasingly empty screen. The cap is gone; the side margin is now `clamp(0.75rem, 4vw, 3.2rem)`, which grows with the window.
 - 2026-08-26: Added `/api` for the Chrome extension. The form and API now share URL handling in `queue_actions.py` and account checks in `account_auth.py`. The API uses the same username and password in a header because the browser session cookie is `HttpOnly` and `SameSite=lax`.
+- 2026-08-27: Bounded API bodies before JSON parsing, stopped logging submitted
+  URLs, and rejected account names containing the HTTP Basic separator.

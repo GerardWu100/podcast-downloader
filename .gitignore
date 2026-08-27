@@ -29,6 +29,7 @@ coverage.xml
 cookies.txt
 www.youtube.com_cookies.txt
 *.cookies
+notifications.json
 .env
 .env.*
 !.env.example

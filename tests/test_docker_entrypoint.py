@@ -30,6 +30,14 @@ def test_compose_keeps_cookies_in_data_volume_only() -> None:
     assert ":/data/cookies.txt" not in compose_text
 
 
+def test_compose_mounts_env_as_a_runtime_secret() -> None:
+    """Plain credentials must reach first boot without entering an image layer."""
+    compose_text = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert "podcast_downloader_env" in compose_text
+    assert "file: ./.env" in compose_text
+
+
 def test_dockerfile_installs_deno_for_youtube_javascript_challenges() -> None:
     """The Docker image should include Deno so yt-dlp can solve YouTube JS."""
     dockerfile = PROJECT_ROOT / "Dockerfile"
@@ -59,6 +67,14 @@ def test_dockerfile_installs_gosu_for_non_root_application_process() -> None:
     assert "gosu" in dockerfile_text
 
 
+def test_dockerfile_copies_only_runtime_sources() -> None:
+    """A broad repository copy could bake an overlooked secret into an image."""
+    dockerfile_text = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "COPY . ." not in dockerfile_text
+    assert "COPY src ./src" in dockerfile_text
+
+
 def test_compose_configures_host_file_owner() -> None:
     """Compose should pass the host identity used for mounted output files."""
     compose_file = PROJECT_ROOT / "docker-compose.yml"
@@ -84,13 +100,29 @@ def test_entrypoint_repairs_ownership_before_dropping_privileges() -> None:
 
 
 def _run_entrypoint(
-    data_dir: Path, download_dir: Path
+    data_dir: Path,
+    download_dir: Path,
+    *,
+    env_secret_file: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run the Docker entrypoint against temporary directories."""
+    """Run the Docker entrypoint against temporary directories.
+
+    Parameters
+    ----------
+    data_dir:
+        Temporary stand-in for the container's ``/data`` mount.
+    download_dir:
+        Temporary stand-in for the finished-download mount.
+    env_secret_file:
+        Optional runtime secret that seeds ``data_dir/.env``.
+    """
     env = os.environ.copy()
     env["PODCAST_DATA_DIR"] = str(data_dir)
     env["PODCAST_DOWNLOAD_DIR"] = str(download_dir)
     env["YT_DLP_AUTO_UPDATE"] = "false"
+    env["PODCAST_ENV_SECRET_FILE"] = str(
+        env_secret_file if env_secret_file is not None else data_dir / "no-secret"
+    )
     return subprocess.run(
         [
             "sh",
@@ -107,31 +139,21 @@ def _run_entrypoint(
     )
 
 
-def test_entrypoint_seeds_env_from_example_when_repo_env_missing(
+def test_entrypoint_seeds_env_from_example_when_runtime_secret_missing(
     tmp_path: Path,
 ) -> None:
-    """First boot without a repo .env should seed data/.env from .env.example."""
+    """First boot without a runtime secret should use the checked-in example."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
-    repo_env_file = PROJECT_ROOT / ".env"
-    original_contents = (
-        repo_env_file.read_text(encoding="utf-8") if repo_env_file.exists() else None
-    )
 
-    try:
-        repo_env_file.unlink(missing_ok=True)
+    result = _run_entrypoint(data_dir, download_dir)
 
-        result = _run_entrypoint(data_dir, download_dir)
-
-        assert result.returncode == 0, result.stderr
-        seeded_env_file = data_dir / ".env"
-        example_text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
-        assert seeded_env_file.read_text(encoding="utf-8") == example_text
-        assert oct(seeded_env_file.stat().st_mode & 0o777) == "0o600"
-        assert "[startup] Seeded" in result.stdout
-    finally:
-        if original_contents is not None:
-            repo_env_file.write_text(original_contents, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+    seeded_env_file = data_dir / ".env"
+    example_text = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
+    assert seeded_env_file.read_text(encoding="utf-8") == example_text
+    assert oct(seeded_env_file.stat().st_mode & 0o777) == "0o600"
+    assert "[startup] Seeded" in result.stdout
 
 
 def test_entrypoint_preserves_existing_data_env(tmp_path: Path) -> None:
@@ -149,133 +171,56 @@ def test_entrypoint_preserves_existing_data_env(tmp_path: Path) -> None:
     assert oct((data_dir / ".env").stat().st_mode & 0o777) == "0o600"
 
 
-def test_entrypoint_seeds_image_bundled_cookies_when_data_cookies_missing(
-    tmp_path: Path,
-) -> None:
-    """A repo-root cookies.txt copied into the image should seed the mounted data dir."""
-    data_dir = tmp_path / "data"
-    download_dir = tmp_path / "downloads"
-    repo_cookie_file = PROJECT_ROOT / "cookies.txt"
-    original_contents = (
-        repo_cookie_file.read_text(encoding="utf-8")
-        if repo_cookie_file.exists()
-        else None
-    )
-    bundled_cookie_text = (
-        "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tseeded\n"
-    )
-
-    try:
-        repo_cookie_file.write_text(bundled_cookie_text, encoding="utf-8")
-
-        result = _run_entrypoint(data_dir, download_dir)
-
-        assert result.returncode == 0, result.stderr
-        seeded_cookie_file = data_dir / "cookies.txt"
-        assert seeded_cookie_file.is_file()
-        assert seeded_cookie_file.read_text(encoding="utf-8") == bundled_cookie_text
-        assert oct(seeded_cookie_file.stat().st_mode & 0o777) == "0o600"
-        assert "[startup] Seeded" in result.stdout
-        assert "cookies.txt" in result.stdout
-    finally:
-        if original_contents is None:
-            repo_cookie_file.unlink(missing_ok=True)
-        else:
-            repo_cookie_file.write_text(original_contents, encoding="utf-8")
-
-
 def test_entrypoint_uses_existing_data_cookies_without_overwriting(
     tmp_path: Path,
 ) -> None:
     """An existing data cookie file should be treated as the runtime source."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
-    repo_cookie_file = PROJECT_ROOT / "cookies.txt"
-    original_contents = (
-        repo_cookie_file.read_text(encoding="utf-8")
-        if repo_cookie_file.exists()
-        else None
-    )
-    bundled_cookie_text = (
-        "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\n"
-    )
+    data_dir.mkdir()
+    mounted_cookie_text = "# Netscape HTTP Cookie File\nmounted\n"
+    mounted_cookie_file = data_dir / "cookies.txt"
+    mounted_cookie_file.write_text(mounted_cookie_text, encoding="utf-8")
 
-    try:
-        repo_cookie_file.write_text(bundled_cookie_text, encoding="utf-8")
+    result = _run_entrypoint(data_dir, download_dir)
 
-        data_dir.mkdir()
-        mounted_cookie_text = "# Netscape HTTP Cookie File\nmounted\n"
-        mounted_cookie_file = data_dir / "cookies.txt"
-        mounted_cookie_file.write_text(mounted_cookie_text, encoding="utf-8")
-
-        result = _run_entrypoint(data_dir, download_dir)
-
-        assert result.returncode == 0, result.stderr
-        assert mounted_cookie_file.read_text(encoding="utf-8") == mounted_cookie_text
-        assert oct(mounted_cookie_file.stat().st_mode & 0o777) == "0o600"
-        assert "[startup] Using mounted cookies file" in result.stdout
-    finally:
-        if original_contents is None:
-            repo_cookie_file.unlink(missing_ok=True)
-        else:
-            repo_cookie_file.write_text(original_contents, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+    assert mounted_cookie_file.read_text(encoding="utf-8") == mounted_cookie_text
+    assert oct(mounted_cookie_file.stat().st_mode & 0o777) == "0o600"
+    assert "[startup] Using mounted cookies file" in result.stdout
 
 
-def test_entrypoint_preserves_existing_data_cookies_without_image_bundle(
+def test_entrypoint_does_not_create_cookies_when_data_file_is_missing(
     tmp_path: Path,
 ) -> None:
-    """An existing mounted cookies.txt should survive when the image has none."""
+    """Cookies must come from the data mount or UI, never the image."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
-    repo_cookie_file = PROJECT_ROOT / "cookies.txt"
-    original_contents = (
-        repo_cookie_file.read_text(encoding="utf-8")
-        if repo_cookie_file.exists()
-        else None
+
+    result = _run_entrypoint(data_dir, download_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert not (data_dir / "cookies.txt").exists()
+    assert "Seeded" not in "\n".join(
+        line for line in result.stdout.splitlines() if "cookies.txt" in line
     )
-    data_dir.mkdir()
-    existing_cookie_text = "# Netscape HTTP Cookie File\nexisting\n"
-    (data_dir / "cookies.txt").write_text(existing_cookie_text, encoding="utf-8")
-
-    try:
-        repo_cookie_file.unlink(missing_ok=True)
-
-        result = _run_entrypoint(data_dir, download_dir)
-
-        assert result.returncode == 0, result.stderr
-        assert (data_dir / "cookies.txt").read_text(
-            encoding="utf-8"
-        ) == existing_cookie_text
-        cookie_update_lines = [
-            line
-            for line in result.stdout.splitlines()
-            if "cookies.txt" in line and ("Seeded" in line or "Refreshed" in line)
-        ]
-        assert cookie_update_lines == []
-    finally:
-        if original_contents is not None:
-            repo_cookie_file.write_text(original_contents, encoding="utf-8")
 
 
-def test_entrypoint_prefers_repo_env_when_data_env_missing(tmp_path: Path) -> None:
-    """A repo-root .env copied into the image should seed the mounted data dir."""
+def test_entrypoint_prefers_runtime_secret_when_data_env_missing(
+    tmp_path: Path,
+) -> None:
+    """The Compose runtime secret should seed the mounted data directory."""
     data_dir = tmp_path / "data"
     download_dir = tmp_path / "downloads"
-    repo_env_file = PROJECT_ROOT / ".env"
-    original_contents = (
-        repo_env_file.read_text(encoding="utf-8") if repo_env_file.exists() else None
+    env_secret_file = tmp_path / "podcast_downloader_env"
+    secret_text = "UI_USERNAME=server-user\nUI_PASSWORD=server-password\n"
+    env_secret_file.write_text(secret_text, encoding="utf-8")
+
+    result = _run_entrypoint(
+        data_dir,
+        download_dir,
+        env_secret_file=env_secret_file,
     )
-    bundled_env_text = "UI_USERNAME=server-user\nUI_PASSWORD=server-password\n"
 
-    try:
-        repo_env_file.write_text(bundled_env_text, encoding="utf-8")
-
-        result = _run_entrypoint(data_dir, download_dir)
-
-        assert result.returncode == 0, result.stderr
-        assert (data_dir / ".env").read_text(encoding="utf-8") == bundled_env_text
-    finally:
-        if original_contents is None:
-            repo_env_file.unlink(missing_ok=True)
-        else:
-            repo_env_file.write_text(original_contents, encoding="utf-8")
+    assert result.returncode == 0, result.stderr
+    assert (data_dir / ".env").read_text(encoding="utf-8") == secret_text

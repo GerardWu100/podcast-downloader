@@ -1,11 +1,12 @@
 /**
- * Service worker: turns a click, a menu choice, or a shortcut into one
- * POST /api/add-url call against the user's Podcast Downloader.
+ * Background worker: turns a click, a menu choice, or a shortcut into one
+ * POST /api/add-url call against the user's Podcast Downloader. Chrome runs it
+ * as a service worker; Firefox runs it as a non-persistent background page.
  *
- * The server authenticates this extension with a bearer token, not the web
- * interface's login session. That session cookie is HttpOnly, so no script can
- * read it, and SameSite=lax, so the browser would not send it on a cross-site
- * POST. The token is stored in the extension options.
+ * The server authenticates this extension with the web account stored in the
+ * extension options, not the web interface's login session. That session
+ * cookie is HttpOnly, so no script can read it, and SameSite=lax, so the
+ * browser would not send it on a cross-site POST.
  *
  * The extension reads a page's address only at the moment you ask it to. That
  * is what the activeTab permission means: clicking the toolbar icon, choosing
@@ -82,7 +83,7 @@ async function submitUrl(url, tabId) {
   await setBadge("...", BADGE_COLORS.success, tabId);
 
   if (!url) {
-    await report(false, "No page URL", "Chrome did not provide a URL for this tab.", tabId);
+    await report(false, "No page URL", "The browser did not provide a URL for this tab.", tabId);
     return;
   }
 

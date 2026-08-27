@@ -273,6 +273,21 @@ def test_add_url_queues_a_video_and_wakes_the_scheduler(tmp_path: Path) -> None:
     assert YOUTUBE_VIDEO_URL in request.app.state.queue_store.read_urls()
 
 
+def test_add_url_does_not_log_the_submitted_url(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Signed query strings and URL user information must stay out of API logs."""
+    secret_url = "https://videos.example.com/watch/episode?token=private-value"
+    request = _build_request(tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="web.api_routes"):
+        api_routes.add_url(request, AddUrlRequest(url=secret_url))
+
+    assert "private-value" not in caplog.text
+    assert "API add-url outcome" in caplog.text
+
+
 def test_add_url_refuses_a_bad_password_before_touching_the_queue(
     tmp_path: Path,
 ) -> None:

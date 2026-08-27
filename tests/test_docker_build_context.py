@@ -78,6 +78,9 @@ def test_secrets_and_runtime_state_stay_out_of_the_image() -> None:
     entries = dockerignore_entries()
 
     for secret in (
+        ".env",
+        "cookies.txt",
+        "notifications.json",
         ".ui_credentials.json",
         ".ui_sessions.json",
         ".login_state.json",

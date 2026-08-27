@@ -9,6 +9,7 @@ YTDLP_PACKAGE_SPEC="yt-dlp[default,curl-cffi]"
 HOST_UID="${HOST_UID:-1000}"
 HOST_GID="${HOST_GID:-1000}"
 SCRIPT_DIR="$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd)"
+ENV_SECRET_FILE="${PODCAST_ENV_SECRET_FILE:-/run/secrets/podcast_downloader_env}"
 
 case "$HOST_UID:$HOST_GID" in
     *[!0-9:]*|:*|*:|*:*:*)
@@ -21,18 +22,16 @@ if [ "$HOST_UID" -eq 0 ] || [ "$HOST_GID" -eq 0 ]; then
     exit 1
 fi
 
-# The mounted data directory owns .env (UI account name and password). A
-# repo-root .env baked into the image seeds it on first boot; without one,
-# .env.example provides default credentials that startup will warn about.
+# The mounted data directory owns .env (UI account name and password). Compose
+# mounts the repository .env as a runtime secret, never as an image layer. The
+# checked-in example is the fallback outside Compose.
 ENV_FILE="$DATA_DIR/.env"
-if [ -f /app/.env ]; then
-    IMAGE_ENV_FILE="/app/.env"
-elif [ -f "$SCRIPT_DIR/.env" ]; then
-    IMAGE_ENV_FILE="$SCRIPT_DIR/.env"
+if [ -f "$ENV_SECRET_FILE" ]; then
+    INITIAL_ENV_FILE="$ENV_SECRET_FILE"
 elif [ -f /app/.env.example ]; then
-    IMAGE_ENV_FILE="/app/.env.example"
+    INITIAL_ENV_FILE="/app/.env.example"
 else
-    IMAGE_ENV_FILE="$SCRIPT_DIR/.env.example"
+    INITIAL_ENV_FILE="$SCRIPT_DIR/.env.example"
 fi
 
 if [ -f /app/config.ini ]; then
@@ -57,33 +56,20 @@ if [ ! -f "$DATA_DIR/.login_state.json" ]; then
     printf '{}\n' > "$DATA_DIR/.login_state.json"
 fi
 
-if [ ! -f "$ENV_FILE" ] && [ -f "$IMAGE_ENV_FILE" ]; then
-    cp "$IMAGE_ENV_FILE" "$ENV_FILE"
-    echo "[startup] Seeded $ENV_FILE from $IMAGE_ENV_FILE"
+if [ ! -f "$ENV_FILE" ] && [ -f "$INITIAL_ENV_FILE" ]; then
+    cp "$INITIAL_ENV_FILE" "$ENV_FILE"
+    echo "[startup] Seeded $ENV_FILE from $INITIAL_ENV_FILE"
 fi
 if [ -f "$ENV_FILE" ]; then
     chmod 600 "$ENV_FILE"
 fi
 
-# The mounted data directory owns runtime cookies. A repo-root cookies.txt is
-# copied into the image at build time and only seeds /data/cookies.txt when the
-# data directory does not already have a cookie file.
+# The mounted data directory exclusively owns runtime cookies. They are never
+# copied into an image layer; upload them in the UI or place them in /data.
 COOKIE_FILE="$DATA_DIR/cookies.txt"
-if [ -f /app/cookies.txt ]; then
-    IMAGE_COOKIE_FILE="/app/cookies.txt"
-elif [ -f "$SCRIPT_DIR/cookies.txt" ]; then
-    IMAGE_COOKIE_FILE="$SCRIPT_DIR/cookies.txt"
-else
-    IMAGE_COOKIE_FILE=""
-fi
-
 if [ -f "$COOKIE_FILE" ]; then
     chmod 600 "$COOKIE_FILE"
     echo "[startup] Using mounted cookies file: $COOKIE_FILE"
-elif [ -f "$IMAGE_COOKIE_FILE" ]; then
-    cp "$IMAGE_COOKIE_FILE" "$COOKIE_FILE"
-    chmod 600 "$COOKIE_FILE"
-    echo "[startup] Seeded $COOKIE_FILE from image-bundled cookies.txt"
 fi
 
 # Hashing the .env password into .ui_credentials.json happens in start.py,

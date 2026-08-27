@@ -27,10 +27,11 @@ validation, normalization, duplicate handling, and immediate-download rules.
 - `manifest.json`: Manifest V3 declaration and narrow permissions. `activeTab`
   reveals a tab URL only when the user invokes the extension. The options page
   requests access only to the server address entered by the user.
-- `background.js`: service worker for context menus, shortcuts, API calls,
-  badges, and error notifications. It re-reads settings for every submission
-  because Chrome may stop the worker at any time. `MENU_SITE_PATTERNS` controls
-  where the right-click items appear.
+- `background.js`: background worker for context menus, shortcuts, API calls,
+  badges, and error notifications. Chrome runs it as a service worker; Firefox
+  runs it as a non-persistent background page. It re-reads settings for every
+  submission because the browser may stop it at any time.
+  `MENU_SITE_PATTERNS` controls where the right-click items appear.
 - `settings.js`: reads and writes `chrome.storage.local` and converts the
   server address into a URL and permission pattern. The worker and options
   page use the same conversion.
@@ -38,9 +39,11 @@ validation, normalization, duplicate handling, and immediate-download rules.
   the browser for server permission after the user clicks **Save**.
 - `manifest.firefox.json`: Firefox's manifest. Firefox has no extension service
   worker, so it runs `background.js` as an event page. It also needs a stable
-  add-on id and reads `options_ui` rather than `options_page`. Every other file
-  is shared, so Firefox-specific settings stay here instead of in a second
-  folder.
+  add-on id, reads `options_ui` rather than `options_page`, and declares the
+  authentication and selected-URL data sent to the configured server. Firefox
+  140 is the minimum because it supplies the matching built-in consent prompt.
+  Every other file is shared, so Firefox-specific settings stay here instead
+  of in a second folder.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
 `scripts/build_extensions.py` assembles both builds into
@@ -49,7 +52,9 @@ archives attached to a release. The Firefox archive is also what
 addons.mozilla.org signs. Chrome loads `extension/` directly and needs no
 build step. `tests/test_build_extensions.py` checks that the two manifests agree
 on the version and permissions, and that each build contains every shared file
-and no stale files.
+and no stale files. The packaging script uses an explicit runtime-file
+allowlist, refuses symbolic links, and removes older archives for the browser
+being built so local secrets and stale versions cannot enter a release glob.
 
 ## Decisions
 
@@ -60,6 +65,9 @@ and no stale files.
   copied to every Chrome profile using the same Google account.
 - Treat a bare hostname as `https`. Users must type `http://` when they accept
   the risk of sending the password without encryption.
+- Keep only the current server origin permission. Saving a different server
+  grants the new origin first, stores it, and then removes access to the old
+  origin.
 - Build the `Authorization` header from UTF-8 bytes before base64 encoding.
   `btoa` alone throws for an accented character in a password.
 - Treat `duplicate` and `downloaded` as successful outcomes because the item
@@ -78,7 +86,16 @@ and no stale files.
 
 ## Testing
 
-There are no automated extension tests. The server API is covered by
-`tests/test_api_routes.py`. For a manual check, load the folder unpacked, use
-**Test connection**, submit a real video, and confirm that the entry appears in
-`urls.txt`.
+Packaging and manifest rules are covered by `tests/test_build_extensions.py`;
+the server API is covered by `tests/test_api_routes.py`. Mozilla's `web-ext
+lint` validates the assembled Firefox manifest. For a manual behavior check,
+load the folder unpacked, use **Test connection**, submit a real video, and
+confirm that the entry appears in `urls.txt`.
+
+## Journal
+
+- 2026-08-27: Raised Firefox support to 140 and declared transmitted
+  authentication, selected-page, and selected-link data so Mozilla's signing
+  and install-consent flow matches actual behavior.
+- 2026-08-27: Replaced broad release-file discovery with an allowlist and made
+  server changes remove the extension's old origin permission.

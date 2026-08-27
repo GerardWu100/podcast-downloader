@@ -10,7 +10,7 @@ sidebar_position: 2
 ```mermaid
 flowchart LR
     API["src/api.py"] --> Web["src/web/"]
-    Extension["extension/ (Chrome)"] -->|"name and password"| Web
+    Extension["extension/ (Chrome and Firefox)"] -->|"name and password"| Web
     CLI["src/cli.py"] --> Downloads["src/downloads/"]
     CLI --> Media["src/media/"]
     Web --> Media
@@ -31,7 +31,7 @@ Each area has one job:
 - `src/api.py` exports the production app created by `create_app()`.
 
 The web app has two clients, both using the same `.env` accounts. A browser
-submits a form with a session cookie and form token. The Chrome extension and
+submits a form with a session cookie and form token. The browser extension and
 other programs call `/api` with the username and password in an
 `Authorization` header. They cannot use the browser cookie: it is `HttpOnly`
 and `SameSite=lax`, so scripts cannot read it and the browser does not send it

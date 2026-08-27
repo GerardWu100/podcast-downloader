@@ -23,9 +23,18 @@ services:
       - $HOME/.containers/podcast-downloader:/data
       - $HOME/downloads/podcasts/:/downloads
       - $HOME/downloads/temporary:/temporary
+    secrets:
+      # Compose mounts the repository .env at runtime; it is never copied into
+      # an image layer. The entrypoint seeds /data/.env only on first boot.
+      - source: podcast_downloader_env
+        target: podcast_downloader_env
     networks:
       - single
 
 networks:
   single:
     external: true
+
+secrets:
+  podcast_downloader_env:
+    file: ./.env

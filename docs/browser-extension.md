@@ -38,8 +38,9 @@ uv run python scripts/build_extensions.py
 2. Select **Load Temporary Add-on**.
 3. Choose `build/firefox-extension/manifest.json`.
 
-Firefox 121 or newer is required because earlier versions cannot run a
-background script as a module.
+Firefox 140 or newer is required. That version supports Mozilla's built-in
+data-transmission consent, which the extension uses to disclose that it sends
+the selected URL and web-account credentials to the server you configure.
 
 **A temporary add-on disappears when Firefox restarts.** Firefox permanently
 installs only signed add-ons. Build the archive to get a signed copy:
@@ -70,6 +71,7 @@ choose **Preferences**. Enter:
 
 Select **Save**. The browser asks only for permission to contact that address.
 Then select **Test connection**. It calls `GET /api/ping` and shows the result.
+If you later change the address, saving removes access to the old server.
 
 If you enter a hostname without `http://` or `https://`, the extension assumes
 `https`. For a local server without a certificate, enter `http://` explicitly.
@@ -136,6 +138,11 @@ Your password is stored in local extension storage, not synced storage, so it
 is not copied to other machines signed in to the same browser account. It still
 remains in your browser profile, where anyone with access to that profile can
 read it. To revoke it, change your web password.
+
+Firefox's installation prompt declares authentication information, browsing
+activity, and website content because the extension sends the saved account
+and the page or link you explicitly choose. It sends nothing to Mozilla or the
+project author; the only destination is the server address you save.
 
 ## Privacy and safety
 

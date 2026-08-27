@@ -141,6 +141,14 @@ def read_configured_accounts(
                 f"that account is ignored."
             )
             continue
+        # HTTP Basic authentication reserves the first colon as the separator
+        # between name and password. The web form could accept such a name, but
+        # the extension and every other Basic client could never reproduce it.
+        if ":" in username:
+            complaints.append(
+                f"{username_key} must not contain ':'; that account is ignored."
+            )
+            continue
         if any(username == accepted_name for accepted_name, _ in accounts):
             complaints.append(
                 f"{username_key} repeats an account name already in use; "

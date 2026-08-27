@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import PodcastConfig
@@ -22,6 +24,53 @@ from ..trigger import DownloadTrigger, in_process_download_trigger
 from . import api_routes, routes
 
 _logger = logging.getLogger("web.app")
+
+
+def api_body_size_refusal(request: Request) -> JSONResponse | None:
+    """Return an early refusal for an unsafe ``POST /api/add-url`` body.
+
+    FastAPI reads and validates a JSON body before it enters the route handler.
+    This check therefore runs in middleware, before authentication or parsing,
+    and requires the transport to declare a small size.
+
+    Parameters
+    ----------
+    request:
+        Incoming request whose method, path, and ``Content-Length`` are checked.
+
+    Returns
+    -------
+    JSONResponse | None
+        A ``411``, ``400``, or ``413`` response when the body cannot be safely
+        bounded; otherwise ``None`` so normal routing can continue.
+    """
+    if request.method != "POST" or request.url.path != "/api/add-url":
+        return None
+
+    raw_content_length = request.headers.get("content-length")
+    if raw_content_length is None:
+        return JSONResponse(
+            {"detail": "Content-Length is required."},
+            status_code=411,
+        )
+    try:
+        content_length = int(raw_content_length)
+    except ValueError:
+        return JSONResponse(
+            {"detail": "Content-Length must be a non-negative integer."},
+            status_code=400,
+        )
+    if content_length < 0:
+        return JSONResponse(
+            {"detail": "Content-Length must be a non-negative integer."},
+            status_code=400,
+        )
+    if content_length > api_routes.MAX_API_REQUEST_BODY_BYTES:
+        return JSONResponse(
+            {"detail": "Request body is too large."},
+            status_code=413,
+        )
+    return None
 
 
 def create_app(
@@ -100,6 +149,18 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+
+    @app.middleware("http")
+    async def limit_api_request_body(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        """Bound API JSON before FastAPI buffers it or hashes credentials."""
+        refusal = api_body_size_refusal(request)
+        if refusal is not None:
+            return refusal
+        return await call_next(request)
+
     app.state.config = resolved_config
     app.state.queue_store = queue_store
     app.state.archive_store = archive_store

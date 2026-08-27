@@ -37,8 +37,20 @@ BUILD_ROOT = PROJECT_ROOT / "build"
 
 CHROME_MANIFEST = "manifest.json"
 FIREFOX_MANIFEST = "manifest.firefox.json"
-# Files that belong to the repository rather than to a browser build.
-EXCLUDED_NAMES = frozenset({CHROME_MANIFEST, FIREFOX_MANIFEST, "GUIDE_extension.md"})
+# Release artifacts use an allowlist so an editor file, local secret, or new
+# developer document cannot silently enter a browser archive. A developer who
+# adds a real runtime asset must make that release decision explicit here.
+SHARED_FILES = (
+    Path("background.js"),
+    Path("settings.js"),
+    Path("options.html"),
+    Path("options.css"),
+    Path("options.js"),
+    Path("icons/icon-16.png"),
+    Path("icons/icon-32.png"),
+    Path("icons/icon-48.png"),
+    Path("icons/icon-128.png"),
+)
 
 
 class BrowserTarget(NamedTuple):
@@ -66,19 +78,32 @@ TARGETS = (
 
 
 def collect_shared_files() -> list[Path]:
-    """Return every extension file both browsers use, sorted for stability.
+    """Return the audited extension files both browsers use.
 
     Returns
     -------
     list[Path]
-        Paths relative to ``extension/``, excluding the two manifests and the
-        developer guide.
+        Allowlisted paths relative to ``extension/``.
+
+    Raises
+    ------
+    FileNotFoundError
+        When an allowlisted runtime file is missing.
+    ValueError
+        When an allowlisted file or one of its parent paths is a symbolic link.
     """
-    return sorted(
-        path.relative_to(SOURCE_DIR)
-        for path in SOURCE_DIR.rglob("*")
-        if path.is_file() and path.name not in EXCLUDED_NAMES
-    )
+    for relative_path in SHARED_FILES:
+        source_path = SOURCE_DIR / relative_path
+        paths_to_check = [SOURCE_DIR]
+        nested_path = SOURCE_DIR
+        for path_part in relative_path.parts:
+            nested_path /= path_part
+            paths_to_check.append(nested_path)
+        if any(path.is_symlink() for path in paths_to_check):
+            raise ValueError(f"refusing to package symbolic link: {source_path}")
+        if not source_path.is_file():
+            raise FileNotFoundError(f"missing extension runtime file: {source_path}")
+    return list(SHARED_FILES)
 
 
 def manifest_version() -> str:
@@ -146,9 +171,11 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
     print(f"{target.name}: {len(shared_files) + 1} files -> {target.output_dir}")
 
     if make_zip:
-        archive_file = (
-            BUILD_ROOT / f"podcast-downloader-{target.name}-{version}.zip"
-        )
+        archive_file = BUILD_ROOT / f"podcast-downloader-{target.name}-{version}.zip"
+        # A release upload often selects build/*.zip. Remove older archives for
+        # this browser so that glob cannot accidentally publish a stale version.
+        for old_archive in BUILD_ROOT.glob(f"podcast-downloader-{target.name}-*.zip"):
+            old_archive.unlink()
         with zipfile.ZipFile(archive_file, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(target.output_dir.rglob("*")):
                 if path.is_file():

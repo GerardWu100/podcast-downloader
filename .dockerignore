@@ -4,10 +4,15 @@ __pycache__/
 .git/
 .DS_Store
 
-# Runtime state. The Dockerfile uses "COPY . ." and the entrypoint creates these
-# under the mounted data directory, so copying a developer's live queue, logs and
-# sessions into the image would both leak them and be immediately overwritten.
-# .env is deliberately not listed: the Dockerfile seeds /data/.env from it on first boot.
+# Runtime state and secrets. The Dockerfile uses explicit copies as the primary
+# boundary; these exclusions also keep private files out of the build context.
+.env
+.env.*
+!.env.example
+cookies.txt
+www.youtube.com_cookies.txt
+*.cookies
+notifications.json
 downloads/
 urls.txt
 downloaded_urls.txt
@@ -30,9 +35,8 @@ scripts/
 blog/
 docs/
 
-# Generated output. `build/` holds the assembled Firefox extension and its
-# archive, written by scripts/build_firefox_extension.py. It is browser code,
-# it can be several hundred kilobytes, and `COPY . .` would otherwise bake
-# whichever copy happened to be lying around into the image.
+# Generated output. `build/` holds the assembled browser extensions and their
+# archives, written by scripts/build_extensions.py. It is browser code and can
+# be several hundred kilobytes, so it does not belong in the build context.
 build/
 dist/

@@ -31,8 +31,9 @@ podcast-downloader/
 └── uv.lock
 ```
 
-`extension/` contains browser code, not server code. `.dockerignore` excludes
-it, and `src/` does not import it.
+`extension/` contains browser code, not server code. The Dockerfile copies only
+named runtime sources, `.dockerignore` also excludes the extension, and `src/`
+does not import it.
 
 Runtime state lives in plain files:
 
@@ -94,3 +95,7 @@ uv run python -m pytest -q
   server image. `tests/test_docker_build_context.py` now names every folder
   that must stay out of the build context, including generated folders, because
   a missing entry is invisible on a clean checkout.
+- 2026-08-27: Docker images stopped copying the repository wholesale. Compose
+  now supplies `.env` as a runtime secret, cookies stay only in the data mount,
+  and explicit runtime copies plus ignore rules keep credentials, cookies, and
+  notification keys out of image layers.

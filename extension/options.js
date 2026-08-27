@@ -39,20 +39,35 @@ async function save() {
     return;
   }
 
-  // Chrome only shows this prompt in response to a click, which is why the
+  // Browsers only show this prompt in response to a click, which is why the
   // permission is requested here rather than on the first download attempt.
   const granted = await chrome.permissions.request({ origins: [pattern] });
   if (!granted) {
-    show(`Chrome did not grant access to ${pattern}. Nothing was saved.`, false);
+    show(`The browser did not grant access to ${pattern}. Nothing was saved.`, false);
     return;
   }
 
+  const previousSettings = await readSettings();
   await writeSettings({
     serverUrl: serverUrlInput.value.trim(),
     username: usernameInput.value.trim(),
     password: passwordInput.value,
     downloadImmediately: downloadImmediatelyInput.checked,
   });
+
+  // Changing servers must not leave access to every previously configured
+  // origin behind. Remove only after the new settings are safely stored, so a
+  // refused permission prompt cannot break the working configuration.
+  if (previousSettings.serverUrl) {
+    try {
+      const previousPattern = originPattern(previousSettings.serverUrl);
+      if (previousPattern !== pattern) {
+        await chrome.permissions.remove({ origins: [previousPattern] });
+      }
+    } catch {
+      // An invalid old value grants no useful origin and should not block Save.
+    }
+  }
   show("Saved.", true);
 }
 

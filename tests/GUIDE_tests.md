@@ -35,14 +35,14 @@ The live SponsorBlock check is
 - `test_api_routes.py`: shared-account sign-in, identical refusals for a wrong
   password and unknown name, the ban shared with the login page, every
   add-a-URL outcome, and shared YouTube normalization.
-- `test_docker_build_context.py`: what `COPY . .` ships. It names the folders
-  that must stay out of the image and fails when one loses its
-  `.dockerignore` entry. Generated folders such as `build/` are included because
-  they are missing from a clean checkout; the problem appears only on a machine
-  that ran the generator first.
+- `test_docker_build_context.py`: defense-in-depth exclusions for secrets,
+  developer folders, and generated output. `test_docker_entrypoint.py` also
+  checks that the Dockerfile copies only named runtime sources and that Compose
+  supplies `.env` as a runtime secret.
 - `test_build_extensions.py`: the extension packaging script. It checks that
-  the two manifests agree on version and permissions, that the build ships
-  every shared file, and that a stale file from an earlier build is removed.
+  the two manifests agree on version and permissions, that the build ships only
+  the audited allowlist, that symbolic links are refused, and that stale files
+  and old archives are removed.
 - `test_archive_locking.py` and `test_activity_log.py`: locking for the archive
   and activity log.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,

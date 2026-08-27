@@ -3,7 +3,7 @@
  *
  * Settings live in chrome.storage.local rather than chrome.storage.sync: this
  * holds your actual web interface password, and sync would copy it to every
- * Chrome profile signed in to the same Google account.
+ * browser profile connected to the same synchronization account.
  */
 
 export const DEFAULT_SETTINGS = {
@@ -80,7 +80,7 @@ export function basicAuthHeader(username, password) {
 /**
  * Return the host permission pattern the extension must hold to call a server.
  *
- * Chrome grants permission per origin, so the options page asks for exactly the
+ * The browser grants permission per origin, so the options page asks for exactly the
  * server the user typed instead of every site they visit.
  */
 export function originPattern(serverUrl) {
