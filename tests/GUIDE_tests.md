@@ -35,6 +35,11 @@ The live SponsorBlock check is
 - `test_api_routes.py`: sign-in with shared accounts, identical refusals for a
   wrong password and an unknown name, the ban shared with the login page, every
   add-a-URL outcome, and shared YouTube normalization.
+- `test_docker_build_context.py`: what `COPY . .` ships. Names the folders
+  that must stay out of the image and fails when one loses its
+  `.dockerignore` entry. Generated folders such as `build/` are the reason
+  it exists: they are missing from a clean checkout, so the gap only appears
+  on a machine that ran the generator first.
 - `test_build_firefox_extension.py`: the Firefox extension build. Checks that
   the two manifests agree on version and permissions, that the build ships
   every shared file, and that a stale file from an earlier build is removed.

@@ -22,9 +22,17 @@ activity.log
 .login_state.json
 .login_state.json.lock
 
-# Not needed at runtime
+# Not needed at runtime. The container runs the server; nothing here is
+# imported by src/, start.py, or docker-entrypoint.sh.
 extension/
 tests/
 scripts/
 blog/
 docs/
+
+# Generated output. `build/` holds the assembled Firefox extension and its
+# archive, written by scripts/build_firefox_extension.py. It is browser code,
+# it can be several hundred kilobytes, and `COPY . .` would otherwise bake
+# whichever copy happened to be lying around into the image.
+build/
+dist/

@@ -88,3 +88,9 @@ uv run python -m pytest -q
   its event-page model, stable add-on id, and `options_ui` setting. The build
   script assembles the shared files into `build/firefox-extension/`; Chrome
   still loads `extension/` directly.
+- 2026-08-26: `build/` joined `.dockerignore`. It was in `.gitignore` but not
+  `.dockerignore`, so after anyone ran the Firefox extension build,
+  `docker compose up --build` would have copied that browser code into the
+  server image. `tests/test_docker_build_context.py` now names every folder
+  that must stay out of the build context, generated ones included, because a
+  missing entry there is invisible on a clean checkout.

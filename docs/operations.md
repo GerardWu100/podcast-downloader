@@ -106,6 +106,23 @@ sed -i 's/\r$//' cookies.txt
 
 The web UI performs this conversion during upload.
 
+## What goes into the image
+
+The Dockerfile copies the whole repository in one `COPY . .`, so
+`.dockerignore` decides what ships. The container runs the server and nothing
+else, so these stay out:
+
+| Excluded | Why |
+|---|---|
+| `extension/` and `build/` | Browser code. It runs in your browser, never on the server. `build/` holds the generated Firefox copy |
+| `tests/`, `scripts/`, `docs/`, `blog/` | Developer material. Nothing under `src/`, `start.py`, or `docker-entrypoint.sh` imports them |
+| Queue files, logs, sessions, credentials, cookies | Runtime state. The entrypoint creates these in the mounted data directory; a copy baked into the image would leak yours and be overwritten anyway |
+
+`tests/test_docker_build_context.py` fails if one of those loses its exclusion.
+The generated folders matter most: they are absent from a clean checkout, so a
+missing entry shows up only on whichever machine ran the generator before
+building.
+
 ## Scheduler behavior
 
 - Scheduled runs happen every `DOWNLOAD_INTERVAL_HOURS`.
