@@ -332,3 +332,65 @@ def test_signing_refuses_when_the_firefox_build_is_missing(
 
     with pytest.raises(FileNotFoundError, match="no Firefox build"):
         build_module.sign_firefox_build(runner=lambda *a, **k: None)
+
+
+def test_the_signed_addon_is_renamed_to_something_readable(
+    monkeypatch, tmp_path
+) -> None:
+    """web-ext names its output after Mozilla's internal identifier.
+
+    That produces files like ``b35db559615e438998be-1.1.1.xpi``, which is the
+    file a person is asked to double-click. It should say what it is.
+
+    This runs against a temporary directory on purpose: an earlier version
+    cleared ``*.xpi`` out of the real build folder and destroyed a signed
+    add-on that had already cost a round trip to Mozilla.
+    """
+    import scripts.build_extensions as build_module
+
+    monkeypatch.setattr(build_module, "BUILD_ROOT", tmp_path)
+    opaque_file = tmp_path / "b35db559615e438998be-1.1.1.xpi"
+    opaque_file.write_bytes(b"signed add-on")
+
+    renamed = build_module.rename_signed_addon()
+
+    assert renamed is not None
+    assert renamed.parent == tmp_path
+    assert renamed.name == (
+        f"podcast-downloader-firefox-{build_module.manifest_version()}.xpi"
+    )
+    assert not opaque_file.exists()
+    assert renamed.read_bytes() == b"signed add-on"
+
+
+def test_renaming_reports_nothing_when_signing_produced_no_file(
+    monkeypatch, tmp_path
+) -> None:
+    """A silent success with no add-on would be worse than saying so."""
+    import scripts.build_extensions as build_module
+
+    monkeypatch.setattr(build_module, "BUILD_ROOT", tmp_path)
+
+    assert build_module.rename_signed_addon() is None
+
+
+def test_renaming_keeps_the_newest_of_several_signed_files(
+    monkeypatch, tmp_path
+) -> None:
+    """An earlier signing run can leave a stale add-on in the folder."""
+    import os
+
+    import scripts.build_extensions as build_module
+
+    monkeypatch.setattr(build_module, "BUILD_ROOT", tmp_path)
+    older_file = tmp_path / "aaa-1.1.0.xpi"
+    older_file.write_bytes(b"stale")
+    os.utime(older_file, (1_000_000, 1_000_000))
+    newer_file = tmp_path / "bbb-1.1.1.xpi"
+    newer_file.write_bytes(b"fresh")
+    os.utime(newer_file, (2_000_000, 2_000_000))
+
+    renamed = build_module.rename_signed_addon()
+
+    assert renamed is not None
+    assert renamed.read_bytes() == b"fresh"

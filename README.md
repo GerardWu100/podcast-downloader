@@ -168,7 +168,7 @@ Or skip the manual upload:
 uv run python scripts/build_extensions.py --sign
 ```
 
-That produces `build/podcast_downloader-<version>.xpi`, which installs in one
+That produces `build/podcast-downloader-firefox-<version>.xpi`, which installs in one
 click and stays installed. See
 [docs/browser-extension.md](docs/browser-extension.md) for the one-time API key
 setup.

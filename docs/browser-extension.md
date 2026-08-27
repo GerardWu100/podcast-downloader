@@ -84,7 +84,7 @@ Then, whenever you want a signed build:
 uv run python scripts/build_extensions.py --sign
 ```
 
-It writes `build/podcast_downloader-<version>.xpi`. Open that file with Firefox
+It writes `build/podcast-downloader-firefox-<version>.xpi`. Open that file with Firefox
 and it installs and stays installed. Signing needs Node, for `npx`, and takes
 about a minute.
 

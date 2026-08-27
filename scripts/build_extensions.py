@@ -329,13 +329,39 @@ def sign_firefox_build(
     print(f"firefox: signing on the {AMO_CHANNEL} channel, this takes a minute")
     runner(command, env=signing_environment, check=True)
 
-    signed_files = sorted(BUILD_ROOT.glob("*.xpi"))
-    for signed_file in signed_files:
-        print(f"firefox: signed add-on -> {signed_file}")
-    if not signed_files:
+    signed_file = rename_signed_addon()
+    if signed_file is None:
         print("firefox: signing reported success but wrote no .xpi")
+    else:
+        print(f"firefox: signed add-on -> {signed_file}")
 
     return command
+
+
+def rename_signed_addon() -> Path | None:
+    """Give the signed add-on a name that says what it is.
+
+    web-ext names its output after the identifier Mozilla assigned, which comes
+    out as something like ``b35db559615e438998be-1.1.1.xpi``. That tells a
+    person nothing, and it is the file they are asked to double-click.
+
+    Returns
+    -------
+    Path | None
+        The renamed file, or ``None`` when signing produced no ``.xpi``.
+    """
+    signed_files = sorted(BUILD_ROOT.glob("*.xpi"))
+    if not signed_files:
+        return None
+
+    # Newest wins: an earlier signing run may have left a file behind.
+    newest_file = max(signed_files, key=lambda path: path.stat().st_mtime)
+    intended_file = BUILD_ROOT / f"podcast-downloader-firefox-{manifest_version()}.xpi"
+    if newest_file == intended_file:
+        return intended_file
+
+    intended_file.unlink(missing_ok=True)
+    return newest_file.rename(intended_file)
 
 
 def main() -> None:
