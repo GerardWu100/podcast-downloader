@@ -28,7 +28,13 @@ manifest differs because Firefox has no extension service worker support.
 
 ### Firefox
 
-Build the Firefox copy first:
+> **Do not open the `.zip` with Firefox, and do not use "Install Add-on From
+> File".** Both fail with *"This add-on could not be installed because it
+> appears to be corrupt."* The file is fine; Firefox refuses any add-on that
+> Mozilla has not signed, and reports it with that misleading message. Use
+> **Load Temporary Add-on** below, or get the file signed.
+
+Build the Firefox copy first, or unzip the archive from the release:
 
 ```bash
 uv run python scripts/build_extensions.py
@@ -197,3 +203,16 @@ entry.
 | `Server has no accounts` | `UI_USERNAME` and `UI_PASSWORD` are unset on the server. |
 | `Could not reach the server` | Check the address and server status, then select **Save** again in Options to grant permission. |
 | `Not a supported media URL` | The page is not a media URL, such as a settings or `chrome://` page. |
+
+Installation problems in Firefox:
+
+| Message | Cause |
+|---|---|
+| "appears to be corrupt" | The archive is unsigned and you used the normal install path. Nothing is wrong with the file. Load it through `about:debugging` instead, or have Mozilla sign it. |
+| "not verified for use in Firefox" | Same cause, different Firefox version. |
+| The add-on vanished after a restart | Expected for a temporary add-on. Signing is the only way to keep it. |
+| about:debugging reports a manifest error | A real problem. `npx web-ext lint --source-dir build/firefox-extension` names it. |
+
+`npx web-ext lint` is Mozilla's own validator and the quickest way to tell a
+real fault from a signing complaint. A clean run means the build is fine and
+the trouble is elsewhere.

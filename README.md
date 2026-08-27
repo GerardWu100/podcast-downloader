@@ -137,6 +137,12 @@ Edge, Brave, and other Chromium browsers work the same way.
 
 ### Install it in Firefox
 
+> **Do not open the `.zip` with Firefox, and do not use "Install Add-on From
+> File".** Both fail with *"This add-on could not be installed because it
+> appears to be corrupt."* The file is fine; Firefox refuses any add-on that
+> Mozilla has not signed, and reports it with that misleading message. Use
+> **Load Temporary Add-on** below, or get the file signed.
+
 Firefox needs its own manifest, so use the Firefox archive rather than the
 `extension/` folder. Unzip `podcast-downloader-firefox-<version>.zip`, or build
 it from a clone:
