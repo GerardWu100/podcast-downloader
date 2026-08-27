@@ -2,16 +2,16 @@
 
 ## Project map
 
-Podcast Downloader is one Python application with three entry points:
+Podcast Downloader is one Python application with three ways to use it:
 
 1. The command line reads the queue and downloads audio.
 2. The web interface manages the queue, sign-in, cookies, and logs.
 3. The JSON API at `/api` accepts URLs from the browser extension and other
-   programs, using the same accounts as the web interface.
+   programs. It uses the same accounts as the web interface.
 
-The root contains deployment entry points and operator-owned files. Application
-code is in [`src/`](src/), offline tests are in [`tests/`](tests/), and
-user/operator documentation is in [`docs/`](docs/).
+The root holds deployment launchers and files operators edit. Application code
+is in [`src/`](src/), offline tests are in [`tests/`](tests/), and user and
+operator documentation is in [`docs/`](docs/).
 
 ```text
 podcast-downloader/
@@ -31,10 +31,10 @@ podcast-downloader/
 └── uv.lock
 ```
 
-`extension/` is browser code, not server code. `.dockerignore` excludes it, and
-`src/` does not import it.
+`extension/` contains browser code, not server code. `.dockerignore` excludes
+it, and `src/` does not import it.
 
-Runtime state stays in plain files:
+Runtime state lives in plain files:
 
 | File | Owner | Purpose |
 |---|---|---|
@@ -46,9 +46,10 @@ Runtime state stays in plain files:
 | `activity.log` | `ActivityLogStore` | Short messages for the web interface |
 | `download.log` | Python logging | Detailed diagnostics |
 
-State stores use advisory locks so concurrent processes do not overwrite one
-another. Authentication files are written to a temporary sibling and then
-moved into place, so an interrupted write cannot leave a partial JSON file.
+State stores use advisory file locks so concurrent processes do not overwrite
+one another. Authentication files are first written to a temporary sibling and
+then moved into place. An interrupted write therefore cannot leave a partial
+JSON file.
 
 ## Root files
 
@@ -61,7 +62,7 @@ moved into place, so an interrupted write cannot leave a partial JSON file.
   `yt-dlp`; repairs ownership; and starts the app as the configured host user.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
-- `scripts/sponsorblock_smoke_check.py`: optional live check, kept outside
+- `scripts/sponsorblock_smoke_check.py`: optional live check. It stays outside
   `tests/` so the offline suite does not collect it.
 
 Useful commands:
@@ -80,7 +81,7 @@ uv run python -m pytest -q
 - 2026-08-10: Made download timeouts configurable, added log rotation and bounded browser log reads, and removed stale engineering records.
 - 2026-08-19: Docker startup began repairing mounted directories and running the app as `HOST_UID:HOST_GID`.
 - 2026-08-23: Docker and scheduler updates moved to nightly `yt-dlp` with the `curl-cffi` extra for Rumble.
-- 2026-08-26: Added the browser extension and JSON API. The shared queue rules
+- 2026-08-26: Added the browser extension and JSON API. Shared queue rules
   moved to `queue_actions.py`; account checks and the failed-login ban moved to
   `account_auth.py`. The API uses the web account in an `Authorization: Basic`
   header because the session cookie is `HttpOnly` and `SameSite=lax`.
@@ -92,5 +93,5 @@ uv run python -m pytest -q
   `.dockerignore`, so after anyone ran the Firefox extension build,
   `docker compose up --build` would have copied that browser code into the
   server image. `tests/test_docker_build_context.py` now names every folder
-  that must stay out of the build context, generated ones included, because a
-  missing entry there is invisible on a clean checkout.
+  that must stay out of the build context, including generated folders, because
+  a missing entry is invisible on a clean checkout.
