@@ -3,10 +3,10 @@
 ## Purpose
 
 `docs/` contains the project's user and operator documentation. Read the guides
-when you need to understand how those documents map to the codebase; the guides
-are written for developers and future agents.
+when you need to see how those documents map to the codebase. The guides are
+for developers and future agents.
 
-Suggested reading order:
+Read these in order:
 
 1. `intro.md` — purpose and project map
 2. `architecture.md` — pipeline, boundaries, saved state, and trust
@@ -18,7 +18,7 @@ Suggested reading order:
 
 ## Code reference
 
-Each document points to the code it describes:
+The documents map to code as follows:
 
 - `architecture.md`: `src/web/`, `src/media/`, `src/downloads/`, and `src/state/`.
 - `cli-and-config.md`: `src/cli.py` and `src/config.py`.

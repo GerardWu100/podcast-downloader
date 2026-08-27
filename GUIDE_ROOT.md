@@ -2,16 +2,16 @@
 
 ## Project map
 
-Podcast Downloader is one Python application with three ways to use it:
+Podcast Downloader is one Python application with three interfaces:
 
 1. The command line reads the queue and downloads audio.
 2. The web interface manages the queue, sign-in, cookies, and logs.
 3. The JSON API at `/api` accepts URLs from the browser extension and other
-   programs. It uses the same accounts as the web interface.
+   programs. It uses the web interface's accounts.
 
-The root holds deployment launchers and files operators edit. Application code
-is in [`src/`](src/), offline tests are in [`tests/`](tests/), and user and
-operator documentation is in [`docs/`](docs/).
+Root files handle deployment and operator settings. Application code is in
+[`src/`](src/), offline tests are in [`tests/`](tests/), and user and operator
+documentation is in [`docs/`](docs/).
 
 ```text
 podcast-downloader/
@@ -47,9 +47,8 @@ Runtime state lives in plain files:
 | `download.log` | Python logging | Detailed diagnostics |
 
 State stores use advisory file locks so concurrent processes do not overwrite
-one another. Authentication files are first written to a temporary sibling and
-then moved into place. An interrupted write therefore cannot leave a partial
-JSON file.
+one another. Authentication files are written to a temporary sibling first and
+then moved into place, so an interrupted write cannot leave a partial JSON file.
 
 ## Root files
 

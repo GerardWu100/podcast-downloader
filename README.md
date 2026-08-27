@@ -1,21 +1,21 @@
 # Podcast Downloader
 
 Podcast Downloader turns online videos into local MP3 files for
-[Audiobookshelf](https://www.audiobookshelf.org/). It can watch YouTube
+[Audiobookshelf](https://www.audiobookshelf.org/). It can monitor YouTube
 channels and playlists, download individual URLs, remove SponsorBlock
-segments when data is available, and run from the command line or a browser.
+segments when available, and run from the command line or a browser.
 
 ## Features
 
-- Check channels and playlists for new videos, or queue individual URLs.
-- Skip YouTube Shorts and delay new videos while SponsorBlock publishes segment
-  data.
+- Monitor channels and playlists for new videos, or queue individual URLs.
+- Skip YouTube Shorts and wait for SponsorBlock data before downloading new
+  videos.
 - Convert audio to MP3, organize it by source, and remove old channel files.
-- Store the queue, download history, and one-use age-check exceptions in
+- Keep the queue, download history, and one-use age-check exceptions in
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Manage sources, activity, logs, cookies, and error notifications in the
+- Manage sources, activity, logs, cookies, and error notifications through the
   password-protected web interface.
-- Install the web interface on a phone, or use the Chrome and Firefox extension
+- Install the web interface on a phone, or use the Chrome or Firefox extension
   to queue the current page.
 
 See [docs/architecture.md](docs/architecture.md) for the pipeline and module
@@ -28,7 +28,7 @@ map, or [docs/intro.md](docs/intro.md) for a shorter overview.
 - `uv`
 - `yt-dlp`, installed separately during setup
 
-Create `.env` from `.env.example`, then set the following values as needed:
+Create `.env` from `.env.example`, then set these values as needed:
 
 - `UI_USERNAME` and `UI_PASSWORD` for the web interface. Add
   `UI_USERNAME_2`/`UI_PASSWORD_2` or `UI_USERNAME_3`/`UI_PASSWORD_3` for
@@ -48,10 +48,10 @@ cp .env.example .env
 ```
 
 `yt-dlp` is installed separately because media sites change frequently. Nightly
-releases usually receive fixes first. `curl-cffi` gives Rumble requests the
-browser network fingerprint needed for its Cloudflare checks.
+releases usually get fixes first. `curl-cffi` gives Rumble requests the browser
+network fingerprint needed for its Cloudflare checks.
 
-Add one source URL per line to `urls.txt`, then review `config.ini` for paths,
+Add one source URL per line to `urls.txt`. Then review `config.ini` for paths,
 delays, and retention.
 
 ## Usage
@@ -69,18 +69,18 @@ uv run python scripts/sponsorblock_smoke_check.py
 ```
 
 The first command runs one queue pass. The second overrides the queue file,
-output folder, and number of recent channel or playlist entries. The other
+output folder, and number of recent channel or playlist entries. The remaining
 commands add URLs, download one URL or a full playlist, start the web
 interface, run offline tests, or run the live SponsorBlock check.
 
 To use the web interface, start Uvicorn and open `http://127.0.0.1:8000/`.
-Sign in, then manage the queue from the home page. The settings page handles
+Sign in to manage the queue from the home page. Use the settings page for
 cookies and notifications. Open `/help` for cookie export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
 **Add to Home Screen**. The app opens without an address bar, and its 30-day
 session keeps you signed in. Installation needs HTTPS, so use a deployed
-instance rather than `http://127.0.0.1`.
+instance instead of `http://127.0.0.1`.
 
 If YouTube blocks downloads, export fresh browser cookies:
 
@@ -94,10 +94,10 @@ details and [docs/operations.md](docs/operations.md) for cookies and Docker.
 
 ## Configuration
 
-Change the main settings in `config.ini`:
+Set the main options in `config.ini`:
 
 - `urls_file`, `output_dir`, and `intermediate_dir`: queue, library, and
-  scratch paths.
+  scratch directories.
 - `channel_count`: recent channel or playlist entries to check.
 - `min_channel_video_age_hours`: minimum age for a YouTube video.
 - `delay_seconds`: pause between downloads.
@@ -116,14 +116,14 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 ## Browser extension
 
 `extension/` contains a browser extension that adds the page you are viewing—or
-a link on that page—to the queue, without switching tabs or pasting a URL. It
-works in Chrome and Firefox, and signs in with the same username and password
-as the web page. Nothing needs to be configured on the server.
+a link on it—to the queue without switching tabs or pasting a URL. It works in
+Chrome and Firefox and uses the same username and password as the web page.
+Nothing needs to be configured on the server.
 
-Download either archive from the
+Download the archive for your browser from the
 [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest),
-or work from a clone. The browser needs the files on the machine you browse
-with, which is not necessarily the machine running the server.
+or work from a clone. The files must be on the machine you browse with, which
+may not be the machine running the server.
 
 ### Install it in Chrome
 
@@ -149,7 +149,7 @@ uv run python scripts/build_extensions.py
 2. Click **Load Temporary Add-on**.
 3. Choose the `manifest.json` inside that folder.
 
-Firefox 121 or newer is required, and it drops a temporary add-on when it
+Firefox 121 or newer is required, and it removes a temporary add-on when it
 restarts. To keep it, build the archive and have Mozilla sign it:
 
 ```bash
@@ -158,13 +158,13 @@ uv run python scripts/build_extensions.py --zip
 
 Upload `build/podcast-downloader-firefox-<version>.zip` to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
-add-on. Unlisted means it is signed but never published: nobody else can find
-or install it, and the signed file survives restarts.
+add-on. Mozilla signs it without publishing it, so nobody else can find or
+install it, and the signed file survives restarts.
 
 ### Set it up, once
 
-Open the extension's settings — right-click its icon and choose **Options** in
-Chrome, or **Preferences** on its card in `about:addons` in Firefox — then
+Open the extension's settings—right-click its icon and choose **Options** in
+Chrome, or choose **Preferences** on its card in `about:addons` in Firefox—then
 enter:
 
 | Field | Value |
@@ -173,8 +173,8 @@ enter:
 | Username and password | The same ones you type on the web page |
 | Download immediately | Start direct videos now instead of waiting for SponsorBlock data |
 
-Click **Save**, allow the permission your browser asks for, then click
-**Test connection**. **Connected** means you are finished.
+Click **Save**, allow the requested permission, then click **Test connection**.
+**Connected** means setup is complete.
 
 ### Use it
 
@@ -186,13 +186,13 @@ Click **Save**, allow the permission your browser asks for, then click
 | Right-click a link, choose the podcast item | The link | YouTube and Rumble links, anywhere you find them |
 
 The badge shows `OK` for a new item, `=` for one already queued or downloaded,
-and `!` for a problem, with a notification saying what went wrong. To offer the
-right-click items on another site, add its match pattern to
+and `!` for a problem. A notification explains errors. To offer the right-click
+items on another site, add its match pattern to
 `MENU_SITE_PATTERNS` in `extension/background.js`.
 
 ### The same API, from a script
 
-The extension signs in with an `Authorization` header rather than the browser
+The extension signs in with an `Authorization` header instead of the browser
 session. The session cookie is `HttpOnly` and `SameSite=lax`, so extension code
 cannot use it. Other clients can call the same two routes:
 
@@ -250,7 +250,7 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 ## Known limits
 
 - The downloader depends on `yt-dlp` to expand channels and playlists. Changes
-  to `yt-dlp` or YouTube can break that step.
+  to `yt-dlp` or YouTube can break this step.
 - YouTube player clients and proof-of-origin requirements change over time.
   The `youtube_player_client` setting may need to change too.
 - Rumble's Cloudflare checks change over time, even with Chrome request

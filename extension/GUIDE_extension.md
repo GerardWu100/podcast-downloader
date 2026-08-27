@@ -3,8 +3,8 @@
 ## Purpose
 
 This folder contains the browser client for adding pages and links to the
-download queue. It runs in Chrome and Firefox and is separate from the server.
-The Docker image excludes it, and the server does not import it.
+download queue. It runs in Chrome and Firefox, separately from the server. The
+Docker image excludes it, and the server does not import it.
 
 User setup is in [`docs/browser-extension.md`](../docs/browser-extension.md).
 
@@ -26,7 +26,7 @@ validation, normalization, duplicate handling, and immediate-download rules.
 
 - `manifest.json`: Manifest V3 declaration and narrow permissions. `activeTab`
   reveals a tab URL only when the user invokes the extension. The options page
-  requests access only to the server origin entered by the user.
+  requests access only to the server address entered by the user.
 - `background.js`: service worker for context menus, shortcuts, API calls,
   badges, and error notifications. It re-reads settings for every submission
   because Chrome may stop the worker at any time. `MENU_SITE_PATTERNS` controls
@@ -36,26 +36,26 @@ validation, normalization, duplicate handling, and immediate-download rules.
   page use the same conversion.
 - `options.html`, `options.css`, and `options.js`: settings page. Saving asks
   the browser for server permission after the user clicks **Save**.
-- `manifest.firefox.json`: the Firefox manifest. Firefox has no extension
-  service worker, so it runs `background.js` as an event page; it also needs a
-  stable add-on id and reads `options_ui` rather than `options_page`. Every
-  other file is shared, so the Firefox-specific differences stay in this
-  manifest instead of a second folder.
+- `manifest.firefox.json`: Firefox's manifest. Firefox has no extension service
+  worker, so it runs `background.js` as an event page. It also needs a stable
+  add-on id and reads `options_ui` rather than `options_page`. Every other file
+  is shared, so Firefox-specific settings stay here instead of in a second
+  folder.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
 `scripts/build_extensions.py` assembles both builds into
 `build/chrome-extension/` and `build/firefox-extension/` and, with `--zip`, the
 archives attached to a release. The Firefox archive is also what
 addons.mozilla.org signs. Chrome loads `extension/` directly and needs no
-build step. `tests/test_build_extensions.py` checks that the two
-manifests agree on the version and permissions, and that the build contains
-every shared file and no stale files.
+build step. `tests/test_build_extensions.py` checks that the two manifests agree
+on the version and permissions, and that each build contains every shared file
+and no stale files.
 
 ## Decisions
 
 - Use the same account as the web page, so the server needs no extra secret.
-  The trade-off is that the password sits in extension storage, and revoking
-  it means changing the web password.
+  The trade-off is that the password sits in extension storage; revoking it
+  means changing the web password.
 - Store settings in `chrome.storage.local`, not `sync`, so the password is not
   copied to every Chrome profile using the same Google account.
 - Treat a bare hostname as `https`. Users must type `http://` when they accept
@@ -71,8 +71,8 @@ every shared file and no stale files.
   actions, and the server rejects unusable URLs. To add a site, edit
   `MENU_SITE_PATTERNS` and reload the extension.
 - Do not send a CSRF token. Cross-Site Request Forgery (CSRF) protection is
-  needed because browsers attach cookies automatically; a header the client
-  fills from its own settings is never automatic.
+  needed because browsers attach cookies automatically; a header filled from
+  the client's own settings is not automatic.
 - Accept that a badge can remain briefly if Chrome stops the worker before its
   clear timer runs. The next submission replaces it.
 

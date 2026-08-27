@@ -2,10 +2,10 @@
 
 ## Test strategy
 
-The suite runs offline. It checks the boundaries between application areas and
+The suite runs offline. It checks how the application areas work together and
 replaces subprocesses and external services, so it never contacts media sites.
 
-It checks:
+It covers:
 
 - the application factory and web routes;
 - `yt-dlp` commands, retries, and results;
@@ -37,13 +37,12 @@ The live SponsorBlock check is
   add-a-URL outcome, and shared YouTube normalization.
 - `test_docker_build_context.py`: what `COPY . .` ships. It names the folders
   that must stay out of the image and fails when one loses its
-  `.dockerignore` entry. Generated folders such as `build/` explain why it
-  exists: they are missing from a clean checkout, so the gap appears only on
-  a machine that ran the generator first.
-- `test_build_extensions.py`: the extension packaging script. It checks
-  that the two manifests agree on version and permissions, that the build
-  ships every shared file, and that a stale file from an earlier build is
-  removed.
+  `.dockerignore` entry. Generated folders such as `build/` are included because
+  they are missing from a clean checkout; the problem appears only on a machine
+  that ran the generator first.
+- `test_build_extensions.py`: the extension packaging script. It checks that
+  the two manifests agree on version and permissions, that the build ships
+  every shared file, and that a stale file from an earlier build is removed.
 - `test_archive_locking.py` and `test_activity_log.py`: locking for the archive
   and activity log.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,
