@@ -191,3 +191,144 @@ def test_build_removes_old_archives_for_the_same_browser() -> None:
     build_target(target, make_zip=True)
 
     assert not old_archive.exists()
+
+
+def test_signing_needs_credentials_and_says_where_to_get_them(
+    monkeypatch, tmp_path
+) -> None:
+    """The error must lead somewhere, not just report a missing variable."""
+    import scripts.build_extensions as build_module
+
+    monkeypatch.delenv(build_module.AMO_KEY_NAME, raising=False)
+    monkeypatch.delenv(build_module.AMO_SECRET_NAME, raising=False)
+    monkeypatch.setattr(
+        build_module, "AMO_CREDENTIALS_FILE", tmp_path / ".amo-credentials"
+    )
+
+    with pytest.raises(ValueError, match="addons.mozilla.org"):
+        build_module.read_amo_credentials()
+
+
+def test_signing_reads_a_credentials_file(monkeypatch, tmp_path) -> None:
+    """Typing two long secrets on every run would not survive contact with use."""
+    import scripts.build_extensions as build_module
+
+    monkeypatch.delenv(build_module.AMO_KEY_NAME, raising=False)
+    monkeypatch.delenv(build_module.AMO_SECRET_NAME, raising=False)
+    credentials_file = tmp_path / ".amo-credentials"
+    credentials_file.write_text(
+        f"# Mozilla signing key\n"
+        f"{build_module.AMO_KEY_NAME}=user:12345:67\n"
+        f"{build_module.AMO_SECRET_NAME}=abcdef0123456789\n"
+    )
+    credentials_file.chmod(0o600)
+    monkeypatch.setattr(build_module, "AMO_CREDENTIALS_FILE", credentials_file)
+
+    assert build_module.read_amo_credentials() == (
+        "user:12345:67",
+        "abcdef0123456789",
+    )
+
+
+def test_signing_refuses_a_world_readable_credentials_file(
+    monkeypatch, tmp_path
+) -> None:
+    """A signing key anyone on the machine can read is a key worth refusing."""
+    import scripts.build_extensions as build_module
+
+    monkeypatch.delenv(build_module.AMO_KEY_NAME, raising=False)
+    monkeypatch.delenv(build_module.AMO_SECRET_NAME, raising=False)
+    credentials_file = tmp_path / ".amo-credentials"
+    credentials_file.write_text(
+        f"{build_module.AMO_KEY_NAME}=k\n{build_module.AMO_SECRET_NAME}=s\n"
+    )
+    credentials_file.chmod(0o644)
+    monkeypatch.setattr(build_module, "AMO_CREDENTIALS_FILE", credentials_file)
+
+    with pytest.raises(ValueError, match="chmod 600"):
+        build_module.read_amo_credentials()
+
+
+def test_the_environment_wins_over_the_credentials_file(
+    monkeypatch, tmp_path
+) -> None:
+    """A CI job supplies credentials by environment; that must not be overridden."""
+    import scripts.build_extensions as build_module
+
+    credentials_file = tmp_path / ".amo-credentials"
+    credentials_file.write_text(
+        f"{build_module.AMO_KEY_NAME}=from-file\n"
+        f"{build_module.AMO_SECRET_NAME}=from-file\n"
+    )
+    credentials_file.chmod(0o600)
+    monkeypatch.setattr(build_module, "AMO_CREDENTIALS_FILE", credentials_file)
+    monkeypatch.setenv(build_module.AMO_KEY_NAME, "from-environment")
+    monkeypatch.setenv(build_module.AMO_SECRET_NAME, "from-environment")
+
+    assert build_module.read_amo_credentials() == (
+        "from-environment",
+        "from-environment",
+    )
+
+
+def test_signing_keeps_the_secret_out_of_the_command_line(monkeypatch) -> None:
+    """Every process on the machine can read another's arguments from /proc.
+
+    web-ext accepts the key either way, so it must be passed by environment.
+    """
+    import scripts.build_extensions as build_module
+
+    build_target(TARGETS_BY_NAME["firefox"], make_zip=False)
+    monkeypatch.setenv(build_module.AMO_KEY_NAME, "secret-key-value")
+    monkeypatch.setenv(build_module.AMO_SECRET_NAME, "secret-secret-value")
+    recorded: dict = {}
+
+    def fake_runner(command, env=None, check=False):
+        recorded["command"] = command
+        recorded["env"] = env
+        return None
+
+    build_module.sign_firefox_build(runner=fake_runner, environment={})
+
+    joined_command = " ".join(recorded["command"])
+    assert "secret-key-value" not in joined_command
+    assert "secret-secret-value" not in joined_command
+    assert recorded["env"]["WEB_EXT_API_KEY"] == "secret-key-value"
+    assert recorded["env"]["WEB_EXT_API_SECRET"] == "secret-secret-value"
+
+
+def test_signing_uses_the_unlisted_channel_and_the_firefox_build(
+    monkeypatch,
+) -> None:
+    """Listed would publish it publicly; the Chrome build would be rejected."""
+    import scripts.build_extensions as build_module
+
+    firefox_target = TARGETS_BY_NAME["firefox"]
+    build_target(firefox_target, make_zip=False)
+    monkeypatch.setenv(build_module.AMO_KEY_NAME, "k")
+    monkeypatch.setenv(build_module.AMO_SECRET_NAME, "s")
+
+    command = build_module.sign_firefox_build(
+        runner=lambda *args, **kwargs: None, environment={}
+    )
+
+    assert f"--channel={build_module.AMO_CHANNEL}" in command
+    assert build_module.AMO_CHANNEL == "unlisted"
+    assert f"--source-dir={firefox_target.output_dir}" in command
+
+
+def test_signing_refuses_when_the_firefox_build_is_missing(
+    monkeypatch, tmp_path
+) -> None:
+    """Signing whatever happened to be lying around would be worse than failing."""
+    import scripts.build_extensions as build_module
+
+    monkeypatch.setenv(build_module.AMO_KEY_NAME, "k")
+    monkeypatch.setenv(build_module.AMO_SECRET_NAME, "s")
+    missing_target = build_module.BrowserTarget(
+        "firefox", build_module.FIREFOX_MANIFEST, tmp_path / "absent"
+    )
+    monkeypatch.setattr(build_module, "TARGETS", (missing_target,))
+
+    with pytest.raises(FileNotFoundError, match="no Firefox build"):
+        build_module.sign_firefox_build(runner=lambda *a, **k: None)

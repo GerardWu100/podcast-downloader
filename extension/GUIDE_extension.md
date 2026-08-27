@@ -46,6 +46,14 @@ validation, normalization, duplicate handling, and immediate-download rules.
   of in a second folder.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
+`--sign` hands the Firefox build to Mozilla's `web-ext sign` on the unlisted
+channel and writes a signed `.xpi`. That exists because Firefox refuses any
+unsigned add-on with the message "this add-on appears to be corrupt", which
+reads like a broken download and is the first thing anyone hits. Credentials
+come from the environment or from a `chmod 600` `.amo-credentials` file, and
+are passed to the subprocess through its environment rather than its arguments,
+since any process can read another's arguments from `/proc`.
+
 `scripts/build_extensions.py` assembles both builds into
 `build/chrome-extension/` and `build/firefox-extension/` and, with `--zip`, the
 archives attached to a release. The Firefox archive is also what

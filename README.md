@@ -162,10 +162,16 @@ restarts. To keep it, build the archive and have Mozilla sign it:
 uv run python scripts/build_extensions.py --zip
 ```
 
-Upload `build/podcast-downloader-firefox-<version>.zip` to
-[addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
-add-on. Mozilla signs it without publishing it, so nobody else can find or
-install it, and the signed file survives restarts.
+Or skip the manual upload:
+
+```bash
+uv run python scripts/build_extensions.py --sign
+```
+
+That produces `build/podcast_downloader-<version>.xpi`, which installs in one
+click and stays installed. See
+[docs/browser-extension.md](docs/browser-extension.md) for the one-time API key
+setup.
 
 ### Set it up, once
 

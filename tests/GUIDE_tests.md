@@ -39,10 +39,11 @@ The live SponsorBlock check is
   developer folders, and generated output. `test_docker_entrypoint.py` also
   checks that the Dockerfile copies only named runtime sources and that Compose
   supplies `.env` as a runtime secret.
-- `test_build_extensions.py`: the extension packaging script. It checks that
-  the two manifests agree on version and permissions, that the build ships only
-  the audited allowlist, that symbolic links are refused, and that stale files
-  and old archives are removed.
+- `test_build_extensions.py`: the packaging script. Checks that the two
+  manifests agree on version and permissions, that each build carries the
+  manifest its browser needs, that a stale file cannot survive a rebuild,
+  and, for signing, that the unlisted channel is used and the API secret
+  never reaches the command line where `/proc` would expose it.
 - `test_archive_locking.py` and `test_activity_log.py`: locking for the archive
   and activity log.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,

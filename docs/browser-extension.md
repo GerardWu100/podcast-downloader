@@ -55,10 +55,43 @@ installs only signed add-ons. Build the archive to get a signed copy:
 uv run python scripts/build_extensions.py --zip
 ```
 
-Upload `build/podcast-downloader-firefox-<version>.zip` to
+#### Make it install like a normal extension
+
+Loading through `about:debugging` is the developer route, and Firefox forgets it
+on restart. Signing turns the build into an ordinary `.xpi` you install with one
+click, permanently. It stays private: an **unlisted** add-on is signed but never
+published, so nobody can search for or install it.
+
+Once, get an API key from
+[addons.mozilla.org](https://addons.mozilla.org/developers/addon/api/key/) and
+save it where the script will find it:
+
+```bash
+cat > .amo-credentials <<'KEYS'
+AMO_API_KEY=<your key>
+AMO_API_SECRET=<your secret>
+KEYS
+chmod 600 .amo-credentials
+```
+
+That file is ignored by git and by the Docker build, and the script refuses to
+use it if anyone else on the machine can read it. Exporting the two variables
+instead works the same way.
+
+Then, whenever you want a signed build:
+
+```bash
+uv run python scripts/build_extensions.py --sign
+```
+
+It writes `build/podcast_downloader-<version>.xpi`. Open that file with Firefox
+and it installs and stays installed. Signing needs Node, for `npx`, and takes
+about a minute.
+
+If you would rather do it by hand, upload
+`build/podcast-downloader-firefox-<version>.zip` to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
-add-on. Mozilla signs it and returns an `.xpi` without publishing it. Install
-that file and it survives restarts.
+add-on and install the `.xpi` it returns.
 
 This extension is meant for a server you control. Do not publish it as a
 listed add-on or to the Chrome Web Store.

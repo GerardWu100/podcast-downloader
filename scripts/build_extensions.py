@@ -17,17 +17,29 @@ Usage
     uv run python scripts/build_extensions.py            # both folders
     uv run python scripts/build_extensions.py --zip      # folders and archives
     uv run python scripts/build_extensions.py --browser firefox
+    uv run python scripts/build_extensions.py --sign     # signed Firefox .xpi
 
 Archives are named with the manifest version, so a downloaded file says which
 build it is.
+
+``--sign`` exists because Firefox will not permanently install an add-on that
+Mozilla has not signed; it rejects one with the misleading message "this add-on
+appears to be corrupt". Signing on the unlisted channel returns a normal
+``.xpi`` that installs in one click and stays installed, without listing the
+add-on in the public directory. It needs an API key from
+https://addons.mozilla.org/developers/addon/api/key/ and Node, for ``npx``.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import stat
+import subprocess
 import zipfile
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
@@ -37,6 +49,18 @@ BUILD_ROOT = PROJECT_ROOT / "build"
 
 CHROME_MANIFEST = "manifest.json"
 FIREFOX_MANIFEST = "manifest.firefox.json"
+
+# Signing credentials. Mozilla issues these at
+# https://addons.mozilla.org/developers/addon/api/key/ and they are as
+# sensitive as a password: anyone holding them can publish add-ons as you.
+AMO_KEY_NAME = "AMO_API_KEY"
+AMO_SECRET_NAME = "AMO_API_SECRET"
+AMO_CREDENTIALS_FILE = PROJECT_ROOT / ".amo-credentials"
+# Refuse a credentials file that anyone else on the machine can read.
+AMO_CREDENTIALS_MAX_MODE = 0o600
+# "unlisted" means Mozilla signs the add-on and returns it without publishing
+# it: nobody can search for or install it, and the review is automated.
+AMO_CHANNEL = "unlisted"
 # Release artifacts use an allowlist so an editor file, local secret, or new
 # developer document cannot silently enter a browser archive. A developer who
 # adds a real runtime asset must make that release decision explicit here.
@@ -185,6 +209,135 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
     return target.output_dir
 
 
+def read_amo_credentials() -> tuple[str, str]:
+    """Return the Mozilla API key and secret used for signing.
+
+    The environment wins, which is how a CI job would supply them. Otherwise
+    they come from ``.amo-credentials`` in the project root, a two-line
+    ``KEY=VALUE`` file that is ignored by git and by the Docker build.
+
+    Returns
+    -------
+    tuple[str, str]
+        ``(api key, api secret)``.
+
+    Raises
+    ------
+    ValueError
+        When either value is missing, or when the credentials file is readable
+        by anyone other than its owner.
+    """
+    api_key = os.environ.get(AMO_KEY_NAME, "").strip()
+    api_secret = os.environ.get(AMO_SECRET_NAME, "").strip()
+
+    if (not api_key or not api_secret) and AMO_CREDENTIALS_FILE.is_file():
+        file_mode = stat.S_IMODE(AMO_CREDENTIALS_FILE.stat().st_mode)
+        if file_mode & ~AMO_CREDENTIALS_MAX_MODE:
+            raise ValueError(
+                f"{AMO_CREDENTIALS_FILE} is mode {file_mode:04o}; anyone on this "
+                f"machine can read your signing key. Run: chmod 600 "
+                f"{AMO_CREDENTIALS_FILE}"
+            )
+        for line in AMO_CREDENTIALS_FILE.read_text(encoding="utf-8").splitlines():
+            stripped_line = line.strip()
+            if not stripped_line or stripped_line.startswith("#"):
+                continue
+            name, separator, value = stripped_line.partition("=")
+            if not separator:
+                continue
+            if name.strip() == AMO_KEY_NAME and not api_key:
+                api_key = value.strip()
+            elif name.strip() == AMO_SECRET_NAME and not api_secret:
+                api_secret = value.strip()
+
+    if not api_key or not api_secret:
+        raise ValueError(
+            f"Signing needs {AMO_KEY_NAME} and {AMO_SECRET_NAME}. Create them at "
+            "https://addons.mozilla.org/developers/addon/api/key/ , then either "
+            f"export both, or put them in {AMO_CREDENTIALS_FILE} as two "
+            "KEY=VALUE lines and chmod 600 it."
+        )
+
+    return api_key, api_secret
+
+
+def sign_firefox_build(
+    *,
+    runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
+    environment: Mapping[str, str] | None = None,
+) -> Sequence[str]:
+    """Ask Mozilla to sign the Firefox build and return the command used.
+
+    Parameters
+    ----------
+    runner:
+        Callable with ``subprocess.run``'s interface. Tests replace it so the
+        command can be checked without contacting Mozilla.
+    environment:
+        Base environment for the subprocess, defaulting to this process's.
+
+    Returns
+    -------
+    Sequence[str]
+        The command that was run, for logging and for tests.
+
+    Raises
+    ------
+    ValueError
+        When the credentials are missing or badly protected.
+    FileNotFoundError
+        When the Firefox build is absent, or ``npx`` is not installed.
+    subprocess.CalledProcessError
+        When signing fails. Mozilla's validator messages appear in the output.
+    """
+    api_key, api_secret = read_amo_credentials()
+
+    firefox_target = next(
+        target for target in TARGETS if target.name == "firefox"
+    )
+    if not (firefox_target.output_dir / CHROME_MANIFEST).is_file():
+        raise FileNotFoundError(
+            f"no Firefox build at {firefox_target.output_dir}; run this script "
+            "without --sign first"
+        )
+
+    if shutil.which("npx") is None:
+        raise FileNotFoundError(
+            "npx not found. Signing uses Mozilla's web-ext tool, which needs "
+            "Node installed."
+        )
+
+    command = [
+        "npx",
+        "--yes",
+        "web-ext@latest",
+        "sign",
+        f"--source-dir={firefox_target.output_dir}",
+        f"--artifacts-dir={BUILD_ROOT}",
+        f"--channel={AMO_CHANNEL}",
+    ]
+
+    # The key and secret travel in the environment rather than in the command,
+    # because every process on the machine can read another process's arguments
+    # from /proc. web-ext reads any option from a matching WEB_EXT_ variable.
+    signing_environment = dict(
+        os.environ if environment is None else environment
+    )
+    signing_environment["WEB_EXT_API_KEY"] = api_key
+    signing_environment["WEB_EXT_API_SECRET"] = api_secret
+
+    print(f"firefox: signing on the {AMO_CHANNEL} channel, this takes a minute")
+    runner(command, env=signing_environment, check=True)
+
+    signed_files = sorted(BUILD_ROOT.glob("*.xpi"))
+    for signed_file in signed_files:
+        print(f"firefox: signed add-on -> {signed_file}")
+    if not signed_files:
+        print("firefox: signing reported success but wrote no .xpi")
+
+    return command
+
+
 def main() -> None:
     """Parse arguments and package the requested browsers."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -199,12 +352,24 @@ def main() -> None:
         dest="make_zip",
         help="also write the archives, for a release or for add-on signing",
     )
+    parser.add_argument(
+        "--sign",
+        action="store_true",
+        dest="sign",
+        help=(
+            "have Mozilla sign the Firefox build, producing an .xpi that "
+            "installs in one click and survives a restart"
+        ),
+    )
     arguments = parser.parse_args()
 
     BUILD_ROOT.mkdir(parents=True, exist_ok=True)
     for target in TARGETS:
         if arguments.browser in (None, target.name):
             build_target(target, make_zip=arguments.make_zip)
+
+    if arguments.sign:
+        sign_firefox_build()
 
 
 if __name__ == "__main__":
