@@ -24,7 +24,7 @@ Each document points to the code it describes:
 - `cli-and-config.md`: `src/cli.py` and `src/config.py`.
 - `notifications.md`: `src/notifications/` and `src/state/notification_store.py`.
 - `web-ui-security.md`: `src/web/auth.py`, `src/web/routes.py`, and `src/state/auth_store.py`.
-- `browser-extension.md`: `extension/`, `scripts/build_firefox_extension.py`, `src/web/api_routes.py`, and `src/web/account_auth.py`.
+- `browser-extension.md`: `extension/`, `scripts/build_extensions.py`, `src/web/api_routes.py`, and `src/web/account_auth.py`.
 - `operations.md`: `start.py`, `docker-entrypoint.sh`, and the container files.
 
 ## Journal

@@ -33,7 +33,7 @@ DEVELOPER_ONLY_DIRECTORIES = (
 # a clean checkout, so a missing exclusion shows up only on the machine that
 # happened to run the generator before building.
 GENERATED_DIRECTORIES = (
-    "build",  # scripts/build_firefox_extension.py writes the Firefox extension here
+    "build",  # scripts/build_extensions.py writes the packaged extensions here
     "dist",
 )
 

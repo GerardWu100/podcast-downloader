@@ -120,34 +120,43 @@ a link on that page—to the queue, without switching tabs or pasting a URL. It
 works in Chrome and Firefox, and signs in with the same username and password
 as the web page. Nothing needs to be configured on the server.
 
+Download either archive from the
+[latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest),
+or work from a clone. The browser needs the files on the machine you browse
+with, which is not necessarily the machine running the server.
+
 ### Install it in Chrome
 
-1. Open `chrome://extensions`.
-2. Turn on **Developer mode**.
-3. Click **Load unpacked** and choose this repository's `extension/` folder.
+1. Unzip `podcast-downloader-chrome-<version>.zip`, or use this repository's
+   `extension/` folder directly.
+2. Open `chrome://extensions`.
+3. Turn on **Developer mode**.
+4. Click **Load unpacked** and choose that folder.
 
 Edge, Brave, and other Chromium browsers work the same way.
 
 ### Install it in Firefox
 
-Firefox needs its own manifest, so build its copy first:
+Firefox needs its own manifest, so use the Firefox archive rather than the
+`extension/` folder. Unzip `podcast-downloader-firefox-<version>.zip`, or build
+it from a clone:
 
 ```bash
-uv run python scripts/build_firefox_extension.py
+uv run python scripts/build_extensions.py
 ```
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Click **Load Temporary Add-on**.
-3. Choose `build/firefox-extension/manifest.json`.
+3. Choose the `manifest.json` inside that folder.
 
 Firefox 121 or newer is required, and it drops a temporary add-on when it
 restarts. To keep it, build the archive and have Mozilla sign it:
 
 ```bash
-uv run python scripts/build_firefox_extension.py --zip
+uv run python scripts/build_extensions.py --zip
 ```
 
-Upload `build/podcast-downloader-firefox.zip` to
+Upload `build/podcast-downloader-firefox-<version>.zip` to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
 add-on. Unlisted means it is signed but never published: nobody else can find
 or install it, and the signed file survives restarts.
@@ -234,8 +243,8 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 - `extension/`: browser extension for Chrome and Firefox; not part of the
   server or the Docker image.
 - `tests/`: automated tests.
-- `scripts/`: manual checks outside the test suite, plus the Firefox
-  extension build.
+- `scripts/`: manual checks outside the test suite, plus the extension
+  packaging script.
 - `docs/`: architecture, operations, security, configuration, and extension docs.
 
 ## Known limits

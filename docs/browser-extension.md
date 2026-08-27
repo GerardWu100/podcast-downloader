@@ -10,6 +10,13 @@ are needed.
 
 ## 1. Install it
 
+The quickest route is the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest), which carries a
+ready-made archive per browser. Unzip the one you want and skip straight to the
+loading steps. Everything below also works from a clone.
+
+The files must live on the machine you browse with. If the server runs on
+another box, a clone there does not help your desktop.
+
 The extension works in Chrome and Firefox. Both use the same code; only the
 manifest differs because Firefox has no extension service workers.
 
@@ -24,7 +31,7 @@ manifest differs because Firefox has no extension service workers.
 Build the Firefox copy first:
 
 ```bash
-uv run python scripts/build_firefox_extension.py
+uv run python scripts/build_extensions.py
 ```
 
 1. Open `about:debugging#/runtime/this-firefox`.
@@ -38,10 +45,10 @@ background script as a module.
 installs only signed add-ons. To get a signed copy, build the archive:
 
 ```bash
-uv run python scripts/build_firefox_extension.py --zip
+uv run python scripts/build_extensions.py --zip
 ```
 
-Upload `build/podcast-downloader-firefox.zip` to
+Upload `build/podcast-downloader-firefox-<version>.zip` to
 [addons.mozilla.org](https://addons.mozilla.org/developers/) as an **unlisted**
 add-on. Mozilla signs the add-on and returns an `.xpi` without publishing it;
 install that file and it survives restarts.

@@ -43,10 +43,11 @@ validation, normalization, duplicate handling, and immediate-download rules.
   manifest instead of a second folder.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
-`scripts/build_firefox_extension.py` assembles the Firefox build into
-`build/firefox-extension/` and, with `--zip`, the archive that
+`scripts/build_extensions.py` assembles both builds into
+`build/chrome-extension/` and `build/firefox-extension/` and, with `--zip`, the
+archives attached to a release. The Firefox archive is also what
 addons.mozilla.org signs. Chrome loads `extension/` directly and needs no
-build step. `tests/test_build_firefox_extension.py` checks that the two
+build step. `tests/test_build_extensions.py` checks that the two
 manifests agree on the version and permissions, and that the build contains
 every shared file and no stale files.
 

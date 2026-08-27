@@ -40,7 +40,7 @@ The live SponsorBlock check is
   `.dockerignore` entry. Generated folders such as `build/` explain why it
   exists: they are missing from a clean checkout, so the gap appears only on
   a machine that ran the generator first.
-- `test_build_firefox_extension.py`: the Firefox extension build. It checks
+- `test_build_extensions.py`: the extension packaging script. It checks
   that the two manifests agree on version and permissions, that the build
   ships every shared file, and that a stale file from an earlier build is
   removed.
