@@ -36,7 +36,8 @@ archive through the normal install path fails with *"This add-on could not be
 installed because it appears to be corrupt"*. The file is fine; Firefox uses
 that message for add-ons Mozilla has not signed.
 
-Build the Firefox copy first, or unzip the release archive:
+Build the Firefox copy first. A release publishes no Firefox archive, so this
+step needs a clone:
 
 ```bash
 uv run python scripts/build_extensions.py
@@ -49,12 +50,8 @@ uv run python scripts/build_extensions.py
 Firefox 140 or newer is required. It provides the built-in consent prompt that
 discloses the selected URL and web-account credentials sent to your server.
 
-A temporary add-on disappears when Firefox restarts. To create a signed copy
-that stays installed, build it with:
-
-```bash
-uv run python scripts/build_extensions.py --zip
-```
+A temporary add-on disappears when Firefox restarts. To create a copy that stays
+installed, sign it as described next.
 
 #### Create a signed, unlisted add-on
 

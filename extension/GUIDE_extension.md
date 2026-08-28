@@ -104,6 +104,9 @@ confirm that the entry appears in `urls.txt`.
 
 ## Journal
 
+- 2026-08-28: Stopped building a Firefox `.zip`. It was unsigned, so Firefox
+  reported it as corrupt, and sitting next to the signed `.xpi` on a release it
+  was the file people downloaded. Releases now attach one file per browser.
 - 2026-08-27: Raised Firefox support to 140 and declared transmitted
   authentication, selected-page, and selected-link data so Mozilla's signing
   and install-consent flow matches actual behavior.
