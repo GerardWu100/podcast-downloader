@@ -142,8 +142,7 @@ The toolbar badge shows `OK` for a new item, `=` for an item already queued or
 downloaded, and `!` for an error. Errors also trigger a desktop notification.
 
 Channel and playlist URLs work, but a channel always waits for the next
-scheduled pass, even when immediate downloads are enabled. One click does not
-start an entire back catalogue.
+scheduled pass. One click does not start an entire back catalogue.
 
 ## Why it does not reuse your browser login
 
