@@ -41,8 +41,8 @@ uv run python scripts/build_extensions.py
 3. Choose `build/firefox-extension/manifest.json`.
 
 Firefox reports an unsigned add-on as *"This add-on could not be installed
-because it appears to be corrupt"*. The file is usually fine; Firefox uses
-that message when Mozilla has not signed the add-on.
+because it appears to be corrupt"*. The file is not damaged; Firefox uses
+that message whenever Mozilla has not signed the add-on.
 
 A temporary add-on disappears when Firefox restarts. To keep it installed,
 create a signed, unlisted add-on.
