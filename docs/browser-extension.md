@@ -2,7 +2,7 @@
 
 The extension adds the current page or a link on it to the download queue.
 Click the toolbar icon, press `Alt+Shift+D`, or use the right-click menu on
-YouTube and Rumble. You do not need to change tabs or copy and paste URLs.
+YouTube and Rumble. There is no need to change tabs or copy and paste URLs.
 
 It uses the same username and password as the web interface. No server changes
 are required.
@@ -11,10 +11,10 @@ are required.
 
 The [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest)
 includes a ready-made build for each browser. Install it on the computer where
-you browse; a copy on the server does not help if you browse elsewhere.
+you browse. Installing it on the server does not help if you browse elsewhere.
 
 The extension works in Chrome and Firefox. Most files are shared, but the
-manifest differs because Firefox does not support extension service workers.
+browser manifests differ.
 
 ### Chrome, Edge, Brave, and other Chromium browsers
 
@@ -40,19 +40,17 @@ uv run python scripts/build_extensions.py
 2. Select **Load Temporary Add-on**.
 3. Choose `build/firefox-extension/manifest.json`.
 
-Opening an unsigned archive through Firefox's normal install path fails with
-*"This add-on could not be installed because it appears to be corrupt"*. The
-file is fine; Firefox uses that message for add-ons Mozilla has not signed.
-Firefox 140 or newer also provides the consent prompt that discloses the
-selected URL and web-account credentials sent to your server.
+Firefox reports an unsigned add-on as *"This add-on could not be installed
+because it appears to be corrupt"*. The file is usually fine; Firefox uses
+that message when Mozilla has not signed the add-on.
 
-A temporary add-on disappears when Firefox restarts. To create one that stays
-installed, sign it as an unlisted add-on.
+A temporary add-on disappears when Firefox restarts. To keep it installed,
+create a signed, unlisted add-on.
 
 #### Create a signed, unlisted add-on
 
-An **unlisted** add-on is signed but not published, so nobody can search for or
-install it.
+An **unlisted** add-on is signed but not published, so people cannot search for
+or install it from Mozilla's add-on site.
 
 Once, get an API key from
 [addons.mozilla.org](https://addons.mozilla.org/developers/addon/api/key/) and
@@ -79,7 +77,7 @@ uv run python scripts/build_extensions.py --sign
 It writes `build/podcast-downloader-firefox-<version>.xpi`. Signing needs Node
 for `npx` and takes about a minute.
 
-You can also sign it manually: zip the contents of
+You can also sign the add-on manually: zip the contents of
 `build/firefox-extension/` with `manifest.json` at the archive root, upload the
 archive to [addons.mozilla.org](https://addons.mozilla.org/developers/) as an
 **unlisted** add-on, and install the `.xpi` Mozilla returns. The build script
@@ -91,20 +89,23 @@ listed add-on or in the Chrome Web Store.
 
 ## 2. Connect it to your server
 
-Open the extension's settings. In Chrome, right-click its icon and choose
-**Options**. In Firefox, open `about:addons`, find Podcast Downloader, and
-choose **Preferences**. Enter:
+Click the toolbar icon. On a new installation, it opens the settings page. To
+open it later, right-click the icon and choose **Options** in Chrome, or open
+`about:addons`, find Podcast Downloader, and choose **Preferences** in Firefox.
+Enter:
 
 | Field | Value |
 |---|---|
 | Server address | The address you use for the web interface, such as `https://podcast.example.com` |
 | Username and password | The same credentials you use on the web page |
 
-There is nothing else to set. The extension posts only the URL to
-`/api/add-url`, so the server applies the same queue rules as the web page: a
-direct video starts right away, a channel waits for the next scheduled pass,
-and a YouTube video newer than `min_channel_video_age_hours` waits for
-SponsorBlock data.
+There is nothing else to set. The extension sends only the URL to
+`/api/add-url`, so the server applies the same queue rules as the web page:
+
+- A direct video starts right away.
+- A channel waits for the next scheduled pass.
+- A YouTube video newer than `min_channel_video_age_hours` waits for
+  SponsorBlock data.
 
 Select **Save**, allow the requested permission, then select **Test
 connection**. The test calls `GET /api/ping`. **Connected** means setup is
@@ -125,12 +126,12 @@ With plain HTTP, anyone between you and the server can read your password.
 | Right-click a link and choose the podcast item | The link | YouTube and Rumble links, wherever you find them |
 
 The two right-click items appear next to **Copy link address** and stay hidden
-on other sites. The link item checks the link itself, not the page containing
-it, so a YouTube link on a forum or blog still gets the menu item.
+on other sites. The link item checks the link itself, so a YouTube link on a
+forum or blog still gets the menu item.
 
-The toolbar icon and keyboard shortcut work anywhere because you invoke them
-explicitly. If the page is not usable, the extension reports `Not a supported
-media URL` and leaves the queue unchanged.
+The toolbar icon and keyboard shortcut work anywhere. If the page is not a
+supported media URL, the extension reports `Not a supported media URL` and
+leaves the queue unchanged.
 
 To show the menu on another site, add its match pattern to
 `MENU_SITE_PATTERNS` at the top of `extension/background.js`, then reload the
@@ -159,20 +160,20 @@ Instead, the extension sends your username and password in an
 applies the same constant-time comparison and failed-login ban.
 
 The API does not use the web form's Cross-Site Request Forgery (CSRF) check.
-CSRF protection is needed when browsers attach cookies automatically, because
-a malicious page could then act as you. The extension's credentials are not
-attached automatically.
+CSRF protection is needed when browsers attach cookies automatically. The
+extension's credentials come from its own settings and are not attached
+automatically.
 
 ## What the extension can see
 
 The extension reads a page's address only when you invoke it. The `activeTab`
-permission gives it access to that tab for the action, so it cannot watch your
-browsing. It never accesses cookies.
+permission gives it access to that tab for the action; it cannot watch your
+browsing and never accesses cookies.
 
 Your password is stored in local extension storage, not synced storage, so it
-is not copied to other machines signed in to the same browser account. It
-remains in your browser profile, where anyone with access to that profile can
-read it. To revoke it, change your web password.
+is not copied to other machines using the same browser account. It remains in
+your browser profile, where anyone with access to that profile can read it. To
+revoke it, change your web password.
 
 Firefox's installation prompt declares authentication information, browsing
 activity, and website content because the extension sends the saved account
@@ -181,9 +182,9 @@ project author; the only destination is the server address you save.
 
 ## Privacy and safety
 
-Failed sign-ins count toward the same ban as the login page: five failures from
-one address within ten minutes block it for fifteen minutes. If you change your
-web password, update it in the extension before trying again.
+Failed sign-ins use the same ban as the login page: five failures from one
+address within ten minutes block it for fifteen minutes. If you change your web
+password, update it in the extension before trying again.
 
 The server never sends a `WWW-Authenticate` header. Opening an API URL in a
 browser tab therefore shows a plain refusal instead of the browser's sign-in
@@ -241,6 +242,6 @@ Firefox installation problems:
 | The add-on vanished after a restart | Expected for a temporary add-on. Signing is the only way to keep it. |
 | `about:debugging` reports a manifest error | A real problem. `npx web-ext lint --source-dir build/firefox-extension` names it. |
 
-`npx web-ext lint` is Mozilla's own validator and the quickest way to separate
-a real fault from a signing complaint. A clean run means the build is fine and
+`npx web-ext lint` is Mozilla's validator and a quick way to separate a real
+build fault from a signing problem. A clean run means the build is valid and
 the problem is elsewhere.

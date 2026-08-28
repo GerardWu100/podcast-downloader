@@ -27,6 +27,13 @@ serverUrlInput.value = settings.serverUrl;
 usernameInput.value = settings.username;
 passwordInput.value = settings.password;
 
+// Clicking the toolbar icon before anything is saved opens this page, so say
+// what to do rather than leaving a blank form and no explanation.
+if (!settings.serverUrl || !settings.username || !settings.password) {
+  show("Enter your server address and sign-in, then choose Save.", true);
+  serverUrlInput.focus();
+}
+
 async function save() {
   let pattern;
   try {

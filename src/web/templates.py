@@ -7,6 +7,13 @@ from collections.abc import Callable
 
 from fastapi.responses import HTMLResponse
 
+# Where this project lives. The help page sends people here for the browser
+# extension, which is not served by this application: the extension has to be
+# downloaded onto the machine you browse with, which is often not the machine
+# running the server.
+PROJECT_REPOSITORY_URL = "https://github.com/GerardWu100/podcast-downloader"
+EXTENSION_RELEASES_URL = f"{PROJECT_REPOSITORY_URL}/releases/latest"
+
 # Every page shares this inline SVG favicon. Keeping it as a data URI avoids a
 # static-file route and prevents browsers from requesting a missing
 # `/favicon.ico`. The SVG stays readable so its artwork can be edited here.
@@ -419,6 +426,34 @@ def render_help_page(
         <li>Activity is the short summary. The detailed log is for working out why something failed.</li>
       </ul>
 
+      <h2>Browser extension</h2>
+      <p>Adds the page you are watching to this queue without opening the site. It uses the same username and password you signed in with, and nothing needs changing on the server. Install it on the computer you browse with, which may not be the one running this server.</p>
+
+      <h3>Install in Firefox</h3>
+      <ol>
+        <li>Download <code>podcast-downloader-firefox-&lt;version&gt;.xpi</code> from the <a class="text-link" href="{EXTENSION_RELEASES_URL}">latest release</a>.</li>
+        <li>Drag the file onto a Firefox window and choose Add.</li>
+      </ol>
+      <p>Do not unzip it. Firefox 140 or newer.</p>
+
+      <h3>Install in Chrome, Edge, or Brave</h3>
+      <ol>
+        <li>Download and unzip <code>podcast-downloader-chrome-&lt;version&gt;.zip</code> from the same release.</li>
+        <li>Open <code>chrome://extensions</code> and turn on Developer mode.</li>
+        <li>Choose Load unpacked and select the unzipped folder.</li>
+      </ol>
+
+      <h3>Set it up</h3>
+      <p>Click the toolbar icon. Before anything is saved it opens the settings page, where you enter this server's address and the same username and password you use here. Choose Save, allow the permission the browser asks for, then use Test connection. Connected means it is ready.</p>
+
+      <h3>Use it</h3>
+      <ul>
+        <li>Click the toolbar icon, or press <code>Alt+Shift+D</code>, to add the page you are on. This works on any site.</li>
+        <li>Right-click a YouTube or Rumble page, or a link to one, and choose the podcast item.</li>
+        <li>The icon shows <code>OK</code> for something added, <code>=</code> for something already queued or downloaded, and <code>!</code> for a failure, with a notification saying why.</li>
+      </ul>
+      <p>The extension sends the URL and nothing else, so an item added this way follows the same rules as one pasted into the box above.</p>
+
       <h2>Commands for agents</h2>
       <p>Run these from the project directory. Everything the browser interface does is also a command, so an agent needs no browser session.</p>
       <h3>Queue a URL and exit</h3>
@@ -455,6 +490,9 @@ uv run python main.py -f custom_urls.txt -o ./custom_downloads</code></pre>
         See the official
         <a class="text-link" href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp">yt-dlp cookie instructions</a>.
       </p>
+
+      <h2>Source</h2>
+      <p>Code, releases, and the full documentation are at <a class="text-link" href="{PROJECT_REPOSITORY_URL}">{PROJECT_REPOSITORY_URL}</a>.</p>
     </article>
   </main>
   <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}

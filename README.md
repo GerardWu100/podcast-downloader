@@ -1,19 +1,19 @@
 # Podcast Downloader
 
 Podcast Downloader turns online videos into local MP3 files for
-[Audiobookshelf](https://www.audiobookshelf.org/). It can watch YouTube
+[Audiobookshelf](https://www.audiobookshelf.org/). It can monitor YouTube
 channels and playlists, download individual URLs, remove SponsorBlock
-segments when available, and run from the command line or a browser.
+segments when available, and run from the command line or a web browser.
 
 ## Features
 
-- Watch channels and playlists, or queue individual URLs.
+- Monitor channels and playlists, or add individual URLs.
 - Skip YouTube Shorts and wait for SponsorBlock data before downloading new
   videos.
 - Convert audio to MP3, organize it by source, and remove old channel files.
 - Keep the queue, download history, and one-use age-check exceptions in
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Manage sources, activity, logs, cookies, and error notifications in the
+- Manage sources, activity, logs, cookies, and error notifications from the
   password-protected web interface.
 - Install the web interface on a phone, or use the Chrome and Firefox
   extension to queue the page you are viewing.
@@ -31,12 +31,12 @@ map, or [docs/intro.md](docs/intro.md) for a shorter overview.
 Create `.env` from `.env.example`, then set the values you need:
 
 - `UI_USERNAME` and `UI_PASSWORD` protect the web interface. Add
-  `UI_USERNAME_2`/`UI_PASSWORD_2` or `UI_USERNAME_3`/`UI_PASSWORD_3` for
-  additional accounts.
+  `UI_USERNAME_2`/`UI_PASSWORD_2` or `UI_USERNAME_3`/`UI_PASSWORD_3` for more
+  accounts.
 - `PODCAST_DATA_DIR` moves state files, `.env`, and cookies. Docker mounts
   this directory as its data folder.
-- `PODCAST_DOWNLOAD_DIR` or `PODCAST_INTERMEDIATE_DIR` overrides the matching
-  path in `config.ini`.
+- `PODCAST_DOWNLOAD_DIR` and `PODCAST_INTERMEDIATE_DIR` override the matching
+  paths in `config.ini`.
 
 ## Setup
 
@@ -47,11 +47,11 @@ cp .env.example .env
 # Edit .env and set UI_USERNAME and UI_PASSWORD.
 ```
 
-`yt-dlp` is installed separately because media sites change often. Nightly
-releases usually get fixes first. `curl-cffi` gives Rumble requests the browser
-network fingerprint needed for its Cloudflare checks.
+`yt-dlp` is installed separately because media sites change often and fixes
+usually appear in nightly releases first. `curl-cffi` helps Rumble requests
+pass its Cloudflare checks.
 
-Add one source URL per line to `urls.txt`. Then review `config.ini` for paths,
+Add one source URL per line to `urls.txt`, then review `config.ini` for paths,
 delays, and retention.
 
 ## Usage
@@ -68,19 +68,19 @@ uv run python -m pytest -q
 uv run python scripts/sponsorblock_smoke_check.py
 ```
 
-The first command runs one queue pass. The second overrides the queue file,
+The first command runs one queue pass. The second uses a different queue file,
 output folder, and number of recent channel or playlist entries. The remaining
 commands add URLs, download one URL or a full playlist, start the web
-interface, run offline tests, or run the live SponsorBlock check.
+interface, run offline tests, or check the live SponsorBlock service.
 
-To use the web interface, start Uvicorn and open `http://127.0.0.1:8000/`.
-Sign in to manage the queue. Use **Settings** for cookies and notifications,
-and open `/help` for cookie-export instructions.
+To open the web interface, start Uvicorn and visit
+`http://127.0.0.1:8000/`. Sign in to manage the queue. Use **Settings** for
+cookies and notifications, and open `/help` for cookie-export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
-**Add to Home Screen**. The app opens without an address bar, and its 30-day
-session keeps you signed in. Installation needs HTTPS, so use a deployed
-instance instead of `http://127.0.0.1`.
+**Add to Home Screen**. The app hides the address bar and keeps you signed in
+for 30 days. Installation needs HTTPS, so use a deployed instance rather than
+`http://127.0.0.1`.
 
 If YouTube blocks downloads, export fresh browser cookies:
 
@@ -97,7 +97,7 @@ details, and [docs/operations.md](docs/operations.md) for cookies and Docker.
 Set the main options in `config.ini`:
 
 - `urls_file`, `output_dir`, and `intermediate_dir`: queue, library, and
-  scratch directories.
+  temporary directories.
 - `channel_count`: recent channel or playlist entries to check.
 - `min_channel_video_age_hours`: minimum age for a YouTube video.
 - `delay_seconds`: pause between downloads.
@@ -115,12 +115,12 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` contains the Chrome and Firefox extension. It adds the page you
-are viewing, or a link on it, to the queue without switching tabs or pasting a
+The `extension/` folder contains the Chrome and Firefox extension. It adds the
+current page, or a link on it, to the queue without changing tabs or copying a
 URL. It uses the same username and password as the web interface and needs no
 server configuration.
 
-Download the archive for your browser from the
+Download your browser's archive from the
 [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest),
 or use a clone. The files must be on the computer where you browse, which may
 be different from the server.
@@ -142,13 +142,9 @@ Edge, Brave, and other Chromium browsers work the same way.
 2. Drag it onto a Firefox window.
 3. Select **Add**.
 
-Do not unzip the `.xpi`. Firefox installs it as one signed file and keeps it
-installed through restarts. Firefox 140 or newer is required.
-
-There is no Firefox `.zip` on purpose. Firefox permanently installs only a
-Mozilla-signed add-on and reports an unsigned one as *"This add-on could not be
-installed because it appears to be corrupt"*. The `.xpi` in a release is the
-signed build.
+Do not unzip the `.xpi`. It is signed and stays installed through restarts.
+Firefox 140 or newer is required. Firefox has no release `.zip` because it
+rejects unsigned add-ons through the normal install path.
 
 For development, build the extension and load it temporarily:
 
@@ -173,9 +169,10 @@ key setup.
 
 ### Set it up once
 
-Open the extension's settings—right-click its icon and choose **Options** in
-Chrome, or choose **Preferences** on its card in `about:addons` in Firefox—then
-enter:
+Click the toolbar icon. Until the extension is configured, it opens the
+settings page. You can also open it later by right-clicking the icon and
+choosing **Options** in Chrome, or **Preferences** on its card in `about:addons`
+in Firefox. Enter:
 
 | Field | Value |
 |---|---|

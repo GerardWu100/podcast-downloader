@@ -92,13 +92,15 @@ async function submitUrl(url, tabId) {
   try {
     settings = await readSettings();
     endpoint = buildEndpoint(settings.serverUrl, "/api/add-url");
-  } catch (error) {
-    await report(false, "Not set up yet", error.message, tabId);
+  } catch {
+    // No server address saved, or one that cannot be parsed. Either way the
+    // fix is the same page.
+    await openSetup(tabId);
     return;
   }
 
   if (!settings.username || !settings.password) {
-    await report(false, "Not signed in", "Open the extension options and enter your username and password.", tabId);
+    await openSetup(tabId);
     return;
   }
 
@@ -152,6 +154,19 @@ async function submitUrl(url, tabId) {
   // the episode is already handled, so nothing is wrong and nothing is lost.
   await setBadge(body.outcome === "added" ? "OK" : "=", BADGE_COLORS.success, tabId);
   scheduleBadgeClear(tabId);
+}
+
+/**
+ * Open the settings page, for a first click on an extension nobody has set up.
+ *
+ * Until the server address, username, and password are stored there is nothing
+ * to submit, and a notification asking the user to go and find the settings is
+ * easy to miss and easy to ignore. Opening the page is the whole instruction.
+ */
+async function openSetup(tabId) {
+  await setBadge("!", BADGE_COLORS.failure, tabId);
+  scheduleBadgeClear(tabId);
+  chrome.runtime.openOptionsPage();
 }
 
 /** Show a failure on the badge and in a desktop notification. */
