@@ -1,6 +1,5 @@
 /**
- * Settings page: server address, the same sign-in you use on the web page, and
- * the immediate-download choice.
+ * Settings page: server address and the same sign-in you use on the web page.
  *
  * Saving also asks Chrome for permission to talk to that one server. The
  * manifest requests no host permissions up front, so the extension can only
@@ -18,7 +17,6 @@ import {
 const serverUrlInput = document.getElementById("server-url");
 const usernameInput = document.getElementById("username");
 const passwordInput = document.getElementById("password");
-const downloadImmediatelyInput = document.getElementById("download-immediately");
 const statusLine = document.getElementById("status");
 
 document.getElementById("save").addEventListener("click", save);
@@ -28,7 +26,6 @@ const settings = await readSettings();
 serverUrlInput.value = settings.serverUrl;
 usernameInput.value = settings.username;
 passwordInput.value = settings.password;
-downloadImmediatelyInput.checked = settings.downloadImmediately;
 
 async function save() {
   let pattern;
@@ -52,7 +49,6 @@ async function save() {
     serverUrl: serverUrlInput.value.trim(),
     username: usernameInput.value.trim(),
     password: passwordInput.value,
-    downloadImmediately: downloadImmediatelyInput.checked,
   });
 
   // Changing servers must not leave access to every previously configured

@@ -9,35 +9,28 @@ are required.
 
 ## 1. Install it
 
-The quickest option is the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest),
-which includes a ready-made build for each browser. The files must be on the
-machine where you browse. A copy on the server does not help if you browse on
-another computer.
+The [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest)
+includes a ready-made build for each browser. Install it on the computer where
+you browse; a copy on the server does not help if you browse elsewhere.
 
-The extension works in Chrome and Firefox. Most files are shared; the manifest
-differs because Firefox does not support extension service workers.
+The extension works in Chrome and Firefox. Most files are shared, but the
+manifest differs because Firefox does not support extension service workers.
 
 ### Chrome, Edge, Brave, and other Chromium browsers
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
-3. Select **Load unpacked** and choose the repository's `extension/` folder, or
+3. Select **Load unpacked** and choose the repository's `extension/` folder or
    the unzipped Chrome release folder.
 
 ### Firefox
 
-**For normal use:** download `podcast-downloader-firefox-<version>.xpi` from
-the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest)
+For normal use, download `podcast-downloader-firefox-<version>.xpi` from the
+[latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest)
 and open it with Firefox. It is signed, installs in one click, and stays
 installed. Firefox 140 or newer is required.
 
-**For development:** use the unsigned build below. Opening an unsigned Firefox
-archive through the normal install path fails with *"This add-on could not be
-installed because it appears to be corrupt"*. The file is fine; Firefox uses
-that message for add-ons Mozilla has not signed.
-
-Build the Firefox copy first. A release publishes no Firefox archive, so this
-step needs a clone:
+For development, use the unsigned build:
 
 ```bash
 uv run python scripts/build_extensions.py
@@ -47,17 +40,19 @@ uv run python scripts/build_extensions.py
 2. Select **Load Temporary Add-on**.
 3. Choose `build/firefox-extension/manifest.json`.
 
-Firefox 140 or newer is required. It provides the built-in consent prompt that
-discloses the selected URL and web-account credentials sent to your server.
+Opening an unsigned archive through Firefox's normal install path fails with
+*"This add-on could not be installed because it appears to be corrupt"*. The
+file is fine; Firefox uses that message for add-ons Mozilla has not signed.
+Firefox 140 or newer also provides the consent prompt that discloses the
+selected URL and web-account credentials sent to your server.
 
-A temporary add-on disappears when Firefox restarts. To create a copy that stays
-installed, sign it as described next.
+A temporary add-on disappears when Firefox restarts. To create one that stays
+installed, sign it as an unlisted add-on.
 
 #### Create a signed, unlisted add-on
 
-Loading through `about:debugging` is for development. Mozilla signing creates an
-ordinary `.xpi` that stays installed. An **unlisted** add-on is signed but not
-published, so nobody can search for or install it.
+An **unlisted** add-on is signed but not published, so nobody can search for or
+install it.
 
 Once, get an API key from
 [addons.mozilla.org](https://addons.mozilla.org/developers/addon/api/key/) and
@@ -72,8 +67,8 @@ chmod 600 .amo-credentials
 ```
 
 The file is ignored by git and the Docker build. The script refuses to use it
-if anyone else on the machine can read it. Exporting the two variables works
-the same way.
+if anyone else on the machine can read it. You can export the two variables
+instead.
 
 Whenever you want a signed build, run:
 
@@ -88,8 +83,8 @@ You can also sign it manually: zip the contents of
 `build/firefox-extension/` with `manifest.json` at the archive root, upload the
 archive to [addons.mozilla.org](https://addons.mozilla.org/developers/) as an
 **unlisted** add-on, and install the `.xpi` Mozilla returns. The build script
-does not create a Firefox archive because an unsigned archive cannot be
-installed through Firefox's normal install path.
+does not create a Firefox archive because Firefox's normal install path rejects
+unsigned archives.
 
 This extension is intended for a server you control. Do not publish it as a
 listed add-on or in the Chrome Web Store.
@@ -104,11 +99,17 @@ choose **Preferences**. Enter:
 |---|---|
 | Server address | The address you use for the web interface, such as `https://podcast.example.com` |
 | Username and password | The same credentials you use on the web page |
-| Download immediately | Start direct-video downloads without waiting for SponsorBlock data |
 
-Select **Save**, allow the requested permission, then select **Test connection**.
-The test calls `GET /api/ping`. **Connected** means setup is complete. If you
-change the address later, saving removes access to the old server.
+There is nothing else to set. The extension posts only the URL to
+`/api/add-url`, so the server applies the same queue rules as the web page: a
+direct video starts right away, a channel waits for the next scheduled pass,
+and a YouTube video newer than `min_channel_video_age_hours` waits for
+SponsorBlock data.
+
+Select **Save**, allow the requested permission, then select **Test
+connection**. The test calls `GET /api/ping`. **Connected** means setup is
+complete. If you change the address later, saving removes access to the old
+server.
 
 If you enter a hostname without `http://` or `https://`, the extension assumes
 `https`. For a local server without a certificate, enter `http://` explicitly.
@@ -118,7 +119,7 @@ With plain HTTP, anyone between you and the server can read your password.
 
 | Action | URL added | Available on |
 |---|---|---|
-| Click the toolbar icon | The current page | Any page |
+| Select the toolbar icon | The current page | Any page |
 | Press `Alt+Shift+D` | The current page | Any page |
 | Right-click the page and choose the podcast item | The current page | YouTube and Rumble pages |
 | Right-click a link and choose the podcast item | The link | YouTube and Rumble links, wherever you find them |
@@ -170,13 +171,13 @@ permission gives it access to that tab for the action, so it cannot watch your
 browsing. It never accesses cookies.
 
 Your password is stored in local extension storage, not synced storage, so it
-is not copied to other machines signed in to the same browser account. It still
+is not copied to other machines signed in to the same browser account. It
 remains in your browser profile, where anyone with access to that profile can
 read it. To revoke it, change your web password.
 
 Firefox's installation prompt declares authentication information, browsing
-activity, and website content because the extension sends the saved account and
-the page or link you explicitly choose. It sends nothing to Mozilla or the
+activity, and website content because the extension sends the saved account
+and the page or link you explicitly choose. It sends nothing to Mozilla or the
 project author; the only destination is the server address you save.
 
 ## Privacy and safety

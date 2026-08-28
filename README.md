@@ -1,25 +1,25 @@
 # Podcast Downloader
 
 Podcast Downloader turns online videos into local MP3 files for
-[Audiobookshelf](https://www.audiobookshelf.org/). It can monitor YouTube
+[Audiobookshelf](https://www.audiobookshelf.org/). It can watch YouTube
 channels and playlists, download individual URLs, remove SponsorBlock
 segments when available, and run from the command line or a browser.
 
 ## Features
 
-- Monitor channels and playlists, or queue individual URLs.
+- Watch channels and playlists, or queue individual URLs.
 - Skip YouTube Shorts and wait for SponsorBlock data before downloading new
   videos.
 - Convert audio to MP3, organize it by source, and remove old channel files.
-- Store the queue, download history, and one-use age-check exceptions in
+- Keep the queue, download history, and one-use age-check exceptions in
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
-- Manage sources, activity, logs, cookies, and error notifications through the
+- Manage sources, activity, logs, cookies, and error notifications in the
   password-protected web interface.
 - Install the web interface on a phone, or use the Chrome and Firefox
   extension to queue the page you are viewing.
 
-For the pipeline and module map, see [docs/architecture.md](docs/architecture.md).
-For a shorter overview, see [docs/intro.md](docs/intro.md).
+See [docs/architecture.md](docs/architecture.md) for the pipeline and module
+map, or [docs/intro.md](docs/intro.md) for a shorter overview.
 
 ## Requirements
 
@@ -33,8 +33,8 @@ Create `.env` from `.env.example`, then set the values you need:
 - `UI_USERNAME` and `UI_PASSWORD` protect the web interface. Add
   `UI_USERNAME_2`/`UI_PASSWORD_2` or `UI_USERNAME_3`/`UI_PASSWORD_3` for
   additional accounts.
-- `PODCAST_DATA_DIR` moves state files, `.env`, and cookies. Docker mounts this
-  directory as its data folder.
+- `PODCAST_DATA_DIR` moves state files, `.env`, and cookies. Docker mounts
+  this directory as its data folder.
 - `PODCAST_DOWNLOAD_DIR` or `PODCAST_INTERMEDIATE_DIR` overrides the matching
   path in `config.ini`.
 
@@ -47,9 +47,9 @@ cp .env.example .env
 # Edit .env and set UI_USERNAME and UI_PASSWORD.
 ```
 
-`yt-dlp` is installed separately because media sites change frequently. Nightly
-releases usually receive fixes first. `curl-cffi` gives Rumble requests the
-browser network fingerprint needed for its Cloudflare checks.
+`yt-dlp` is installed separately because media sites change often. Nightly
+releases usually get fixes first. `curl-cffi` gives Rumble requests the browser
+network fingerprint needed for its Cloudflare checks.
 
 Add one source URL per line to `urls.txt`. Then review `config.ini` for paths,
 delays, and retention.
@@ -69,13 +69,13 @@ uv run python scripts/sponsorblock_smoke_check.py
 ```
 
 The first command runs one queue pass. The second overrides the queue file,
-output folder, and number of recent channel or playlist entries. The other
+output folder, and number of recent channel or playlist entries. The remaining
 commands add URLs, download one URL or a full playlist, start the web
 interface, run offline tests, or run the live SponsorBlock check.
 
 To use the web interface, start Uvicorn and open `http://127.0.0.1:8000/`.
 Sign in to manage the queue. Use **Settings** for cookies and notifications,
-and open `/help` for cookie export instructions.
+and open `/help` for cookie-export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
 **Add to Home Screen**. The app opens without an address bar, and its 30-day
@@ -115,23 +115,23 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` contains a Chrome and Firefox extension. It adds the page you are
-viewing—or a link on it—to the queue without switching tabs or pasting a URL.
-It uses the same username and password as the web interface. Nothing needs to
-be configured on the server.
+`extension/` contains the Chrome and Firefox extension. It adds the page you
+are viewing, or a link on it, to the queue without switching tabs or pasting a
+URL. It uses the same username and password as the web interface and needs no
+server configuration.
 
 Download the archive for your browser from the
 [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest),
-or work from a clone. The files must be on the machine where you browse; that
-may be different from the machine running the server.
+or use a clone. The files must be on the computer where you browse, which may
+be different from the server.
 
 ### Install it in Chrome
 
 1. Unzip `podcast-downloader-chrome-<version>.zip`, or use this repository's
-   `extension/` folder directly.
+   `extension/` folder.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
-4. Click **Load unpacked** and choose that folder.
+4. Select **Load unpacked** and choose the folder.
 
 Edge, Brave, and other Chromium browsers work the same way.
 
@@ -140,36 +140,36 @@ Edge, Brave, and other Chromium browsers work the same way.
 1. Download **`podcast-downloader-firefox-<version>.xpi`** from the
    [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest).
 2. Drag it onto a Firefox window.
-3. Click **Add**.
+3. Select **Add**.
 
-Do not unzip it. Firefox installs the file as a whole and keeps it installed
-through restarts. Firefox 140 or newer is required.
+Do not unzip the `.xpi`. Firefox installs it as one signed file and keeps it
+installed through restarts. Firefox 140 or newer is required.
 
 There is no Firefox `.zip` on purpose. Firefox permanently installs only a
 Mozilla-signed add-on and reports an unsigned one as *"This add-on could not be
-installed because it appears to be corrupt"*. The `.xpi` is the signed build
-published in a release.
+installed because it appears to be corrupt"*. The `.xpi` in a release is the
+signed build.
 
-To work on the extension from a clone, build it and load it temporarily:
+For development, build the extension and load it temporarily:
 
 ```bash
 uv run python scripts/build_extensions.py
 ```
 
 1. Open `about:debugging#/runtime/this-firefox`.
-2. Click **Load Temporary Add-on**.
+2. Select **Load Temporary Add-on**.
 3. Choose `build/firefox-extension/manifest.json`.
 
-Firefox removes a temporary add-on when it restarts. To produce a signed build
-that lasts, run:
+Firefox removes a temporary add-on when it restarts. To create a signed build
+that stays installed, run:
 
 ```bash
 uv run python scripts/build_extensions.py --sign
 ```
 
-That writes `build/podcast-downloader-firefox-<version>.xpi`. See
-[docs/browser-extension.md](docs/browser-extension.md) for the one-time API key
-setup.
+This writes `build/podcast-downloader-firefox-<version>.xpi`. See
+[docs/browser-extension.md](docs/browser-extension.md) for the one-time API
+key setup.
 
 ### Set it up once
 
@@ -181,42 +181,29 @@ enter:
 |---|---|
 | Server address | Where you open the web page, such as `https://podcast.example.com` |
 | Username and password | The same ones you use on the web page |
-| Download immediately | Start direct videos now instead of waiting for SponsorBlock data |
 
-Click **Save**, allow the requested permission, then click **Test connection**.
-**Connected** means setup is complete.
+Select **Save**, allow the requested permission, then select **Test
+connection**. **Connected** means setup is complete.
+
+The extension sends only the URL, so the server applies the same rules as a URL
+added on the web page.
 
 ### Use it
 
 | Action | What gets added | Where it appears |
 |---|---|---|
-| Click the toolbar icon | The current page | Any page |
+| Select the toolbar icon | The current page | Any page |
 | Press `Alt+Shift+D` | The current page | Any page |
-| Right-click the page, choose the podcast item | The current page | YouTube and Rumble |
-| Right-click a link, choose the podcast item | The link | YouTube and Rumble links, anywhere you find them |
+| Right-click the page and choose the podcast item | The current page | YouTube and Rumble |
+| Right-click a link and choose the podcast item | The link | YouTube and Rumble links, anywhere you find them |
 
 The badge shows `OK` for a new item, `=` for one already queued or downloaded,
 and `!` for a problem. A notification explains errors. To show the right-click
 items on another site, add its match pattern to `MENU_SITE_PATTERNS` in
 `extension/background.js`.
 
-### The same API, from a script
-
-The extension signs in with an `Authorization` header instead of the browser
-session. The session cookie is `HttpOnly` and `SameSite=lax`, so extension code
-cannot use it. Other clients can call the same two routes:
-
-```bash
-curl -u "$USERNAME:$PASSWORD" https://your-server/api/ping
-curl -X POST https://your-server/api/add-url \
-  -u "$USERNAME:$PASSWORD" -H "Content-Type: application/json" \
-  -d '{"url": "https://www.youtube.com/watch?v=...", "skip_age_check": false}'
-```
-
-Wrong passwords count toward the same ban as the login page: five failures in
-ten minutes block that address for fifteen minutes. See
-[docs/browser-extension.md](docs/browser-extension.md) for troubleshooting and
-security notes.
+For troubleshooting, security notes, and the equivalent API calls, see
+[docs/browser-extension.md](docs/browser-extension.md).
 
 ## Error notifications
 
@@ -256,5 +243,3 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 - `tests/`: automated tests.
 - `scripts/`: manual checks outside the test suite and the extension packaging
   script.
-- `docs/`: architecture, operations, security, configuration, and extension
-  documentation.

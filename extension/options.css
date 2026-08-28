@@ -22,14 +22,6 @@ label {
   font-weight: 600;
 }
 
-label.checkbox {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  font-weight: 400;
-  margin-top: 1.4em;
-}
-
 input[type="text"],
 input[type="password"] {
   width: 100%;

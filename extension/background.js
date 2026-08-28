@@ -111,10 +111,10 @@ async function submitUrl(url, tabId) {
         "Content-Type": "application/json",
         Authorization: basicAuthHeader(settings.username, settings.password),
       },
-      body: JSON.stringify({
-        url,
-        skip_age_check: settings.downloadImmediately,
-      }),
+      // Only the URL. The server decides what happens next, using the same
+      // queue rules the web page follows: a direct video starts right away, a
+      // channel waits for the next scheduled pass.
+      body: JSON.stringify({ url }),
     });
     body = await response.json().catch(() => ({}));
   } catch (error) {

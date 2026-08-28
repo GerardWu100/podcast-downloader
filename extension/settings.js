@@ -10,7 +10,6 @@ export const DEFAULT_SETTINGS = {
   serverUrl: "",
   username: "",
   password: "",
-  downloadImmediately: false,
 };
 
 /** Read the saved settings, filling in defaults for anything never set. */
