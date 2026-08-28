@@ -15,12 +15,19 @@ a second copy of the JavaScript.
 Usage
 -----
     uv run python scripts/build_extensions.py            # both folders
-    uv run python scripts/build_extensions.py --zip      # folders and archives
+    uv run python scripts/build_extensions.py --zip      # folders and Chrome archive
     uv run python scripts/build_extensions.py --browser firefox
     uv run python scripts/build_extensions.py --sign     # signed Firefox .xpi
 
 Archives are named with the manifest version, so a downloaded file says which
 build it is.
+
+Only Chrome gets a ``.zip``. Chrome installs one through Load unpacked, so the
+archive is what a Chrome user downloads. Firefox has no equivalent: it installs
+the signed ``.xpi`` that ``--sign`` produces, and an unsigned Firefox archive
+would only be a file people download by mistake and cannot install. Developers
+who want the unsigned Firefox build load ``build/firefox-extension`` directly
+through ``about:debugging``, no archive involved.
 
 ``--sign`` exists because Firefox will not permanently install an add-on that
 Mozilla has not signed; it rejects one with the misleading message "this add-on
@@ -88,16 +95,20 @@ class BrowserTarget(NamedTuple):
         File in ``extension/`` that becomes the build's ``manifest.json``.
     output_dir:
         Folder the build is written to.
+    ships_zip:
+        True when ``--zip`` should write an archive for this browser. Only
+        Chrome installs from one; Firefox ships as the signed ``.xpi``.
     """
 
     name: str
     manifest_source: str
     output_dir: Path
+    ships_zip: bool
 
 
 TARGETS = (
-    BrowserTarget("chrome", CHROME_MANIFEST, BUILD_ROOT / "chrome-extension"),
-    BrowserTarget("firefox", FIREFOX_MANIFEST, BUILD_ROOT / "firefox-extension"),
+    BrowserTarget("chrome", CHROME_MANIFEST, BUILD_ROOT / "chrome-extension", True),
+    BrowserTarget("firefox", FIREFOX_MANIFEST, BUILD_ROOT / "firefox-extension", False),
 )
 
 
@@ -162,7 +173,9 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
     target:
         Which browser to package.
     make_zip:
-        True to also write ``build/podcast-downloader-<browser>-<version>.zip``.
+        True to also write ``build/podcast-downloader-<browser>-<version>.zip``,
+        for the browsers that ship one. Firefox does not, so this is ignored
+        there and any stale Firefox archive is deleted instead.
 
     Returns
     -------
@@ -194,11 +207,18 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
 
     print(f"{target.name}: {len(shared_files) + 1} files -> {target.output_dir}")
 
-    if make_zip:
+    stale_archives = BUILD_ROOT.glob(f"podcast-downloader-{target.name}-*.zip")
+
+    if not target.ships_zip:
+        # Firefox never ships an archive. Clear any left by an older build so a
+        # release upload cannot attach a file nobody can install.
+        for old_archive in stale_archives:
+            old_archive.unlink()
+    elif make_zip:
         archive_file = BUILD_ROOT / f"podcast-downloader-{target.name}-{version}.zip"
-        # A release upload often selects build/*.zip. Remove older archives for
-        # this browser so that glob cannot accidentally publish a stale version.
-        for old_archive in BUILD_ROOT.glob(f"podcast-downloader-{target.name}-*.zip"):
+        # A release upload often selects build/*.zip. Remove this browser's
+        # older archives so that glob cannot publish a stale version.
+        for old_archive in stale_archives:
             old_archive.unlink()
         with zipfile.ZipFile(archive_file, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(target.output_dir.rglob("*")):
@@ -357,11 +377,17 @@ def rename_signed_addon() -> Path | None:
     # Newest wins: an earlier signing run may have left a file behind.
     newest_file = max(signed_files, key=lambda path: path.stat().st_mtime)
     intended_file = BUILD_ROOT / f"podcast-downloader-firefox-{manifest_version()}.xpi"
-    if newest_file == intended_file:
-        return intended_file
+    if newest_file != intended_file:
+        intended_file.unlink(missing_ok=True)
+        newest_file.rename(intended_file)
 
-    intended_file.unlink(missing_ok=True)
-    return newest_file.rename(intended_file)
+    # Leave exactly one .xpi behind. A release upload that globs build/*.xpi
+    # would otherwise be free to attach last version's signed add-on.
+    for stale_file in BUILD_ROOT.glob("*.xpi"):
+        if stale_file != intended_file:
+            stale_file.unlink()
+
+    return intended_file
 
 
 def main() -> None:
@@ -376,7 +402,7 @@ def main() -> None:
         "--zip",
         action="store_true",
         dest="make_zip",
-        help="also write the archives, for a release or for add-on signing",
+        help="also write the Chrome archive, which is what a release attaches",
     )
     parser.add_argument(
         "--sign",

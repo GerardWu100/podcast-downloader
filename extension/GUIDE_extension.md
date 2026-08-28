@@ -26,49 +26,52 @@ validation, normalization, duplicate handling, and immediate-download rules.
 
 - `manifest.json`: Manifest V3 declaration and narrow permissions. `activeTab`
   reveals a tab URL only when the user invokes the extension. The options page
-  requests access only to the server address entered by the user.
+  requests access only to the server address the user enters.
 - `background.js`: background worker for context menus, shortcuts, API calls,
   badges, and error notifications. Chrome runs it as a service worker; Firefox
   runs it as a non-persistent background page. It re-reads settings for every
   submission because the browser may stop it at any time.
   `MENU_SITE_PATTERNS` controls where the right-click items appear.
 - `settings.js`: reads and writes `chrome.storage.local` and converts the
-  server address into a URL and permission pattern. The worker and options
-  page use the same conversion.
+  server address into a URL and permission pattern. The worker and options page
+  use the same conversion.
 - `options.html`, `options.css`, and `options.js`: settings page. Saving asks
   the browser for server permission after the user clicks **Save**.
 - `manifest.firefox.json`: Firefox's manifest. Firefox has no extension service
   worker, so it runs `background.js` as an event page. It also needs a stable
-  add-on id, reads `options_ui` rather than `options_page`, and declares the
+  add-on ID, reads `options_ui` rather than `options_page`, and declares the
   authentication and selected-URL data sent to the configured server. Firefox
-  140 is the minimum because it supplies the matching built-in consent prompt.
-  Every other file is shared, so Firefox-specific settings stay here instead
-  of in a second folder.
+  140 is the minimum because it supplies the matching consent prompt. All
+  other files are shared.
 - `icons/`: generated from `src/web/static/icon-512.png`.
 
-`--sign` hands the Firefox build to Mozilla's `web-ext sign` on the unlisted
-channel and writes a signed `.xpi`. That exists because Firefox refuses any
-unsigned add-on with the message "this add-on appears to be corrupt", which
-reads like a broken download and is the first thing anyone hits. Credentials
-come from the environment or from a `chmod 600` `.amo-credentials` file, and
-are passed to the subprocess through its environment rather than its arguments,
-since any process can read another's arguments from `/proc`.
+The `--sign` option sends the Firefox build to Mozilla's `web-ext sign` on the
+unlisted channel and writes a signed `.xpi`. Firefox refuses unsigned add-ons
+with the message "this add-on appears to be corrupt", so releases publish the
+signed file instead. Credentials come from the environment or a `chmod 600`
+`.amo-credentials` file. The script passes them through the subprocess
+environment rather than its arguments, because other processes can read
+command arguments from `/proc`.
 
 `scripts/build_extensions.py` assembles both builds into
-`build/chrome-extension/` and `build/firefox-extension/` and, with `--zip`, the
-archives attached to a release. The Firefox archive is also what
-addons.mozilla.org signs. Chrome loads `extension/` directly and needs no
-build step. `tests/test_build_extensions.py` checks that the two manifests agree
-on the version and permissions, and that each build contains every shared file
-and no stale files. The packaging script uses an explicit runtime-file
-allowlist, refuses symbolic links, and removes older archives for the browser
-being built so local secrets and stale versions cannot enter a release glob.
+`build/chrome-extension/` and `build/firefox-extension/`. With `--zip`, it also
+creates the Chrome archive attached to a release. Chrome loads `extension/`
+directly and needs no build step. Firefox installs the signed `.xpi`; an
+unsigned Firefox archive is rejected.
+
+`tests/test_build_extensions.py` checks that the manifests agree on version and
+permissions, that each build contains the shared files and no stale files, that
+Firefox produces no archive even with `--zip`, and that a build without `--zip`
+leaves Chrome's archive alone. The last rule matters because `--sign` rebuilds
+both folders first. The packaging script uses an explicit runtime-file
+allowlist, refuses symbolic links, and removes older archives and signed
+add-ons so secrets and stale versions cannot enter a release glob.
 
 ## Decisions
 
-- Use the same account as the web page, so the server needs no extra secret.
-  The trade-off is that the password sits in extension storage; revoking it
-  means changing the web password.
+- Use the same account as the web page. This avoids an extra server secret, but
+  the password remains in extension storage; changing the web password revokes
+  it.
 - Store settings in `chrome.storage.local`, not `sync`, so the password is not
   copied to every Chrome profile using the same Google account.
 - Treat a bare hostname as `https`. Users must type `http://` when they accept
@@ -78,17 +81,16 @@ being built so local secrets and stale versions cannot enter a release glob.
   origin.
 - Build the `Authorization` header from UTF-8 bytes before base64 encoding.
   `btoa` alone throws for an accented character in a password.
-- Treat `duplicate` and `downloaded` as successful outcomes because the item
-  is already handled.
-- Limit the right-click items to YouTube and Rumble so they do not appear in
-  every menu. The page item uses `documentUrlPatterns`; the link item uses
-  `targetUrlPatterns`, so a YouTube link found on another site still offers the
-  menu. The toolbar icon and shortcut stay unfiltered because they are explicit
-  actions, and the server rejects unusable URLs. To add a site, edit
-  `MENU_SITE_PATTERNS` and reload the extension.
+- Treat `duplicate` and `downloaded` as successful outcomes because the item is
+  already handled.
+- Limit right-click items to YouTube and Rumble. The page item uses
+  `documentUrlPatterns`; the link item uses `targetUrlPatterns`, so a YouTube
+  link on another site still offers the menu. The toolbar icon and shortcut
+  stay available everywhere, while the server rejects unusable URLs. To add a
+  site, edit `MENU_SITE_PATTERNS` and reload the extension.
 - Do not send a CSRF token. Cross-Site Request Forgery (CSRF) protection is
-  needed because browsers attach cookies automatically; a header filled from
-  the client's own settings is not automatic.
+  needed when browsers attach cookies automatically; a header filled from the
+  client's own settings is not automatic.
 - Accept that a badge can remain briefly if Chrome stops the worker before its
   clear timer runs. The next submission replaces it.
 

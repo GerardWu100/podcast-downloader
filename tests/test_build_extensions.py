@@ -132,13 +132,12 @@ def test_build_removes_files_that_no_longer_exist_in_the_source() -> None:
     assert not leftover.exists()
 
 
-@pytest.mark.parametrize("browser", sorted(TARGETS_BY_NAME))
-def test_the_archive_is_named_for_its_browser_and_version(browser: str) -> None:
+def test_the_archive_is_named_for_its_browser_and_version() -> None:
     """A downloaded file should say which build it is without being opened."""
-    target = TARGETS_BY_NAME[browser]
+    target = TARGETS_BY_NAME["chrome"]
     build_target(target, make_zip=True)
     archive_file = BUILD_ROOT / (
-        f"podcast-downloader-{browser}-{manifest_version()}.zip"
+        f"podcast-downloader-chrome-{manifest_version()}.zip"
     )
 
     assert archive_file.is_file()
@@ -150,6 +149,44 @@ def test_the_archive_is_named_for_its_browser_and_version(browser: str) -> None:
     assert CHROME_MANIFEST in names
     assert "background.js" in names
     assert "icons/icon-128.png" in names
+
+
+def test_firefox_ships_no_archive() -> None:
+    """An unsigned Firefox zip is a file people download and cannot install.
+
+    Firefox refuses any add-on Mozilla has not signed, reporting it as corrupt.
+    Publishing one next to the signed ``.xpi`` only invites the wrong download,
+    so ``--zip`` must not produce it even when asked.
+    """
+    target = TARGETS_BY_NAME["firefox"]
+    stale_archive = BUILD_ROOT / (
+        f"podcast-downloader-firefox-{manifest_version()}.zip"
+    )
+    stale_archive.write_bytes(b"left over from an older build")
+
+    build_target(target, make_zip=True)
+
+    assert not stale_archive.exists()
+    assert not list(BUILD_ROOT.glob("podcast-downloader-firefox-*.zip"))
+
+
+def test_building_without_an_archive_keeps_the_chrome_archive() -> None:
+    """``--sign`` rebuilds both folders, and must not delete the release zip.
+
+    Signing runs the ordinary build first with ``make_zip=False``. If that pass
+    cleared Chrome's archive, a ``--zip`` then ``--sign`` sequence would leave
+    nothing for Chrome users to download.
+    """
+    chrome_target = TARGETS_BY_NAME["chrome"]
+    build_target(chrome_target, make_zip=True)
+    archive_file = BUILD_ROOT / (
+        f"podcast-downloader-chrome-{manifest_version()}.zip"
+    )
+    assert archive_file.is_file()
+
+    build_target(chrome_target, make_zip=False)
+
+    assert archive_file.is_file()
 
 
 def test_build_refuses_a_version_mismatch(monkeypatch, tmp_path) -> None:
@@ -326,7 +363,7 @@ def test_signing_refuses_when_the_firefox_build_is_missing(
     monkeypatch.setenv(build_module.AMO_KEY_NAME, "k")
     monkeypatch.setenv(build_module.AMO_SECRET_NAME, "s")
     missing_target = build_module.BrowserTarget(
-        "firefox", build_module.FIREFOX_MANIFEST, tmp_path / "absent"
+        "firefox", build_module.FIREFOX_MANIFEST, tmp_path / "absent", False
     )
     monkeypatch.setattr(build_module, "TARGETS", (missing_target,))
 

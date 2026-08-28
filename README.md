@@ -7,19 +7,19 @@ segments when available, and run from the command line or a browser.
 
 ## Features
 
-- Monitor channels and playlists for new videos, or queue individual URLs.
+- Monitor channels and playlists, or queue individual URLs.
 - Skip YouTube Shorts and wait for SponsorBlock data before downloading new
   videos.
 - Convert audio to MP3, organize it by source, and remove old channel files.
-- Keep the queue, download history, and one-use age-check exceptions in
+- Store the queue, download history, and one-use age-check exceptions in
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
 - Manage sources, activity, logs, cookies, and error notifications through the
   password-protected web interface.
-- Install the web interface on a phone, or use the Chrome or Firefox extension
-  to queue the current page.
+- Install the web interface on a phone, or use the Chrome and Firefox
+  extension to queue the page you are viewing.
 
-See [docs/architecture.md](docs/architecture.md) for the pipeline and module
-map, or [docs/intro.md](docs/intro.md) for a shorter overview.
+For the pipeline and module map, see [docs/architecture.md](docs/architecture.md).
+For a shorter overview, see [docs/intro.md](docs/intro.md).
 
 ## Requirements
 
@@ -28,15 +28,15 @@ map, or [docs/intro.md](docs/intro.md) for a shorter overview.
 - `uv`
 - `yt-dlp`, installed separately during setup
 
-Create `.env` from `.env.example`, then set these values as needed:
+Create `.env` from `.env.example`, then set the values you need:
 
-- `UI_USERNAME` and `UI_PASSWORD` for the web interface. Add
+- `UI_USERNAME` and `UI_PASSWORD` protect the web interface. Add
   `UI_USERNAME_2`/`UI_PASSWORD_2` or `UI_USERNAME_3`/`UI_PASSWORD_3` for
-  more accounts.
-- `PODCAST_DATA_DIR` to move state files, `.env`, and cookies. Docker mounts
-  this directory as its data folder.
-- `PODCAST_DOWNLOAD_DIR` or `PODCAST_INTERMEDIATE_DIR` to override the
-  matching `config.ini` paths.
+  additional accounts.
+- `PODCAST_DATA_DIR` moves state files, `.env`, and cookies. Docker mounts this
+  directory as its data folder.
+- `PODCAST_DOWNLOAD_DIR` or `PODCAST_INTERMEDIATE_DIR` overrides the matching
+  path in `config.ini`.
 
 ## Setup
 
@@ -48,8 +48,8 @@ cp .env.example .env
 ```
 
 `yt-dlp` is installed separately because media sites change frequently. Nightly
-releases usually get fixes first. `curl-cffi` gives Rumble requests the browser
-network fingerprint needed for its Cloudflare checks.
+releases usually receive fixes first. `curl-cffi` gives Rumble requests the
+browser network fingerprint needed for its Cloudflare checks.
 
 Add one source URL per line to `urls.txt`. Then review `config.ini` for paths,
 delays, and retention.
@@ -69,13 +69,13 @@ uv run python scripts/sponsorblock_smoke_check.py
 ```
 
 The first command runs one queue pass. The second overrides the queue file,
-output folder, and number of recent channel or playlist entries. The remaining
+output folder, and number of recent channel or playlist entries. The other
 commands add URLs, download one URL or a full playlist, start the web
 interface, run offline tests, or run the live SponsorBlock check.
 
 To use the web interface, start Uvicorn and open `http://127.0.0.1:8000/`.
-Sign in to manage the queue from the home page. Use the settings page for
-cookies and notifications. Open `/help` for cookie export instructions.
+Sign in to manage the queue. Use **Settings** for cookies and notifications,
+and open `/help` for cookie export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
 **Add to Home Screen**. The app opens without an address bar, and its 30-day
@@ -90,7 +90,7 @@ yt-dlp --cookies-from-browser chrome --cookies cookies.txt
 
 Upload the file on the **Settings** page. See
 [docs/web-ui-security.md](docs/web-ui-security.md) for sign-in and session
-details and [docs/operations.md](docs/operations.md) for cookies and Docker.
+details, and [docs/operations.md](docs/operations.md) for cookies and Docker.
 
 ## Configuration
 
@@ -104,8 +104,8 @@ Set the main options in `config.ini`:
 - `retention_days`: how long to keep channel MP3 files.
 - `download_timeout_seconds`: limit for one `yt-dlp` attempt; the default is
   3600 seconds.
-- `cookies_file` and `always_use_cookies`: whether and when YouTube cookies
-  are used.
+- `cookies_file` and `always_use_cookies`: whether and when to use YouTube
+  cookies.
 - `youtube_player_client`: YouTube player API used by `yt-dlp`; blank lets
   `yt-dlp` choose.
 - `ytdlp_verbose`: add `-v` to every `yt-dlp` attempt.
@@ -115,15 +115,15 @@ See [docs/cli-and-config.md](docs/cli-and-config.md) for the full reference.
 
 ## Browser extension
 
-`extension/` contains a browser extension that adds the page you are viewing—or
-a link on it—to the queue without switching tabs or pasting a URL. It works in
-Chrome and Firefox and uses the same username and password as the web page.
-Nothing needs to be configured on the server.
+`extension/` contains a Chrome and Firefox extension. It adds the page you are
+viewing—or a link on it—to the queue without switching tabs or pasting a URL.
+It uses the same username and password as the web interface. Nothing needs to
+be configured on the server.
 
 Download the archive for your browser from the
 [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest),
-or work from a clone. The files must be on the machine you browse with, which
-may not be the machine running the server.
+or work from a clone. The files must be on the machine where you browse; that
+may be different from the machine running the server.
 
 ### Install it in Chrome
 
@@ -137,18 +137,20 @@ Edge, Brave, and other Chromium browsers work the same way.
 
 ### Install it in Firefox
 
-Download **`podcast-downloader-firefox-<version>.xpi`** from the
-[latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest) and open it with Firefox. One click, and it stays
-installed through restarts. Firefox 140 or newer.
+1. Download **`podcast-downloader-firefox-<version>.xpi`** from the
+   [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest).
+2. Drag it onto a Firefox window.
+3. Click **Add**.
 
-> The Firefox `.zip` is the unsigned build, for development. Opening it with
-> Firefox fails with *"This add-on could not be installed because it appears to
-> be corrupt."* Nothing is wrong with it; that is how Firefox reports an
-> unsigned add-on. The rest of this section is the unsigned route.
+Do not unzip it. Firefox installs the file as a whole and keeps it installed
+through restarts. Firefox 140 or newer is required.
 
-Firefox needs its own manifest, so use the Firefox archive rather than the
-`extension/` folder. Unzip `podcast-downloader-firefox-<version>.zip`, or build
-it from a clone:
+There is no Firefox `.zip` on purpose. Firefox permanently installs only a
+Mozilla-signed add-on and reports an unsigned one as *"This add-on could not be
+installed because it appears to be corrupt"*. The `.xpi` is the signed build
+published in a release.
+
+To work on the extension from a clone, build it and load it temporarily:
 
 ```bash
 uv run python scripts/build_extensions.py
@@ -156,27 +158,20 @@ uv run python scripts/build_extensions.py
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Click **Load Temporary Add-on**.
-3. Choose the `manifest.json` inside that folder.
+3. Choose `build/firefox-extension/manifest.json`.
 
-Firefox 140 or newer is required, and it removes a temporary add-on when it
-restarts. To keep it, build the archive and have Mozilla sign it:
-
-```bash
-uv run python scripts/build_extensions.py --zip
-```
-
-Or skip the manual upload:
+Firefox removes a temporary add-on when it restarts. To produce a signed build
+that lasts, run:
 
 ```bash
 uv run python scripts/build_extensions.py --sign
 ```
 
-That produces `build/podcast-downloader-firefox-<version>.xpi`, which installs in one
-click and stays installed. See
+That writes `build/podcast-downloader-firefox-<version>.xpi`. See
 [docs/browser-extension.md](docs/browser-extension.md) for the one-time API key
 setup.
 
-### Set it up, once
+### Set it up once
 
 Open the extension's settings—right-click its icon and choose **Options** in
 Chrome, or choose **Preferences** on its card in `about:addons` in Firefox—then
@@ -185,7 +180,7 @@ enter:
 | Field | Value |
 |---|---|
 | Server address | Where you open the web page, such as `https://podcast.example.com` |
-| Username and password | The same ones you type on the web page |
+| Username and password | The same ones you use on the web page |
 | Download immediately | Start direct videos now instead of waiting for SponsorBlock data |
 
 Click **Save**, allow the requested permission, then click **Test connection**.
@@ -201,9 +196,9 @@ Click **Save**, allow the requested permission, then click **Test connection**.
 | Right-click a link, choose the podcast item | The link | YouTube and Rumble links, anywhere you find them |
 
 The badge shows `OK` for a new item, `=` for one already queued or downloaded,
-and `!` for a problem. A notification explains errors. To offer the right-click
-items on another site, add its match pattern to
-`MENU_SITE_PATTERNS` in `extension/background.js`.
+and `!` for a problem. A notification explains errors. To show the right-click
+items on another site, add its match pattern to `MENU_SITE_PATTERNS` in
+`extension/background.js`.
 
 ### The same API, from a script
 
@@ -256,25 +251,10 @@ See [docs/operations.md](docs/operations.md) for the deployment flow.
 
 - `main.py` and `start.py`: command-line entry point and Docker supervisor.
 - `src/`: application code for downloads, media, state, and the web interface.
-- `extension/`: browser extension for Chrome and Firefox; not part of the
-  server or the Docker image.
+- `extension/`: Chrome and Firefox extension; it is not part of the server or
+  Docker image.
 - `tests/`: automated tests.
-- `scripts/`: manual checks outside the test suite, plus the extension
-  packaging script.
-- `docs/`: architecture, operations, security, configuration, and extension docs.
-
-## Known limits
-
-- The downloader depends on `yt-dlp` to expand channels and playlists. Changes
-  to `yt-dlp` or YouTube can break this step.
-- YouTube player clients and proof-of-origin requirements change over time.
-  The `youtube_player_client` setting may need to change too.
-- Rumble's Cloudflare checks change over time, even with Chrome request
-  impersonation.
-- SponsorBlock removal depends on community-submitted segment data.
-- The web interface uses shared `.env` accounts and has no per-user
-  permissions. Keep it on a personal, trusted network.
-- The browser extension stores your web interface password in the browser's
-  extension storage. Anyone with access to that browser profile can read it.
-  Revoking it means changing the password, which also signs the web interface
-  out.
+- `scripts/`: manual checks outside the test suite and the extension packaging
+  script.
+- `docs/`: architecture, operations, security, configuration, and extension
+  documentation.
