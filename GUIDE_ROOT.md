@@ -46,6 +46,7 @@ Runtime state lives in plain files:
 | `.login_state.json` | `AuthStore` | Login failures and temporary bans |
 | `activity.log` | `ActivityLogStore` | Short messages for the web interface |
 | `download.log` | Python logging | Detailed diagnostics |
+| `run_state.json` | `RunStateStore` | When the queue last ran, and whether one is running |
 
 State stores use advisory file locks so concurrent processes do not overwrite
 one another. Authentication files are written to a temporary sibling first and
@@ -55,9 +56,11 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
 
 - `README.md`: setup, usage, configuration, limits, and links to detailed docs.
 - `main.py`: wrapper that calls `src.cli.main()`.
-- `start.py`: Docker supervisor. It runs Uvicorn in the main process and starts
-  scheduled downloads.
-- `config.ini`: checked-in runtime defaults.
+- `start.py`: Docker supervisor. It runs Uvicorn in the main process and runs
+  the queue at a fixed time of day, 06:00 every other day by default.
+- `config.ini`: checked-in runtime defaults, including the run hour
+  (`scheduled_run_hour`) and how many days apart runs are
+  (`scheduled_run_interval_days`).
 - `docker-entrypoint.sh`: prepares mounted state, `.env`, and cookies; updates
   `yt-dlp`; repairs ownership; and starts the app as the configured host user.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
@@ -76,6 +79,7 @@ uv run python -m pytest -q
 
 ## Journal
 
+- 2026-09-01: Scheduled runs became a wall-clock rule instead of a countdown, the queue page gained last-run and next-run times, and a Run button starts the same pass by hand.
 - 2026-07-26: Split web, media, download, and state ownership and removed the old adapter modules.
 - 2026-08-08: Stopped tracking runtime queue state, moved the live smoke check to `scripts/`, and excluded runtime files from the Docker build.
 - 2026-08-10: Made download timeouts configurable, added log rotation and bounded browser log reads, and removed stale engineering records.

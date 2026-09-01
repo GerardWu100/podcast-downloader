@@ -15,6 +15,9 @@ flowchart LR
     CLI --> Media["src/media/"]
     Web --> Media
     Web --> State["src/state/"]
+    Web --> Schedule["src/schedule.py"]
+    Start["start.py"] --> Schedule
+    Start --> State
     Downloads --> Media
     Downloads --> State
     Downloads --> Notify["src/notifications/"]
@@ -28,6 +31,9 @@ Each area has one job:
 - `src/downloads/` turns URLs into MP3 files and runs `yt-dlp`.
 - `src/notifications/` sends failures to Apprise.
 - `src/web/` builds the app and owns security, routes, and HTML.
+- `src/schedule.py` turns the two schedule settings into run times. `start.py`
+  sleeps on them and the queue page displays them, so both agree on when the
+  next run is.
 - `src/api.py` exports the production app created by `create_app()`.
 
 The web app has two clients, both using the same `.env` accounts. A browser
@@ -186,9 +192,18 @@ they share the `singles` scratch folder.
 
 - `start.py` keeps FastAPI in the main process.
 - A background thread runs the scheduler.
-- The scheduler launches `python -m src.cli` for the full queue at a fixed interval.
+- The scheduler launches `python -m src.cli` for the full queue at a fixed time
+  of day: `scheduled_run_hour` on every `scheduled_run_interval_days`-th
+  calendar day, 06:00 every other day by default. The time comes from the
+  calendar, so a restart cannot move it.
+- If nothing ran at the last scheduled time, the scheduler catches up once when
+  it starts, then follows the fixed schedule again.
+- Each full queue pass is bracketed by a write to `run_state.json`, which is
+  what the queue page reads for "Last run" and what the Run button checks before
+  starting a second pass.
 - Direct videos added through the web UI start an immediate single-URL run.
-- Channels and playlists wait for the scheduled full-queue run.
+- The Run button on the queue page starts an immediate whole-queue run.
+- Channels and playlists otherwise wait for the scheduled full-queue run.
 - Runtime state lives in `PODCAST_DATA_DIR`.
 
 ## Safety boundaries

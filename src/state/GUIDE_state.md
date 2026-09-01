@@ -12,6 +12,7 @@
 | `ActivityLogStore` | `activity.log` or `download.log` | Appends and tail reads see whole lines; tails read only the final 256 KB |
 | `NotificationStore` | `notifications.json` | Replaced atomically and kept owner-only; a missing or damaged file reads as defaults |
 | `AuthStore` | `.ui_sessions.json`, `.login_state.json` | JSON updates are locked, atomically replaced, and mode `600` |
+| `RunStateStore` | `run_state.json` | Only whole-queue passes are recorded; the scheduler clears a leftover "running" flag when it starts |
 
 `locked_text_file()` uses `fcntl`, the Unix file-locking interface. A shared lock lets readers run together; an exclusive lock makes changes one at a time. `AuthStore` locks a stable sibling lock file because the JSON data file itself is replaced atomically.
 
@@ -27,9 +28,12 @@ Every one-entry-per-line store uses `locked_line_file()`, which yields a `Locked
   reads, and diagnostic-log empty messages.
 - `auth_store.py`: remembered sessions, login failures, expiry filtering,
   interprocess transactions, and atomic JSON replacement.
+- `run_state_store.py`: when the last whole-queue run started and finished,
+  whether it was scheduled or started by hand, and whether one is running now.
 
 ## Part 3: Journal
 
+- 2026-09-01: Added `run_state_store.py` so the queue page can say when the queue last ran. Single-URL and single-playlist runs are deliberately not recorded there: they process one item, not the queue.
 - 2026-07-26: Authentication persistence joined the state layer; obsolete
   state-function adapters, aliases, and dead mutation paths were removed after
   callers adopted stores directly.

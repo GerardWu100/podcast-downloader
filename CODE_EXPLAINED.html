@@ -484,7 +484,7 @@ read_urls() -&gt;
 <p>A bare channel address can mix uploads, Shorts, and livestreams, depending on YouTube's layout. Using <code>/videos</code> makes the result predictable. Anyone who wants livestreams can write <code>/streams</code> in <code>urls.txt</code>.</p></div>
 
 <div class="box warn"><span class="k">Trap: the retry only changes cookies</span>
-<p>After a failed first attempt, the code tries once more with the opposite cookie choice. It does not retry the same settings, wait before retrying, or make a third attempt. A temporary network failure skips the channel this run; the next scheduled run tries it again. This suits a program that runs every 48 hours, but there is no general network-retry logic.</p></div>
+<p>After a failed first attempt, the code tries once more with the opposite cookie choice. It does not retry the same settings, wait before retrying, or make a third attempt. A temporary network failure skips the channel this run; the next scheduled run tries it again. This suits a program that runs every other day, but there is no general network-retry logic.</p></div>
 
 <h2 id="s05"><span class="sec-no">05</span>The waiting period &mdash; <code>is_old_enough()</code></h2>
 
@@ -858,19 +858,22 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 <p>Inside Docker, one process serves the web page and runs the schedule. <code>start.py</code> keeps the web server in the main thread and runs the scheduler in a background thread.</p>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Every 48 hours, update <code>yt-dlp</code>, wait five minutes, and run the full queue in a separate process. If the browser adds a URL meanwhile, wake early and handle only that URL.</p></div>
+<p>At 06:00 every other day, update <code>yt-dlp</code>, wait five minutes, and run the full queue in a separate process. If the browser adds a URL meanwhile, wake early and handle only that URL. The Run button on the queue page asks for the whole-queue pass by hand.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> <code>DOWNLOAD_INTERVAL_HOURS</code>, <code>YT_DLP_AUTO_UPDATE</code>, and wake-up requests from the browser. <b>Output:</b> child processes running <code>python -m src.cli</code>, with no arguments for a full run or with <code>--download-single-url</code> or <code>--download-full-playlist</code> for an immediate run. <b>Role:</b> the only code that decides <em>when</em> downloads happen.</p></div>
+<p><b>Input:</b> <code>scheduled_run_hour</code> and <code>scheduled_run_interval_days</code> from <code>config.ini</code>, <code>YT_DLP_AUTO_UPDATE</code>, and wake-up requests from the browser. <b>Output:</b> child processes running <code>python -m src.cli</code>, with no arguments for a full run or with <code>--download-single-url</code> or <code>--download-full-playlist</code> for an immediate run. <b>Role:</b> the only code that decides <em>when</em> downloads happen.</p></div>
 
 <div class="box why"><span class="k">Why the downloader is a separate process</span>
 <p>A crash or memory leak while handling <code>yt-dlp</code> takes down a short-lived child, not the web server. Each child also starts with a clean logging setup and working directory. The two processes share state through locked files, which is why <code>src/state/</code> exists.</p></div>
+
+<div class="box why"><span class="k">Why the run time comes from the calendar</span>
+<p>The old scheduler slept 48 hours after each run, so the run time drifted with every restart and every redeploy. <code>src/schedule.py</code> instead asks the date: a day is a run day when its day count since year 1 divides evenly by the interval, and the run starts at the configured hour on that day. Nothing about the answer depends on when the process started, so the web page and the scheduler agree on the next run without sharing any state. A container that was down at the scheduled hour catches up once when it comes back, then returns to the fixed times.</p></div>
 
 <div class="box why"><span class="k">Why the browser passes the URL</span>
 <p><code>trigger.py</code> keeps two lock-protected lists: one for single videos and one for full playlists. If the browser sent only a wake-up signal, the scheduler would process the whole queue, including every channel, for one pasted link. Passing the URL limits the immediate run to that item.</p></div>
 
 <div class="box warn"><span class="k">Trap: adding a channel does not start a run</span>
-<p>Only direct videos and explicitly selected playlists trigger an immediate run. A new channel waits for the next scheduled cycle, up to 48 hours away. This avoids the expensive channel-expansion path, but the browser page does not show that the channel is waiting.</p></div>
+<p>Only direct videos and explicitly selected playlists trigger an immediate run. A new channel waits for the next scheduled run, up to two days away, unless you press <b>Run queue now</b>. This avoids the expensive channel-expansion path, but the browser page does not show that the channel is waiting.</p></div>
 
 <h2 id="appendix"><span class="sec-no">A</span>Appendix: the yt-dlp flags this project uses</h2>
 

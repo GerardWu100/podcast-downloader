@@ -9,7 +9,6 @@ import os
 import secrets
 import threading
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -23,8 +22,14 @@ from fastapi.responses import (
 
 from ..config import ConfigError, PodcastConfig, load_config
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
-from ..log_timezone import LOG_TIME_ZONE
 from ..media.urls import is_supported_media_url
+from ..schedule import (
+    format_schedule_time,
+    format_time_ago,
+    format_time_until,
+    local_now,
+    next_scheduled_run,
+)
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
@@ -44,6 +49,7 @@ from ..state.notification_store import (
     notification_settings_file_for,
 )
 from ..state.queue_store import QueueStore
+from ..state.run_state_store import RunStateStore, run_state_file_for
 from ..trigger import DownloadTrigger, in_process_download_trigger
 from .account_auth import (
     LOGIN_STATE_LOCK,
@@ -138,6 +144,15 @@ def _notification_store(request: Request) -> NotificationStore:
         request,
         "notification_store",
         NotificationStore(notification_settings_file_for(DATA_DIR)),
+    )
+
+
+def _run_state_store(request: Request) -> RunStateStore:
+    """Return the injected store holding the last full queue run."""
+    return _app_state_value(
+        request,
+        "run_state_store",
+        RunStateStore(run_state_file_for(DATA_DIR)),
     )
 
 
@@ -422,27 +437,61 @@ def _delete_session_cookie(response: RedirectResponse) -> None:
     response.delete_cookie(SESSION_COOKIE)
 
 
-def _last_activity_label(activity_log_file: Path) -> str:
-    """Return the latest activity-file update time for the status header.
+NO_RUN_YET_LABEL = "None yet"
+
+
+def _last_run_label(run_state_store: RunStateStore) -> str:
+    """Return when the queue last ran, with its age in plain words.
 
     Parameters
     ----------
-    activity_log_file:
-        Path to the concise browser activity log.
+    run_state_store:
+        Store holding the scheduler's record of the last full queue pass.
 
     Returns
     -------
     str
-        Toronto-local update time, or a short empty-state label when the file
-        has not been written yet.
+        Something like ``2026-09-01 06:05 - 7 hours ago (scheduled)``, or a
+        running-now line, or a short empty-state label before the first run.
     """
-    try:
-        modified_at = activity_log_file.stat().st_mtime
-    except OSError:
-        return "No activity yet"
-    return datetime.fromtimestamp(modified_at, tz=LOG_TIME_ZONE).strftime(
-        "%Y-%m-%d %H:%M"
+    run_state = run_state_store.load()
+    now = local_now()
+
+    if run_state.is_running and run_state.started_at is not None:
+        started_ago = format_time_ago(run_state.started_at, now)
+        return f"Running now - started {started_ago}"
+
+    if run_state.finished_at is None:
+        return NO_RUN_YET_LABEL
+
+    finished_at_text = format_schedule_time(run_state.finished_at)
+    finished_ago = format_time_ago(run_state.finished_at, now)
+    return f"{finished_at_text} - {finished_ago} ({run_state.kind})"
+
+
+def _next_run_label(config: PodcastConfig) -> str:
+    """Return the next scheduled run time and how far away it is.
+
+    The schedule is a calendar rule, so this answer needs no saved state: it is
+    the same whether or not the scheduler thread is running in this process.
+
+    Parameters
+    ----------
+    config:
+        Runtime configuration holding the run hour and the day interval.
+
+    Returns
+    -------
+    str
+        Something like ``2026-09-03 06:00 - in 41 hours``.
+    """
+    now = local_now()
+    next_run = next_scheduled_run(
+        now,
+        run_hour=config.scheduled_run_hour,
+        interval_days=config.scheduled_run_interval_days,
     )
+    return f"{format_schedule_time(next_run)} - {format_time_until(next_run, now)}"
 
 
 # One activity line looks like "[2026-08-19 15:51] Downloaded: creator - ep.mp3".
@@ -683,6 +732,8 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
         "Check the Apprise notify URL. It must start with http:// or https://",
     ),
     "notifications_error": ("msg-err", "Could not save notification settings."),
+    "run_started": ("msg-ok", "Queue run started. Watch the activity log below."),
+    "run_already_running": ("msg-warn", "A queue run is already in progress."),
 }
 
 
@@ -757,16 +808,16 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
 
     count = len(safe_queue_urls)
     activity_store = _activity_store(request)
-    last_activity = html.escape(
-        _last_activity_label(activity_store.activity_log_file)
-    )
     last_download = html.escape(_last_download_label(activity_store))
+    last_run = html.escape(_last_run_label(_run_state_store(request)))
+    next_run = html.escape(_next_run_label(config))
 
     return render_queue_page(
         bypass_row_html=bypass_row_html,
         count=count,
-        last_activity=last_activity,
         last_download=last_download,
+        last_run=last_run,
+        next_run=next_run,
         msg_html=msg_html,
         queue_html=queue_html,
         safe_token=safe_token,
@@ -1008,6 +1059,45 @@ def view_logs(request: Request, source: str = "activity") -> Response:
             media_type="text/plain",
             headers=_security_headers(),
         )
+
+
+@router.post("/run-now")
+def run_now_form(
+    request: Request,
+    csrf_token: str = Form(...),
+) -> RedirectResponse:
+    """Start the same whole-queue run the schedule performs, right now.
+
+    The button exists so a new source does not have to wait for the next
+    scheduled time. It does not move the schedule: the next automatic run stays
+    at its fixed calendar time.
+
+    Parameters
+    ----------
+    request:
+        Current FastAPI request with session and application dependencies.
+    csrf_token:
+        Cross-Site Request Forgery token tied to the remembered session.
+
+    Returns
+    -------
+    RedirectResponse
+        Queue-page redirect saying whether the run was started.
+    """
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    if not _verify_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    # Two runs over the same queue would fight over the same state files, so a
+    # second request while one is in progress is refused rather than queued.
+    if _run_state_store(request).load().is_running:
+        return RedirectResponse(url="/?msg=run_already_running", status_code=303)
+
+    _download_trigger(request).queue_full_queue_run()
+    return RedirectResponse(url="/?msg=run_started", status_code=303)
 
 
 @router.post("/add-url")

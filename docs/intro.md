@@ -19,16 +19,17 @@ Podcast Downloader is a small personal tool for turning online videos into MP3 f
   small descriptive tags such as the source URL and download date.
 - Groups MP3 files by source under `downloads/`; direct videos go in `singles/`.
 - Deletes old channel MP3 files according to the embedded download date, while leaving playlist and one-off files alone.
-- Lets you add new URLs through a password-protected web form.
+- Lets you add new URLs through a password-protected web form, and shows when the queue last ran and when it runs next.
 
 ## Main parts
 
 - `src/cli.py`: command-line entrypoint.
 - `src/downloads/`: download orchestration, `yt-dlp`, and audio metadata.
 - `src/media/`: generic URL validation and YouTube-specific policy.
-- `src/state/`: locked queue, archive, bypass, activity, and authentication state.
+- `src/state/`: locked queue, archive, bypass, activity, authentication, and last-run state.
 - `src/web/`: FastAPI construction, routes, authentication policy, and rendering.
 - `src/api.py`: small Uvicorn deployment entrypoint.
+- `src/schedule.py`: when automatic runs happen; 06:00 every other day by default.
 - `start.py`: Docker-oriented process supervisor for the API plus scheduler.
 
 ## Project shape

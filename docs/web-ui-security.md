@@ -69,7 +69,7 @@ The app uses two Cross-Site Request Forgery (CSRF) protections. CSRF is an
 attack in which another site tricks a signed-in browser into submitting a form.
 
 - The login form gets a one-time token that expires after 10 minutes.
-- Authenticated state-changing forms, including queue edits, logout, and cookie upload, get a per-session CSRF token.
+- Authenticated state-changing forms, including queue edits, starting a run, logout, and cookie upload, get a per-session CSRF token.
 
 Both checks use `secrets.compare_digest` to reduce timing leaks.
 

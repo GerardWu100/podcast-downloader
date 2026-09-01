@@ -36,7 +36,8 @@ over their jobs.
 - `config.py`: validated `PodcastConfig` loading.
 - `passwords.py`: Password-Based Key Derivation Function 2 (PBKDF2) hashing and verification.
 - `credentials.py`: syncs up to three `.env` account pairs into `.ui_credentials.json`.
-- `trigger.py`: in-process requests that wake the Docker scheduler.
+- `trigger.py`: in-process requests that wake the Docker scheduler, including the whole-queue request the Run button sends.
+- `schedule.py`: turns `scheduled_run_hour` and `scheduled_run_interval_days` into run times, and writes the "7 hours ago" wording the queue page shows.
 - `log_timezone.py`: shared Toronto/Eastern logging timezone.
 - `media/GUIDE_media.md`: URL validation and YouTube policy.
 - `state/GUIDE_state.md`: locked plain-file state.
@@ -49,4 +50,5 @@ queue edit in `state/queue_store.py`.
 
 ## Journal
 
+- 2026-09-01: Automatic runs moved from a countdown between runs to a fixed time of day. `schedule.py` decides when; `state/run_state_store.py` records what happened.
 - 2026-07-26: Removed catch-all compatibility modules and established explicit `web`, `media`, `downloads`, and `state` boundaries.

@@ -6,11 +6,12 @@ services:
       - "127.0.0.1:50022:8000"
     restart: unless-stopped
     environment:
+      # The run schedule uses this clock: config.ini sets the hour and the
+      # number of days between runs.
       - TZ=America/Toronto
       - PODCAST_DATA_DIR=/data
       - PODCAST_DOWNLOAD_DIR=/downloads
       - PODCAST_INTERMEDIATE_DIR=/temporary
-      - DOWNLOAD_INTERVAL_HOURS=48
       - YT_DLP_AUTO_UPDATE=true
       # The entrypoint repairs mounted-file ownership, then runs the app with
       # this host user and group. `id -u` and `id -g` show the right values.

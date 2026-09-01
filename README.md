@@ -11,6 +11,8 @@ segments when available, and run from the command line or a web browser.
 - Skip YouTube Shorts and wait for SponsorBlock data before downloading new
   videos.
 - Convert audio to MP3, organize it by source, and remove old channel files.
+- Run the queue automatically at a fixed time of day, 06:00 every other day by
+  default, or start a run by hand from the web page.
 - Keep the queue, download history, and one-use age-check exceptions in
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
 - Manage sources, activity, logs, cookies, and error notifications from the
@@ -74,8 +76,11 @@ commands add URLs, download one URL or a full playlist, start the web
 interface, run offline tests, or check the live SponsorBlock service.
 
 To open the web interface, start Uvicorn and visit
-`http://127.0.0.1:8000/`. Sign in to manage the queue. Use **Settings** for
-cookies and notifications, and open `/help` for cookie-export instructions.
+`http://127.0.0.1:8000/`. Sign in to manage the queue. The line under the
+add-source box shows the last download, when the queue last ran and how long
+ago, and when the next run is due; **Run queue now** beside it starts a run
+immediately without changing the schedule. Use **Settings** for cookies and
+notifications, and open `/help` for cookie-export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
 **Add to Home Screen**. The app hides the address bar and keeps you signed in
@@ -104,6 +109,10 @@ Set the main options in `config.ini`:
 - `retention_days`: how long to keep channel MP3 files.
 - `download_timeout_seconds`: limit for one `yt-dlp` attempt; the default is
   3600 seconds.
+- `scheduled_run_hour` and `scheduled_run_interval_days`: when automatic runs
+  happen. The defaults, `6` and `2`, mean 06:00 every other day on the local
+  clock. The time comes from the calendar, so restarting or redeploying the
+  container does not move it.
 - `cookies_file` and `always_use_cookies`: whether and when to use YouTube
   cookies.
 - `youtube_player_client`: YouTube player API used by `yt-dlp`; blank lets

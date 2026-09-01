@@ -30,6 +30,8 @@ cookies.txt
 www.youtube.com_cookies.txt
 *.cookies
 notifications.json
+run_state.json
+run_state.json.lock
 .env
 .env.*
 !.env.example

@@ -71,6 +71,8 @@ section.
 | `delay_seconds` | Pause between downloads; at least `0` | `60` |
 | `retention_days` | Days to keep YouTube channel MP3s; at least `1` | `30` |
 | `download_timeout_seconds` | Time limit for one attempt; at least `60` | `3600` |
+| `scheduled_run_hour` | Local hour an automatic run starts, `0` to `23` | `6` |
+| `scheduled_run_interval_days` | Calendar days between automatic runs; at least `1` | `2` |
 | `log_file` | Detailed log; rotates at 5 MB and keeps three older copies | `download.log` |
 | `downloaded_urls_file` | Successfully expanded URLs; also prevents duplicates | `downloaded_urls.txt` |
 | `bypass_age_check_file` | One-use YouTube waiting-period exceptions | `bypass_age_check_urls.txt` |
@@ -87,8 +89,8 @@ section.
 | `PODCAST_DATA_DIR` | Move `config.ini`, queue files, `.env`, credentials, and login state |
 | `PODCAST_DOWNLOAD_DIR` | Override the finished MP3 directory |
 | `PODCAST_INTERMEDIATE_DIR` | Override the scratch directory; Compose maps `$HOME/downloads/temporary` to `/temporary` |
-| `DOWNLOAD_INTERVAL_HOURS` | Scheduler interval in Docker mode |
 | `YT_DLP_AUTO_UPDATE` | Enable or disable Docker-time `yt-dlp` upgrades |
+| `TZ` | Clock the schedule and the logs use; Compose sets `America/Toronto` |
 | `HOST_UID` | Host user for mounted Docker files; default `1000` |
 | `HOST_GID` | Host group for mounted Docker files; default `1000` |
 
@@ -178,5 +180,6 @@ and set permission mode `600`.
 - Invalid integer and float values fail immediately with a `ConfigError` naming the key.
 - Out-of-range values fail: `channel_count < 1`, `min_channel_video_age_hours < 0`, `delay_seconds < 0`, `retention_days < 1`, and `download_timeout_seconds < 60`.
 - A blank configured path fails instead of silently using the data directory.
-- Invalid `DOWNLOAD_INTERVAL_HOURS` values stop Docker startup.
+- An out-of-range `scheduled_run_hour` or `scheduled_run_interval_days` stops
+  startup rather than falling back to a guess.
 - If `urls.txt` is missing, the project creates a starter file with comments and example URLs.

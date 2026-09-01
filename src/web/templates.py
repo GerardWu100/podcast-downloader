@@ -412,9 +412,17 @@ def render_help_page(
       <h2>Using the queue</h2>
       <ul>
         <li><strong>Add:</strong> paste a YouTube channel, playlist, livestream, or direct video URL. Channels and playlists stay in the queue and are checked again on every run; a direct video leaves the queue once it downloads.</li>
-        <li><strong>Run now:</strong> skip the waiting period for a direct video, or download a playlist in full instead of only its most recent videos.</li>
+        <li><strong>Run now</strong> (the checkbox beside the box): skip the waiting period for the direct video you are adding, or download the playlist you are adding in full instead of only its most recent videos.</li>
+        <li><strong>Run queue now</strong> (the button on the status line): check every source in the queue right away, the same work the automatic run does. It does not change when the next automatic run happens.</li>
         <li><strong>Remove:</strong> stop watching a queued URL. Audio already downloaded is kept.</li>
         <li><strong>Settings:</strong> replace the YouTube cookie file and set where failures are reported.</li>
+      </ul>
+
+      <h2>When runs happen</h2>
+      <ul>
+        <li>The queue runs by itself at a set time of day, 06:00 every other day unless the server is configured otherwise. The time comes from the calendar, so restarting the server does not shift it.</li>
+        <li>The status line under the add box shows when the last run finished, how long ago that was, and when the next one is due.</li>
+        <li>If the server was switched off at the scheduled time, it runs once when it comes back and then returns to the usual times.</li>
       </ul>
 
       <h2>What happens to a download</h2>
@@ -820,8 +828,9 @@ def render_queue_page(
     *,
     bypass_row_html: str,
     count: int,
-    last_activity: str,
     last_download: str,
+    last_run: str,
+    next_run: str,
     msg_html: str,
     queue_html: str,
     safe_token: str,
@@ -938,12 +947,16 @@ def render_queue_page(
     }}
     /* Episode names can be long, so let them wrap instead of stretching the card. */
     .status-row span {{ min-width:0; overflow-wrap:anywhere; }}
+    /* The Run button shares the status line and is pushed to its right end. */
+    .run-now-form {{ margin:0; margin-left:auto; flex-shrink:0; }}
     .status-label {{
       color:var(--muted); font-size:.67rem; font-weight:700;
       letter-spacing:.07em; text-transform:uppercase; margin-right:4px;
     }}
     @media (max-width:640px) {{
-      .status-row {{ flex-direction:column; gap:6px; }}
+      .status-row {{ flex-direction:column; gap:6px; align-items:stretch; }}
+      .run-now-form {{ margin-left:0; }}
+      .run-now-form .btn-ghost {{ width:100%; padding:9px 12px; }}
       .input-row {{ display:flex; flex-direction:column; }}
       .input-row .btn {{ width:100%; }}
       .q-item {{ display:grid; grid-template-columns:auto minmax(0,1fr); }}
@@ -991,7 +1004,12 @@ def render_queue_page(
       </form>
       <div class="status-row" aria-label="System status">
         <span><span class="status-label">Last downloaded</span> <span title="{last_download}">{last_download}</span></span>
-        <span><span class="status-label">Last update</span> {last_activity}</span>
+        <span><span class="status-label">Last run</span> {last_run}</span>
+        <span><span class="status-label">Next run</span> {next_run}</span>
+        <form method="post" action="/run-now" class="run-now-form">
+          <input type="hidden" name="csrf_token" value="{safe_token}" />
+          <button type="submit" class="btn-ghost">Run queue now</button>
+        </form>
       </div>
     </div>
 

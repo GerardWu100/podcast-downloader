@@ -124,7 +124,7 @@ output from the build context as defense in depth:
 |---|---|
 | `extension/` and `build/` | Browser code. It runs in your browser, never on the server. `build/` holds the generated Firefox copy |
 | `tests/`, `scripts/`, `docs/`, `blog/` | Developer material. Nothing under `src/`, `start.py`, or `docker-entrypoint.sh` imports them |
-| `.env`, cookies, notification settings, queue files, logs, sessions, credentials | Secrets and runtime state belong in the runtime secret or mounted data directory; image layers are durable and may be pushed to a registry |
+| `.env`, cookies, notification settings, queue files, logs, sessions, credentials, the last-run record | Secrets and runtime state belong in the runtime secret or mounted data directory; image layers are durable and may be pushed to a registry |
 
 `tests/test_docker_build_context.py` fails if one of those entries is removed,
 and `tests/test_docker_entrypoint.py` refuses a broad `COPY . .` instruction.
@@ -133,7 +133,26 @@ missing entry appears only on a machine that ran the generator before building.
 
 ## Scheduler behavior
 
-- Scheduled runs happen every `DOWNLOAD_INTERVAL_HOURS`.
+- Runs happen on a wall clock, not a countdown: at `scheduled_run_hour` on
+  every `scheduled_run_interval_days`-th calendar day. The shipped values are
+  06:00 and 2, so runs land at 06:00 every other day on the container's `TZ`
+  clock. Restarting the container, redeploying, or pressing **Run queue now**
+  never moves the next run.
+- Run days come from the date itself, not from a saved starting point, so two
+  machines with the same settings agree on which mornings are run mornings.
+- The two settings live in `config.ini`. Docker copies the repository file to
+  `/data/config.ini` on first boot only, so an existing deployment keeps its own
+  copy; add the two keys there to change the time.
+- On startup the scheduler checks whether it missed a run: if no full queue run
+  has finished since the last scheduled time, it runs once immediately and then
+  returns to the fixed schedule. A container that was down at 06:00 therefore
+  catches up instead of waiting for the next run day.
+- **Run queue now** on the queue page starts the same whole-queue pass by hand.
+  It is refused while a run is already going, and it does not shift the
+  schedule.
+- The queue page shows when the last run finished, how long ago that was, and
+  when the next one is due. The record lives in `run_state.json` beside the
+  other state files.
 - Scheduler subprocesses run `python -m src.cli` from the project root, so Docker behavior does not depend on where the scheduler thread started.
 - `yt-dlp` is not pinned in `uv.lock`. Docker installs the latest nightly release with `yt-dlp[default,curl-cffi]` during `docker build` and upgrades it at each container start when `YT_DLP_AUTO_UPDATE=true`. Locally, run `uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"` after `uv sync`.
 - The Docker image includes Deno, a supported JavaScript runtime for current `yt-dlp` YouTube extraction.
@@ -141,7 +160,7 @@ missing entry appears only on a machine that ran the generator before building.
 - `ERROR: unable to download video data: HTTP Error 403: Forbidden` usually means YouTube now requires a GVS PO Token, not that the network or cookies are broken. Metadata succeeds, but the audio transfer is refused. See `youtube_player_client` in [cli-and-config.md](cli-and-config.md).
 - When a download fails, `download.log` holds the exact `yt-dlp` command and complete output for every attempt. `activity.log` records the cause in one line. Copy the logged command to reproduce the failure by hand.
 - Scheduled updates affect only `yt-dlp` and the dependencies in its `default` and `curl-cffi` groups.
-- After a scheduled update, the downloader waits five minutes before starting. A UI-triggered download skips that wait.
+- After a scheduled update, the downloader waits five minutes before starting. A URL added from the browser during that pause is downloaded straight away, and the scheduled run still follows.
 - If the update fails, the scheduler logs a warning, reports the current `yt-dlp` version, and skips the five-minute wait.
 - A direct video URL added through the web UI starts an immediate run for that URL only.
 - Direct non-YouTube URLs always run immediately because they do not use the YouTube age gate.
@@ -149,7 +168,7 @@ missing entry appears only on a machine that ran the generator before building.
 - A selected playlist starts an immediate full-playlist run and downloads every entry instead of applying the `channel_count` limit.
 - Channel and playlist additions stay queued for the scheduled full-queue run. Each run considers only the newest `channel_count` entries from each monitored source.
 - An immediate single-URL run does not inspect the rest of `urls.txt` or expand older channel and playlist entries.
-- After an immediate run, the scheduler waits a full interval before the next scheduled run.
+- An immediate run never changes the next scheduled time.
 
 ## Downloaded file dates
 

@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 from src.config import (
     DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+    DEFAULT_SCHEDULED_RUN_HOUR,
+    DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS,
     ConfigError,
     load_config,
 )
@@ -38,6 +40,13 @@ def write_config(config_file: Path, body: str) -> None:
         ("delay_seconds", "-0.1", "delay_seconds must be at least 0"),
         ("retention_days", "0", "retention_days must be at least 1"),
         ("retention_days", "-1", "retention_days must be at least 1"),
+        ("scheduled_run_hour", "24", "scheduled_run_hour must be between 0 and 23"),
+        ("scheduled_run_hour", "-1", "scheduled_run_hour must be between 0 and 23"),
+        (
+            "scheduled_run_interval_days",
+            "0",
+            "scheduled_run_interval_days must be at least 1",
+        ),
     ],
 )
 def test_load_config_rejects_out_of_range_numeric_values(
@@ -224,3 +233,32 @@ def test_explicit_cookie_path_is_preserved_before_file_exists(tmp_path: Path) ->
     config = load_config(config_file, tmp_path)
 
     assert config.cookies_file == tmp_path / "private" / "cookies.txt"
+
+
+def test_schedule_defaults_to_six_in_the_morning_every_other_day(
+    tmp_path: Path,
+) -> None:
+    """A config file without the schedule keys keeps the shipped schedule."""
+    config_file = tmp_path / "config.ini"
+    write_config(config_file, "channel_count = 2")
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.scheduled_run_hour == DEFAULT_SCHEDULED_RUN_HOUR == 6
+    assert (
+        config.scheduled_run_interval_days == DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS == 2
+    )
+
+
+def test_schedule_can_be_moved_to_another_hour_and_cadence(tmp_path: Path) -> None:
+    """Both schedule settings are read from config.ini."""
+    config_file = tmp_path / "config.ini"
+    write_config(
+        config_file,
+        "scheduled_run_hour = 23\nscheduled_run_interval_days = 7",
+    )
+
+    config = load_config(config_file, tmp_path)
+
+    assert config.scheduled_run_hour == 23
+    assert config.scheduled_run_interval_days == 7

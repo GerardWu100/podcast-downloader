@@ -49,7 +49,7 @@ from installing the app.
 ## Code reference
 
 - `app.py`: `create_app()` builds the application and its dependencies. Each application instance has its own session and Cross-Site Request Forgery (CSRF) token maps.
-- `routes.py`: FastAPI handlers for login, the queue, cookie upload, logs, help, notifications, and scheduler triggers. It owns the login flow and CSRF tokens.
+- `routes.py`: FastAPI handlers for login, the queue, cookie upload, logs, help, notifications, and scheduler triggers. It owns the login flow and CSRF tokens. `POST /run-now` starts the same whole-queue pass the schedule runs; it is refused while one is already going, so two passes cannot fight over the same state files.
 - `queue_actions.py`: `add_url_to_queue()`, the single place that decides what happens to a submitted URL — reject, normalize, refuse as a duplicate or as already downloaded, append, and wake the scheduler. Both `routes.add_url_form` and `api_routes.add_url` call it, so the browser form and the extension always behave the same.
 - `api_routes.py`: `GET /api/ping` and `POST /api/add-url`. Clients send the same account name and password as the login form in an `Authorization: Basic` header. These routes do not check a CSRF token: CSRF protection is for credentials that browsers attach automatically, while this header comes from the client's own settings. They also omit `WWW-Authenticate`, so a browser tab shows the JSON refusal instead of its own sign-in box. No CORS headers are sent. A Manifest V3 extension with host permissions can call the routes, while an ordinary cross-origin page cannot.
 - `app.py` rejects an undeclared or oversized `/api/add-url` body before
@@ -79,6 +79,7 @@ pages stay consistent.
 
 ## Journal
 
+- 2026-09-01: The status line under the add-source form now answers three questions instead of one: what was downloaded last, when the queue last ran and how long ago, and when the next run is due. The next-run time comes from the calendar rule in `src/schedule.py`, so the page can show it whether or not a scheduler thread is running in this process.
 - 2026-07-26: The deployment entry point became a factory call. Request-security policy, rendering, and authentication state each gained a clear owner.
 - 2026-07-26: Route handlers began receiving configuration, stores, and the scheduler trigger from the application factory instead of rebuilding production dependencies from module globals.
 - 2026-08-10: `/logs` began returning `401` instead of redirecting when the session is invalid. The queue reloads on that status, so an expired session cannot fill the log box with escaped login-page HTML. The header also gained a one-line app description.

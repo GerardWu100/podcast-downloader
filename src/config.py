@@ -28,6 +28,12 @@ DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
 # extractor trail without this. Turn it on to inspect a run that succeeds
 # but produces the wrong result.
 DEFAULT_YTDLP_VERBOSE = False
+# Wall-clock schedule for automatic runs: 06:00 local time, every second
+# calendar day. `src/schedule.py` turns these two numbers into run instants.
+DEFAULT_SCHEDULED_RUN_HOUR = 6
+DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS = 2
+FIRST_HOUR_OF_DAY = 0
+LAST_HOUR_OF_DAY = 23
 
 
 class ConfigError(ValueError):
@@ -54,6 +60,8 @@ class PodcastConfig:
     bypass_age_check_file: Path
     youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT
     ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE
+    scheduled_run_hour: int = DEFAULT_SCHEDULED_RUN_HOUR
+    scheduled_run_interval_days: int = DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS
 
 
 def _require_non_blank(raw_value: str, key: str) -> str:
@@ -104,6 +112,13 @@ def _get_float(
     except ValueError:
         raise ConfigError(f"{key} must be a number") from None
 
+    return value
+
+
+def _require_int_in_range(value: int, key: str, minimum: int, maximum: int) -> int:
+    """Validate that an integer setting sits inside its accepted range."""
+    if not minimum <= value <= maximum:
+        raise ConfigError(f"{key} must be between {minimum} and {maximum}")
     return value
 
 
@@ -269,6 +284,24 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         DEFAULT_YTDLP_VERBOSE,
     )
 
+    # The schedule is a wall-clock rule, not a countdown: an hour of the day
+    # and how many calendar days apart the run days are.
+    scheduled_run_hour = _require_int_in_range(
+        _get_int(section, "scheduled_run_hour", DEFAULT_SCHEDULED_RUN_HOUR),
+        "scheduled_run_hour",
+        FIRST_HOUR_OF_DAY,
+        LAST_HOUR_OF_DAY,
+    )
+    scheduled_run_interval_days = _require_minimum_int(
+        _get_int(
+            section,
+            "scheduled_run_interval_days",
+            DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS,
+        ),
+        "scheduled_run_interval_days",
+        1,
+    )
+
     return PodcastConfig(
         urls_file=urls_file,
         output_dir=output_dir,
@@ -286,4 +319,6 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         bypass_age_check_file=bypass_age_check_file,
         youtube_player_client=youtube_player_client,
         ytdlp_verbose=ytdlp_verbose,
+        scheduled_run_hour=scheduled_run_hour,
+        scheduled_run_interval_days=scheduled_run_interval_days,
     )

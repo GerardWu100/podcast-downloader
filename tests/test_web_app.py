@@ -19,6 +19,7 @@ from src.state.notification_store import (
     notification_settings_file_for,
 )
 from src.state.queue_store import QueueStore
+from src.state.run_state_store import RunKind, RunStateStore, run_state_file_for
 from src.web import routes
 from src.web.app import api_body_size_refusal, create_app
 
@@ -29,6 +30,7 @@ class _RecordingDownloadTrigger:
     def __init__(self) -> None:
         self.single_urls: list[str] = []
         self.playlist_urls: list[str] = []
+        self.full_queue_runs = 0
 
     def queue_single_url_download(self, url: str) -> None:
         """Record one direct-media scheduler request.
@@ -49,6 +51,10 @@ class _RecordingDownloadTrigger:
             Normalized YouTube playlist URL.
         """
         self.playlist_urls.append(url)
+
+    def queue_full_queue_run(self) -> None:
+        """Record one whole-queue run request from the Run button."""
+        self.full_queue_runs += 1
 
 
 def test_create_app_returns_independent_fastapi_instances() -> None:
@@ -333,3 +339,65 @@ def test_test_button_requires_a_session(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 401
+
+
+def _signed_in_request(app, session_id: str, csrf_token: str) -> SimpleNamespace:
+    """Return a request object carrying a valid session and CSRF token.
+
+    Parameters
+    ----------
+    app:
+        Application whose state holds the sessions and tokens.
+    session_id:
+        Session identifier to register and send as a cookie.
+    csrf_token:
+        Token registered for that session.
+    """
+    app.state.sessions[session_id] = {"created_at": time.time()}
+    app.state.csrf_tokens[session_id] = {
+        "token": csrf_token,
+        "kind": "session",
+        "created_at": time.time(),
+    }
+    return SimpleNamespace(
+        app=app,
+        headers={},
+        client=SimpleNamespace(host="127.0.0.1"),
+        cookies={routes.SESSION_COOKIE: session_id},
+    )
+
+
+def test_run_button_asks_the_scheduler_for_a_whole_queue_pass(tmp_path: Path) -> None:
+    """The Run button must request the same work the schedule performs."""
+    trigger = _RecordingDownloadTrigger()
+    run_state_store = RunStateStore(run_state_file_for(tmp_path))
+    app = create_app(
+        replace(routes.CONFIG, urls_file=tmp_path / "urls.txt"),
+        run_state_store=run_state_store,
+        trigger=trigger,
+    )
+    request = _signed_in_request(app, "run-now-session", "run-now-csrf")
+
+    response = routes.run_now_form(request, csrf_token="run-now-csrf")
+
+    assert response.headers["location"] == "/?msg=run_started"
+    assert trigger.full_queue_runs == 1
+    assert trigger.single_urls == []
+
+
+def test_run_button_is_refused_while_a_run_is_already_going(tmp_path: Path) -> None:
+    """Two passes over one queue would fight over the same state files."""
+    trigger = _RecordingDownloadTrigger()
+    run_state_store = RunStateStore(run_state_file_for(tmp_path))
+    run_state_store.mark_run_started(RunKind.SCHEDULED)
+    app = create_app(
+        replace(routes.CONFIG, urls_file=tmp_path / "urls.txt"),
+        run_state_store=run_state_store,
+        trigger=trigger,
+    )
+    request = _signed_in_request(app, "run-busy-session", "run-busy-csrf")
+
+    response = routes.run_now_form(request, csrf_token="run-busy-csrf")
+
+    assert response.headers["location"] == "/?msg=run_already_running"
+    assert trigger.full_queue_runs == 0

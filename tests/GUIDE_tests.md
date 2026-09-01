@@ -46,6 +46,8 @@ The live SponsorBlock check is
   never reaches the command line where `/proc` would expose it.
 - `test_archive_locking.py` and `test_activity_log.py`: locking for the archive
   and activity log.
+- `test_schedule.py`: which calendar days are run days, the next and previous
+  run times, the wording of "7 hours ago", and the last-run record.
 - `test_cli_behavior.py`, `test_config.py`, `test_start.py`,
   `test_docker_entrypoint.py`, `test_passwords.py`, and `test_credentials.py`:
   command and startup boundaries, including `.env` credential synchronization.
@@ -65,3 +67,4 @@ uv run python -m pytest -q
 - 2026-07-26: Replaced private monkeypatches with focused public-contract tests for cookie retries and stores.
 - 2026-07-26: Added request-level factory tests for injected stores and scheduler behavior.
 - 2026-08-26: Added API coverage for the extension without an HTTP client dependency.
+- 2026-09-01: Scheduler tests moved from "waits N hours" to "waits until the next 06:00 run day", and gained the missed-run catch-up and the Run button.

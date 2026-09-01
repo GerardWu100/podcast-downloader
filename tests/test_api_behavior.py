@@ -164,7 +164,7 @@ def test_doc_page_covers_use_agent_commands_and_cookie_setup() -> None:
 
 
 def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
-    """The queue page shows only the two times, inside the add-source card."""
+    """The queue page shows the last download, the last run, and the next run."""
     session_id = "test-ui-status-session"
     queue_file = tmp_path / "urls.txt"
     queue_file.write_text(
@@ -180,6 +180,9 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
             log_file=tmp_path / "download.log",
         ),
     )
+    # The last-run record lives beside the other state files, so point the
+    # page at an empty data directory rather than this machine's real one.
+    monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
     api_module.SESSIONS[session_id] = {"created_at": time.time()}
     request = _FakeRequest(
         cookies={api_module.SESSION_COOKIE: session_id},
@@ -190,9 +193,14 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
 
     assert 'aria-label="System status"' in body
     assert "Last downloaded" in body
-    assert "Last update" in body
-    assert "No activity yet" in body
+    assert "Last run" in body
+    assert "Next run" in body
+    # Nothing has run yet, so both the last download and the last run are empty.
+    assert 'class="status-label">Last run</span> None yet' in body
     assert "None yet" in body
+    # The next run is a calendar rule, so it is known even with no history.
+    assert "06:00" in body
+    assert 'action="/run-now"' in body
     # The old full-width panel and its two removed values are gone.
     assert "status-strip" not in body
     assert "status-dot" not in body
