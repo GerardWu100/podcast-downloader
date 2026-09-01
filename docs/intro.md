@@ -30,6 +30,8 @@ Podcast Downloader is a small personal tool for turning online videos into MP3 f
 - `src/web/`: FastAPI construction, routes, authentication policy, and rendering.
 - `src/api.py`: small Uvicorn deployment entrypoint.
 - `src/schedule.py`: when automatic runs happen; 06:00 every other day by default.
+- `src/run_report.py`: whether a finished run is worth a notification.
+- `src/human_time.py`: the wording for times and durations shown to a person.
 - `start.py`: Docker-oriented process supervisor for the API plus scheduler.
 
 ## Project shape

@@ -30,6 +30,9 @@ DEFAULT_YOUTUBE_PLAYER_CLIENT = "web_embedded"
 DEFAULT_YTDLP_VERBOSE = False
 # Wall-clock schedule for automatic runs: 06:00 local time, every second
 # calendar day. `src/schedule.py` turns these two numbers into run instants.
+# How many days before the YouTube sign-in cookies expire to start warning
+# after a run. Zero turns the warning off; an expired file is always reported.
+DEFAULT_COOKIE_EXPIRY_WARNING_DAYS = 14
 DEFAULT_SCHEDULED_RUN_HOUR = 6
 DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS = 2
 FIRST_HOUR_OF_DAY = 0
@@ -62,6 +65,7 @@ class PodcastConfig:
     ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE
     scheduled_run_hour: int = DEFAULT_SCHEDULED_RUN_HOUR
     scheduled_run_interval_days: int = DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS
+    cookie_expiry_warning_days: int = DEFAULT_COOKIE_EXPIRY_WARNING_DAYS
 
 
 def _require_non_blank(raw_value: str, key: str) -> str:
@@ -301,6 +305,15 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         "scheduled_run_interval_days",
         1,
     )
+    cookie_expiry_warning_days = _require_minimum_int(
+        _get_int(
+            section,
+            "cookie_expiry_warning_days",
+            DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
+        ),
+        "cookie_expiry_warning_days",
+        0,
+    )
 
     return PodcastConfig(
         urls_file=urls_file,
@@ -321,4 +334,5 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         ytdlp_verbose=ytdlp_verbose,
         scheduled_run_hour=scheduled_run_hour,
         scheduled_run_interval_days=scheduled_run_interval_days,
+        cookie_expiry_warning_days=cookie_expiry_warning_days,
     )

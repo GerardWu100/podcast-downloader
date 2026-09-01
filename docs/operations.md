@@ -170,6 +170,63 @@ missing entry appears only on a machine that ran the generator before building.
 - An immediate single-URL run does not inspect the rest of `urls.txt` or expand older channel and playlist entries.
 - An immediate run never changes the next scheduled time.
 
+## Knowing when it has stopped working
+
+A downloader can fail by doing nothing, and doing nothing is silent. If YouTube
+refuses to list a channel, no video is attempted, so no download fails, so no
+failure notification is sent. The run ends with `0 successful, 0 failed` and
+looks exactly like a week with no new episodes.
+
+Four things now break that silence. All of them are sent as Apprise failures,
+so a setup that only forwards errors still receives them:
+
+| Situation | What is sent | Sent by |
+|---|---|---|
+| Every monitored channel and playlist returned no videos | One alert naming the cookie file and `youtube_player_client` as what to check | The download run |
+| The sign-in cookies expired, or expire within `cookie_expiry_warning_days` | The expiry date and what to do | The download run |
+| The downloader process stopped before downloading anything | The exit status, plus where to look | The scheduler |
+| A scheduled run did not happen while the container was down | The run time that was missed and the last run that finished | The scheduler, on the next start |
+
+A run that worked sends nothing. That is deliberate: a message that always
+arrives cannot prove anything by arriving, and it trains you to ignore the
+channel it arrives on.
+
+Two things are deliberately not alerted. A single channel returning no videos
+is ordinary, so it is written to the activity log as `No videos listed` and
+shown with an `Empty` badge instead. Individual failed downloads already send
+their own message.
+
+## Watching from outside
+
+Nothing inside a dead container can report that it is dead. The last case above
+is covered only after the machine comes back, so a container that hangs or
+never restarts stays silent. `GET /api/health` exists to be polled from outside
+for exactly that:
+
+```bash
+curl -u "$UI_USERNAME:$UI_PASSWORD" http://127.0.0.1:50022/api/health
+```
+
+```json
+{
+  "ok": true,
+  "status": "ok",
+  "last_run_finished_at": "2026-09-03T06:04:11-04:00",
+  "last_run_kind": "scheduled",
+  "next_run_at": "2026-09-05T06:00:00-04:00"
+}
+```
+
+The status code carries the answer, so a monitor needs no JSON parsing: `200`
+while runs are happening on schedule, `503` once the run that was due is more
+than three hours late. A run in progress stays `200` however long it takes, and
+reports `"status": "running"`.
+Point Uptime Kuma, Gatus, or any HTTP monitor at it with the web interface
+username and password, and it will alert when the schedule stops being kept.
+
+`GET /api/ping` cannot do this job. It stays cheerful as long as the web server
+answers, which it does while the scheduler behind it is dead.
+
 ## Reading the activity log
 
 - The browser groups activity by day and marks each run with a `Run started`
@@ -196,6 +253,24 @@ missing entry appears only on a machine that ran the generator before building.
 - The page warns within 14 days of that date, and marks a passed date in red.
 - A file with no sign-in cookies is also called out. It will not get past an
   age check, whatever else it contains.
+
+## The Google account behind the cookies
+
+The cookie file is a live sign-in for whatever account exported it. Two things
+follow from that.
+
+It is a credential. Anyone who reads the file is signed in as that account, on
+YouTube and on everything else the export covered. That is why the file is
+stored with owner-only permissions, kept out of the image, and excluded from
+the Docker build context.
+
+The account also carries the risk. Automated downloading from a signed-in
+account is not what YouTube's terms describe, and accounts have been rate
+limited or disabled for it. If the account holds your email, photos, or
+anything you would mind losing, use a separate throwaway Google account for the
+cookies instead. A throwaway account also makes the recurring cookie refresh
+easier: you can sign it in on one browser profile and export from there without
+disturbing your own session.
 
 ## Downloaded file dates
 

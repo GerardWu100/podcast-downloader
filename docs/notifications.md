@@ -1,8 +1,27 @@
 # Error notifications
 
-The downloader can send each failed download to Apprise. Apprise then forwards
-the alert to Telegram, email, Discord, or another service you configure. The
+The downloader can send its problems to Apprise. Apprise then forwards the
+alert to Telegram, email, Discord, or another service you configure. The
 downloader does not connect to those services directly.
+
+## What gets sent
+
+Every message is sent as an Apprise `failure`, so a setup that only forwards
+errors still receives all of them. A run that worked sends nothing at all.
+
+- Each failed download, naming the URL and the cause.
+- One alert when every monitored channel and playlist returns no videos. This
+  is the failure that would otherwise be silent: nothing is attempted, so
+  nothing fails, so nothing is reported.
+- One alert when the YouTube sign-in cookies have expired, or expire within
+  `cookie_expiry_warning_days` from `config.ini`.
+- One alert when the downloader process stops before downloading anything, such
+  as a missing `yt-dlp`.
+- One alert when the container comes back and finds it missed a scheduled run.
+
+A container that hangs and never comes back cannot report itself. Poll
+`GET /api/health` from a monitor for that; see
+[operations.md](operations.md).
 
 ## Set it up
 

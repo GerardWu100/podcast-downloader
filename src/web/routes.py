@@ -9,7 +9,6 @@ import os
 import secrets
 import threading
 import time
-from datetime import timedelta
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -22,16 +21,18 @@ from fastapi.responses import (
 )
 
 from ..config import ConfigError, PodcastConfig, load_config
-from ..cookie_file import CookieFileStatus, describe_cookie_file
+from ..cookie_file import (
+    MAX_COOKIE_FILE_BYTES,
+    CookieFileStatus,
+    CookieHealth,
+    cookie_health,
+    describe_cookie_file,
+)
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
 from ..media.urls import is_supported_media_url
-from ..schedule import (
-    format_schedule_time,
-    format_time_ago,
-    format_time_until,
-    local_now,
-    next_scheduled_run,
-)
+from ..human_time import format_clock_time, format_time_ago, format_time_until
+from ..log_timezone import local_now
+from ..schedule import next_scheduled_run
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
     ActivityLogStore,
@@ -95,7 +96,9 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 SERVICE_WORKER_SOURCE = (STATIC_DIR / "service-worker.js").read_text(encoding="utf-8")
 COOKIE_FILE_PERMISSION_MODE = 0o600
 NETSCAPE_COOKIE_HEADER = "# Netscape HTTP Cookie File"
-MAX_COOKIE_UPLOAD_BYTES = 5 * 1024 * 1024
+# The upload and the reader share one limit, so a file the page accepts is
+# always a file the settings page can describe.
+MAX_COOKIE_UPLOAD_BYTES = MAX_COOKIE_FILE_BYTES
 
 
 def _app_state_value(
@@ -439,7 +442,8 @@ def _delete_session_cookie(response: RedirectResponse) -> None:
     response.delete_cookie(SESSION_COOKIE)
 
 
-NO_RUN_YET_LABEL = "None yet"
+# Shown by both status cells before anything has happened.
+NOTHING_YET_LABEL = "None yet"
 
 
 def _last_run_label(run_state_store: RunStateStore) -> str:
@@ -464,9 +468,9 @@ def _last_run_label(run_state_store: RunStateStore) -> str:
         return f"Running now - started {started_ago}"
 
     if run_state.finished_at is None:
-        return NO_RUN_YET_LABEL
+        return NOTHING_YET_LABEL
 
-    finished_at_text = format_schedule_time(run_state.finished_at)
+    finished_at_text = format_clock_time(run_state.finished_at)
     finished_ago = format_time_ago(run_state.finished_at, now)
     return f"{finished_at_text} - {finished_ago} ({run_state.kind})"
 
@@ -493,7 +497,7 @@ def _next_run_label(config: PodcastConfig) -> str:
         run_hour=config.scheduled_run_hour,
         interval_days=config.scheduled_run_interval_days,
     )
-    return f"{format_schedule_time(next_run)} - {format_time_until(next_run, now)}"
+    return f"{format_clock_time(next_run)} - {format_time_until(next_run, now)}"
 
 
 # One activity line looks like "[2026-08-19 15:51] Downloaded: creator - ep.mp3".
@@ -505,7 +509,6 @@ DOWNLOADED_FILE_SUFFIX = ".mp3"
 # fails can push completions out of this window, in which case the row reads
 # "None yet" rather than showing a stale name.
 DOWNLOADED_EVENT_SEARCH_LINES = 400
-NO_DOWNLOAD_YET_LABEL = "None yet"
 # Episode names can run very long. Anything past this many characters is cut
 # and replaced with an ellipsis so the status row stays on one line.
 LAST_DOWNLOAD_NAME_MAX_CHARS = 70
@@ -543,7 +546,7 @@ def _last_download_label(activity_store: ActivityLogStore) -> str:
         if len(name) > LAST_DOWNLOAD_NAME_MAX_CHARS:
             name = name[: LAST_DOWNLOAD_NAME_MAX_CHARS - 1].rstrip() + "\u2026"
         return name
-    return NO_DOWNLOAD_YET_LABEL
+    return NOTHING_YET_LABEL
 
 
 @router.get("/help", response_class=HTMLResponse)
@@ -828,9 +831,6 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
     )
 
 
-# How close to expiry the sign-in cookies have to be before the settings page
-# stops stating the date plainly and starts warning about it.
-COOKIE_EXPIRY_WARNING_DAYS = 14
 NO_COOKIE_FILE_LABEL = "No cookie file yet. Downloads run without a YouTube sign-in."
 
 
@@ -850,12 +850,19 @@ def _cookie_summary_line(status: CookieFileStatus, cookie_file: Path) -> str:
     cookie_word = "cookie" if status.cookie_count == 1 else "cookies"
     parts = [cookie_file.name, f"{status.cookie_count} {cookie_word}"]
     if status.updated_at is not None:
-        parts.append(f"uploaded {format_schedule_time(status.updated_at)}")
+        parts.append(f"uploaded {format_clock_time(status.updated_at)}")
     return " - ".join(parts)
 
 
-def _cookie_expiry_line(status: CookieFileStatus) -> tuple[str, str]:
+def _cookie_expiry_line(
+    status: CookieFileStatus,
+    warning_days: int,
+) -> tuple[str, str]:
     """Return the sign-in expiry sentence and the tone to show it in.
+
+    The judgement belongs to ``cookie_file.cookie_health``, which the after-run
+    alert also uses, so the page and the notification cannot disagree about
+    when a file is running out. Only the wording is chosen here.
 
     The date comes from the file itself. It is when the browser would have
     stopped sending the cookie, so it is an upper bound: YouTube can invalidate
@@ -865,6 +872,8 @@ def _cookie_expiry_line(status: CookieFileStatus) -> tuple[str, str]:
     ----------
     status:
         What was read from the cookie file.
+    warning_days:
+        How many days before expiry to start warning, from ``config.ini``.
 
     Returns
     -------
@@ -872,31 +881,34 @@ def _cookie_expiry_line(status: CookieFileStatus) -> tuple[str, str]:
         The sentence, and one of ``""``, ``"warn"``, or ``"err"`` for how
         urgent it is. An empty sentence means there is nothing to show.
     """
-    if not status.exists:
+    now = local_now()
+    health = cookie_health(status, now, warning_days)
+    if health is CookieHealth.ABSENT:
         return "", ""
-    if status.login_cookie_count == 0:
+    if health is CookieHealth.NO_LOGIN_COOKIES:
         return (
             "This file has no YouTube sign-in cookies, so it will not get past "
             "an age check or a sign-in prompt.",
             "warn",
         )
-    if status.earliest_login_expiry is None:
+    if health is CookieHealth.NO_EXPIRY_DATE:
         return (
             "The sign-in cookies in this file carry no expiry date, so they "
             "only last as long as YouTube honours them.",
             "",
         )
 
-    now = local_now()
-    expiry_text = format_schedule_time(status.earliest_login_expiry)
-    if status.earliest_login_expiry <= now:
-        age = format_time_ago(status.earliest_login_expiry, now)
+    expiry = status.earliest_login_expiry
+    assert expiry is not None  # Every remaining state has a date.
+    expiry_text = format_clock_time(expiry)
+    if health is CookieHealth.EXPIRED:
+        age = format_time_ago(expiry, now)
         return f"Sign-in expired on {expiry_text}, {age}. Upload a fresh export.", "err"
 
-    remaining = format_time_until(status.earliest_login_expiry, now)
-    sentence = f"Sign-in stops working by {expiry_text}, {remaining}."
-    warning_threshold = now + timedelta(days=COOKIE_EXPIRY_WARNING_DAYS)
-    if status.earliest_login_expiry <= warning_threshold:
+    sentence = (
+        f"Sign-in stops working by {expiry_text}, {format_time_until(expiry, now)}."
+    )
+    if health is CookieHealth.EXPIRING_SOON:
         return f"{sentence} Export a new file soon.", "warn"
     return sentence, ""
 
@@ -930,9 +942,12 @@ def settings(request: Request, msg: str = "") -> HTMLResponse:
         css_class, display_text = _MSG_DISPLAY[msg]
         msg_html = f'<div class="{css_class}">{html.escape(display_text)}</div>'
 
+    config = _request_config(request)
     cookie_file = _configured_cookie_file(request)
     cookie_status = describe_cookie_file(cookie_file)
-    cookie_expiry, cookie_expiry_tone = _cookie_expiry_line(cookie_status)
+    cookie_expiry, cookie_expiry_tone = _cookie_expiry_line(
+        cookie_status, config.cookie_expiry_warning_days
+    )
 
     notification_settings = _notification_store(request).load()
     return render_settings_page(
@@ -1030,7 +1045,9 @@ def save_notifications_form(
     # An endpoint is only required once notifications are switched on, so the
     # settings can be cleared and saved without tripping validation.
     if is_enabled and validate_server_url(server_url):
-        return RedirectResponse(url="/settings?msg=notifications_invalid", status_code=303)
+        return RedirectResponse(
+            url="/settings?msg=notifications_invalid", status_code=303
+        )
 
     settings = AppriseSettings(
         enabled=is_enabled,
@@ -1042,7 +1059,9 @@ def save_notifications_form(
         _notification_store(request).save(settings)
     except OSError:
         _logger.exception("Could not save notification settings")
-        return RedirectResponse(url="/settings?msg=notifications_error", status_code=303)
+        return RedirectResponse(
+            url="/settings?msg=notifications_error", status_code=303
+        )
 
     return RedirectResponse(url="/settings?msg=notifications_saved", status_code=303)
 

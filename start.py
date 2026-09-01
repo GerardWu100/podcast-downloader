@@ -21,13 +21,22 @@ from pathlib import Path
 import uvicorn
 from src.config import ConfigError, load_config
 from src.credentials import sync_ui_credentials
+from src.human_time import format_clock_time
+from src.log_timezone import local_now
+from src.notifications.apprise_client import notifier_for_data_dir
+from src.run_report import RunAlert, build_failed_run_alert, build_missed_run_alert
 from src.schedule import (
-    format_schedule_time,
-    local_now,
     next_scheduled_run,
     previous_scheduled_run,
+    scheduled_run_is_overdue,
+    seconds_until_next_scheduled_run,
 )
-from src.state.run_state_store import RunKind, RunStateStore, run_state_file_for
+from src.state.run_state_store import (
+    RunKind,
+    RunState,
+    RunStateStore,
+    run_state_file_for,
+)
 from src.trigger import (
     download_trigger,
     pop_full_playlist_download_requests,
@@ -62,7 +71,7 @@ def _next_run_time() -> datetime:
     )
 
 
-def _scheduled_run_was_missed() -> bool:
+def _scheduled_run_was_missed(run_state: RunState) -> bool:
     """Return whether the container was down for the last scheduled run.
 
     A fixed schedule alone would let a restart at 06:05 on a run day cost two
@@ -70,12 +79,65 @@ def _scheduled_run_was_missed() -> bool:
     scheduled time closes that gap without moving the schedule itself. A data
     directory with no recorded run counts as missed, so a first deployment
     starts working immediately.
+
+    No allowance is given here, unlike the health endpoint: at startup the
+    question is simply whether the due run has already happened.
+
+    Parameters
+    ----------
+    run_state:
+        The record as the scheduler found it at startup.
     """
-    last_finished_run = RUN_STATE_STORE.load().finished_at
-    if last_finished_run is None:
-        return True
-    return last_finished_run < previous_scheduled_run(
-        local_now(), run_hour=RUN_HOUR, interval_days=RUN_INTERVAL_DAYS
+    return scheduled_run_is_overdue(
+        run_state.finished_at,
+        now=local_now(),
+        run_hour=RUN_HOUR,
+        interval_days=RUN_INTERVAL_DAYS,
+        grace_seconds=0,
+    )
+
+
+def _send_alert(alert: RunAlert) -> None:
+    """Post one scheduler alert to Apprise, or do nothing when it is not set up.
+
+    The downloader process sends its own alerts. These are the ones only the
+    scheduler can see: a run that never happened, and a run that could not
+    start.
+    """
+    notifier = notifier_for_data_dir(DATA_DIR)
+    if not notifier.settings.is_ready():
+        return
+    result = notifier.send(alert.title, alert.body)
+    if not result.ok:
+        print(f"[scheduler] Could not send an alert: {result.detail}", flush=True)
+
+
+def _report_missed_run(run_state: RunState) -> None:
+    """Tell the operator that a scheduled run did not happen.
+
+    A machine that comes back after being down is the one silent failure the
+    downloader can report on its own. One that never comes back cannot, which
+    is what a watchdog polling ``/api/health`` is for.
+
+    Parameters
+    ----------
+    run_state:
+        The record as the scheduler found it at startup.
+    """
+    if run_state.finished_at is None:
+        # First boot on a fresh data directory. Nothing was missed; there is
+        # simply no history yet.
+        return
+
+    now = local_now()
+    _send_alert(
+        build_missed_run_alert(
+            run_state.finished_at,
+            previous_scheduled_run(
+                now, run_hour=RUN_HOUR, interval_days=RUN_INTERVAL_DAYS
+            ),
+            now,
+        )
     )
 
 
@@ -85,17 +147,27 @@ YTDLP_PACKAGE_SPEC = "yt-dlp[default,curl-cffi]"
 YTDLP_PRERELEASE_MODE = "allow"
 
 
+def _installed_ytdlp_version() -> str:
+    """Return the installed ``yt-dlp`` version, or a note that it is missing.
+
+    A missing binary must not raise here. The scheduler thread exits the whole
+    container on an unhandled error, which would turn "yt-dlp is not installed"
+    into a restart loop instead of a message the downloader can report.
+    """
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--version"], capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return "not installed"
+    return result.stdout.strip() or "unknown"
+
+
 def update_ytdlp() -> bool:
     """Update ``yt-dlp`` when automatic updates are enabled."""
     if not AUTO_UPDATE:
-        result = subprocess.run(
-            ["yt-dlp", "--version"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
         print(
-            f"[scheduler] yt-dlp auto-update disabled; using {result.stdout.strip()}",
+            f"[scheduler] yt-dlp auto-update disabled; using {_installed_ytdlp_version()}",
             flush=True,
         )
         return False
@@ -120,16 +192,10 @@ def update_ytdlp() -> bool:
             "[scheduler] Warning: yt-dlp update failed; continuing with current version",
             flush=True,
         )
-        version_result = subprocess.run(
-            ["yt-dlp", "--version"], capture_output=True, text=True, check=False
-        )
-        print(f"[scheduler] yt-dlp {version_result.stdout.strip()}", flush=True)
+        print(f"[scheduler] yt-dlp {_installed_ytdlp_version()}", flush=True)
         return False
 
-    version_result = subprocess.run(
-        ["yt-dlp", "--version"], capture_output=True, text=True, check=False
-    )
-    print(f"[scheduler] yt-dlp {version_result.stdout.strip()}", flush=True)
+    print(f"[scheduler] yt-dlp {_installed_ytdlp_version()}", flush=True)
     return True
 
 
@@ -174,33 +240,30 @@ def _wait_for_next_scheduled_run() -> None:
     scheduled run.
     """
     while True:
-        next_run = _next_run_time()
-        remaining_seconds = (next_run - local_now()).total_seconds()
+        remaining_seconds = seconds_until_next_scheduled_run(
+            local_now(), run_hour=RUN_HOUR, interval_days=RUN_INTERVAL_DAYS
+        )
         if remaining_seconds <= 0:
             return
         if not download_trigger.wait(timeout=remaining_seconds):
             return
         download_trigger.clear()
         _handle_pending_ui_requests()
-        print(
-            f"[scheduler] Next scheduled run: {format_schedule_time(_next_run_time())}",
-            flush=True,
-        )
+        _announce_next_run()
 
 
-def update_and_run_full_queue(kind: RunKind) -> None:
-    """Refresh ``yt-dlp``, wait for it to settle, then run the whole queue.
+def _announce_next_run(prefix: str = "Next scheduled run") -> None:
+    """Print when the next automatic run is due."""
+    print(f"[scheduler] {prefix}: {format_clock_time(_next_run_time())}", flush=True)
 
-    Parameters
-    ----------
-    kind:
-        Whether the schedule or a catch-up at startup asked for this pass.
-    """
+
+def update_and_run_full_queue() -> None:
+    """Refresh ``yt-dlp``, wait for it to settle, then run the whole queue."""
     print("[scheduler] Updating yt-dlp...", flush=True)
     if update_ytdlp():
         _wait_for_post_update_delay()
     print("[scheduler] Starting download run...", flush=True)
-    run_full_queue_pass(kind)
+    run_full_queue_pass(RunKind.SCHEDULED)
 
 
 def run_full_queue_pass(kind: RunKind) -> None:
@@ -214,44 +277,49 @@ def run_full_queue_pass(kind: RunKind) -> None:
     """
     RUN_STATE_STORE.mark_run_started(kind)
     try:
-        subprocess.run(_cli_command(), check=False, cwd=str(PROJECT_ROOT))
+        result = subprocess.run(_cli_command(), check=False, cwd=str(PROJECT_ROOT))
     finally:
         RUN_STATE_STORE.mark_run_finished()
+
+    # The downloader reports its own problems, but only once it is running. A
+    # process that stops before that has nothing to report with.
+    if result.returncode != 0:
+        print(
+            f"[scheduler] The download run exited with status {result.returncode}.",
+            flush=True,
+        )
+        _send_alert(build_failed_run_alert(result.returncode, local_now()))
 
 
 def run_scheduler() -> None:
     """Run the queue on the configured wall-clock schedule, forever."""
     # A container killed mid-run leaves the "running" flag set, which would
-    # make the web page refuse every later Run request.
-    RUN_STATE_STORE.clear_stale_running_flag()
-    interval_days = RUN_INTERVAL_DAYS
-    day_word = "day" if interval_days == 1 else f"{interval_days} days"
+    # make the web page refuse every later Run request. Clearing it also hands
+    # back the record, so startup reads the file once.
+    run_state = RUN_STATE_STORE.clear_stale_running_flag()
+    day_word = "day" if RUN_INTERVAL_DAYS == 1 else f"{RUN_INTERVAL_DAYS} days"
     print(
         f"[scheduler] Schedule: {RUN_HOUR:02d}:00 local time, every {day_word}",
         flush=True,
     )
-    print(
-        f"[scheduler] Next scheduled run: {format_schedule_time(_next_run_time())}",
-        flush=True,
-    )
-    if _scheduled_run_was_missed():
+    _announce_next_run()
+
+    catching_up = _scheduled_run_was_missed(run_state)
+    if catching_up:
         print(
             "[scheduler] No run since the last scheduled time — catching up now.",
             flush=True,
         )
-        update_and_run_full_queue(RunKind.SCHEDULED)
-        print(
-            f"[scheduler] Done. Next scheduled run: {format_schedule_time(_next_run_time())}",
-            flush=True,
-        )
+        _report_missed_run(run_state)
 
     while True:
-        _wait_for_next_scheduled_run()
-        update_and_run_full_queue(RunKind.SCHEDULED)
-        print(
-            f"[scheduler] Done. Next scheduled run: {format_schedule_time(_next_run_time())}",
-            flush=True,
-        )
+        # The catch-up pass runs before the first wait; every later pass waits
+        # for its scheduled time first.
+        if not catching_up:
+            _wait_for_next_scheduled_run()
+        catching_up = False
+        update_and_run_full_queue()
+        _announce_next_run("Done. Next scheduled run")
 
 
 def _run_immediate_downloads(

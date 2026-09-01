@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 from collections.abc import Callable
 
 from fastapi.responses import HTMLResponse
+
+from ..state.activity_store import NO_ACTIVITY_MESSAGE, NO_DOWNLOAD_LOG_MESSAGE
+
+# Passed to the page as a JSON array so the browser recognises an empty log by
+# the exact sentence the store writes, rather than by a pattern that has to be
+# kept in step with it by hand.
+EMPTY_LOG_MESSAGES_JSON = json.dumps([NO_ACTIVITY_MESSAGE, NO_DOWNLOAD_LOG_MESSAGE])
 
 # Where this project lives. The help page sends people here for the browser
 # extension, which is not served by this application: the extension has to be
@@ -59,7 +67,28 @@ SERVICE_WORKER_SCRIPT = """
     }
 """
 
-BASE_STYLES = """
+DARK_PALETTE_TOKENS = """
+    color-scheme:dark;
+    --bg:#101418; --surface:#171d23; --input-bg:#111820; --input-focus:#0f1720;
+    --border:#2a3440; --text:#e5edf5; --muted:#9aa8b6;
+    --accent:#60a5fa; --accent-hov:#3b82f6; --accent-soft:#12263d;
+    --accent-border:#255783; --ok-bg:#0f2f1d; --ok-text:#86efac;
+    --ok-border:#166534; --warn-bg:#30230d; --warn-text:#facc15;
+    --warn-border:#854d0e; --danger:#fca5a5; --danger-hov:#fecaca;
+    --danger-bg:#2a1215; --danger-border:#7f1d1d;
+    --log-bg:#0a0e14; --log-border:#1e293b; --log-hover:rgba(255,255,255,.035);
+    --log-text:#e2e8f0; --log-time:#94a3b8; --log-ok:#34d399; --log-warn:#fcd34d;
+    --log-err:#fb7185; --log-info:#93c5fd; --log-dim:#64748b; --log-neutral:#cbd5e1;
+    --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
+    --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
+    --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
+    --log-day-bg:rgba(10,14,20,.94); --log-run-bg:rgba(147,197,253,.08);
+    --log-run-edge:rgba(147,197,253,.32); --log-link:#93c5fd; --log-link-hover:#dbeafe;
+    --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
+"""
+
+BASE_STYLES = (
+    """
   :root {
     color-scheme:light dark;
     --bg:#f0f2f5; --surface:#fff; --input-bg:#f8f9fa; --input-focus:#fff;
@@ -80,44 +109,14 @@ BASE_STYLES = """
     --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06); --r:10px;
   }
   body.theme-dark {
-    color-scheme:dark;
-    --bg:#101418; --surface:#171d23; --input-bg:#111820; --input-focus:#0f1720;
-    --border:#2a3440; --text:#e5edf5; --muted:#9aa8b6;
-    --accent:#60a5fa; --accent-hov:#3b82f6; --accent-soft:#12263d;
-    --accent-border:#255783; --ok-bg:#0f2f1d; --ok-text:#86efac;
-    --ok-border:#166534; --warn-bg:#30230d; --warn-text:#facc15;
-    --warn-border:#854d0e; --danger:#fca5a5; --danger-hov:#fecaca;
-    --danger-bg:#2a1215; --danger-border:#7f1d1d;
-    --log-bg:#0a0e14; --log-border:#1e293b; --log-hover:rgba(255,255,255,.035);
-    --log-text:#e2e8f0; --log-time:#94a3b8; --log-ok:#34d399; --log-warn:#fcd34d;
-    --log-err:#fb7185; --log-info:#93c5fd; --log-dim:#64748b; --log-neutral:#cbd5e1;
-    --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
-    --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
-    --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
-    --log-day-bg:rgba(10,14,20,.94); --log-run-bg:rgba(147,197,253,.08);
-    --log-run-edge:rgba(147,197,253,.32); --log-link:#93c5fd; --log-link-hover:#dbeafe;
-    --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
-  }
+"""
+    + DARK_PALETTE_TOKENS
+    + """  }
   @media (prefers-color-scheme:dark) {
     body:not(.theme-light) {
-      color-scheme:dark;
-      --bg:#101418; --surface:#171d23; --input-bg:#111820; --input-focus:#0f1720;
-      --border:#2a3440; --text:#e5edf5; --muted:#9aa8b6;
-      --accent:#60a5fa; --accent-hov:#3b82f6; --accent-soft:#12263d;
-      --accent-border:#255783; --ok-bg:#0f2f1d; --ok-text:#86efac;
-      --ok-border:#166534; --warn-bg:#30230d; --warn-text:#facc15;
-      --warn-border:#854d0e; --danger:#fca5a5; --danger-hov:#fecaca;
-      --danger-bg:#2a1215; --danger-border:#7f1d1d;
-      --log-bg:#0a0e14; --log-border:#1e293b; --log-hover:rgba(255,255,255,.035);
-      --log-text:#e2e8f0; --log-time:#94a3b8; --log-ok:#34d399; --log-warn:#fcd34d;
-      --log-err:#fb7185; --log-info:#93c5fd; --log-dim:#64748b; --log-neutral:#cbd5e1;
-      --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
-      --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
-      --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
-      --log-day-bg:rgba(10,14,20,.94); --log-run-bg:rgba(147,197,253,.08);
-      --log-run-edge:rgba(147,197,253,.32); --log-link:#93c5fd; --log-link-hover:#dbeafe;
-      --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
-    }
+"""
+    + DARK_PALETTE_TOKENS
+    + """    }
   }
   *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
   body {
@@ -212,6 +211,7 @@ input:focus,select:focus,button:focus-visible,a:focus-visible {
 .text-link { color:var(--accent); text-decoration:none; font-weight:600; }
 .text-link:hover { text-decoration:underline; text-underline-offset:3px; }
 """
+)
 
 
 # Chrome shared by the signed-in pages: the queue and the settings page. These
@@ -384,12 +384,84 @@ LOG_PANEL_STYLES = r"""
 #log-summary .count-err { color:var(--log-err); font-weight:650; }
 #log-summary .count-warn { color:var(--log-warn); font-weight:650; }
 .log-empty-filtered { display:flex; align-items:center; justify-content:center; min-height:120px; padding:24px; color:var(--log-dim); font-style:italic; }
+.log-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; flex-wrap:wrap; }
+.log-controls { display:flex; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); }
+.log-controls label { display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; }
+#log-ts {
+  font-variant-numeric:tabular-nums; font-size:.72rem; color:var(--muted);
+  background:var(--input-bg); border:1px solid var(--border); border-radius:999px;
+  padding:2px 10px;
+}
+.log-source {
+  font-size:.75rem; font-weight:600; color:var(--text); background:var(--input-bg);
+  border:1px solid var(--border); border-radius:999px; padding:5px 12px; cursor:pointer;
+  transition:border-color .15s,box-shadow .15s;
+}
+.log-source:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+.btn-ghost {
+  padding:5px 12px; font-size:.75rem; font-weight:600; background:transparent;
+  color:var(--accent); border:1px solid var(--accent-border); border-radius:999px;
+  cursor:pointer; transition:all .15s;
+}
+.btn-ghost:hover { background:var(--accent-soft); }
+#log-box {
+  background:var(--log-bg); color:var(--log-text); border:1px solid var(--log-border);
+  font-family:"SF Mono","Fira Code","Consolas",monospace;
+  font-size:.74rem; line-height:1.45; border-radius:10px; padding:0 0 6px;
+  height:clamp(300px,46vh,620px); resize:vertical; overflow-y:auto; word-break:break-word;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+#log-box::-webkit-scrollbar { width:6px; }
+#log-box::-webkit-scrollbar-thumb { background:var(--scrollbar); border-radius:999px; }
+.log-empty {
+  display:flex; align-items:center; justify-content:center; min-height:280px;
+  padding:24px; color:var(--log-dim); font-style:italic; text-align:center;
+}
+.log-line {
+  display:flex; align-items:flex-start; gap:10px; padding:7px 14px;
+  border-left:3px solid transparent; transition:background .12s;
+}
+.log-line + .log-line { border-top:1px solid rgba(255,255,255,.04); }
+.log-line:hover { background:var(--log-hover); }
+.log-line--ok { border-left-color:var(--log-ok); }
+.log-line--warn { border-left-color:var(--log-warn); }
+.log-line--err { border-left-color:var(--log-err); }
+.log-line--info { border-left-color:var(--log-info); }
+.log-line--dim { border-left-color:var(--log-dim); }
+.log-line--neutral { border-left-color:rgba(255,255,255,.12); }
+.log-time {
+  flex-shrink:0; min-width:64px; font-size:.68rem; color:var(--log-time);
+  font-variant-numeric:tabular-nums; padding-top:1px;
+}
+.log-badge,.log-level {
+  flex-shrink:0; min-width:42px; text-align:center;
+  font-size:.58rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+  padding:2px 6px; border-radius:999px; margin-top:1px;
+}
+.log-badge--ok,.log-level--ok { color:var(--log-ok); background:var(--log-ok-soft); }
+.log-badge--warn,.log-level--warn { color:var(--log-warn); background:var(--log-warn-soft); }
+.log-badge--err,.log-level--err { color:var(--log-err); background:var(--log-err-soft); }
+.log-badge--info,.log-level--info { color:var(--log-info); background:var(--log-info-soft); }
+.log-badge--dim,.log-level--dim { color:var(--log-dim); background:var(--log-dim-soft); }
+.log-badge--neutral,.log-level--neutral { color:var(--log-neutral); background:var(--log-dim-soft); }
+.log-msg { flex:1; color:var(--log-text); white-space:pre-wrap; }
+.log-line--ok .log-msg { color:var(--log-ok); }
+.log-line--warn .log-msg { color:var(--log-warn); }
+.log-line--err .log-msg { color:var(--log-err); }
+.log-line--info .log-msg { color:var(--log-info); }
+.log-line--dim .log-msg { color:var(--log-dim); }
 """
 
 # The activity panel: fetch, parse, group by day, filter, and render. Kept out
 # of the page f-string so its braces and regular expressions are not doubled.
 ACTIVITY_LOG_SCRIPT = r"""
 let logTimer = null;
+// What the panel is currently showing. Re-rendering identical text would throw
+// away any selection the reader has made and make the counts announce
+// themselves again to a screen reader, every 15 seconds, for nothing.
+let shownText = null;
+let shownSource = null;
+let shownFilter = null;
 const logSourceSelect = document.getElementById('log-source');
 const logFilterSelect = document.getElementById('log-filter');
 const logSummary = document.getElementById('log-summary');
@@ -407,10 +479,10 @@ const ACTIVITY_KINDS = [
   { test: /^Failed:\s*/i, kind: 'err', label: 'Fail', strip: true },
   { test: /^Waiting for age gate:\s*/i, kind: 'warn', label: 'Wait', strip: true },
   { test: /^Skipped Short:\s*/i, kind: 'warn', label: 'Skip', strip: true },
-  { test: /^Run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
-  { test: /^Playlist run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
-  { test: /^Run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
-  { test: /^Playlist run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
+  { test: /^No videos listed:\s*/i, kind: 'warn', label: 'Empty', strip: true },
+  { test: /^Needs attention:\s*/i, kind: 'err', label: 'Alert', strip: true },
+  { test: /^(Playlist )?Run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
+  { test: /^(Playlist )?Run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
   { test: /^Deleted expired MP3:\s*/i, kind: 'dim', label: 'Keep', strip: true },
   { test: /^Retention cleanup/i, kind: 'dim', label: 'Keep' },
 ];
@@ -442,8 +514,15 @@ function classifyDownload(level, message) {
 // A failed line is only useful if you can reach the video it names, so URLs
 // become links. The visible text drops the scheme and any long tail; the full
 // address stays in the link's tooltip.
+// The store's own empty-state sentences, so rewording one in Python cannot
+// leave the panel rendering it as a fake log entry.
+const EMPTY_LOG_MESSAGES = ACTIVITY_STORE_EMPTY_MESSAGES;
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/g;
 const URL_TEXT_MAX_CHARS = 52;
+// Hoisted so a render does not build two RegExp objects per log line.
+const ACTIVITY_LINE_PATTERN = /^\[([^\]]+)\]\s*(.*)$/;
+const DOWNLOAD_LINE_PATTERN =
+  /^\[([^\]]+)\]\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)$/;
 
 function shortenUrl(url) {
   const bare = url.replace(/^https?:\/\//, '').replace(/^www\./, '');
@@ -475,17 +554,14 @@ function splitTimestamp(timestamp) {
   return { day: parts[0], time: parts[1] };
 }
 
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-                     'August', 'September', 'October', 'November', 'December'];
+const DAY_HEADING_FORMAT = { weekday: 'long', day: 'numeric', month: 'long' };
 
 function dayHeadingText(day) {
   const parts = day.split('-');
   if (parts.length !== 3) return day;
   const logDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
   if (isNaN(logDate.getTime())) return day;
-  const written = DAY_NAMES[logDate.getDay()] + ' ' + Number(parts[2]) + ' ' +
-    MONTH_NAMES[logDate.getMonth()];
+  const written = logDate.toLocaleDateString(undefined, DAY_HEADING_FORMAT);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dayGap = Math.round((today - logDate) / 86400000);
@@ -499,7 +575,7 @@ function parseLogLines(raw, source) {
     if (!line.trim()) return null;
 
     if (source === 'download') {
-      const match = line.match(/^\[([^\]]+)\]\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)$/);
+      const match = line.match(DOWNLOAD_LINE_PATTERN);
       if (match) {
         const stamp = splitTimestamp(match[1]);
         return {
@@ -509,7 +585,7 @@ function parseLogLines(raw, source) {
         };
       }
     } else {
-      const match = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+      const match = line.match(ACTIVITY_LINE_PATTERN);
       if (match) {
         const stamp = splitTimestamp(match[1]);
         const classified = classifyActivity(match[2]);
@@ -549,9 +625,12 @@ function renderEntry(entry) {
 }
 
 function summarize(entries) {
-  const done = entries.filter(e => e.kind === 'ok').length;
-  const failed = entries.filter(e => e.kind === 'err').length;
-  const waiting = entries.filter(e => e.kind === 'warn').length;
+  let done = 0, failed = 0, waiting = 0;
+  for (const entry of entries) {
+    if (entry.kind === 'ok') done++;
+    else if (entry.kind === 'err') failed++;
+    else if (entry.kind === 'warn') waiting++;
+  }
   const counts = [];
   if (done) counts.push('<span class="count-ok">' + done + '</span> done');
   if (failed) counts.push('<span class="count-err">' + failed + '</span> failed');
@@ -561,10 +640,10 @@ function summarize(entries) {
 }
 
 function renderLogPanel(raw, source, filter) {
-  const emptyMessage = /^No (activity|log entries) yet\./i.test(raw.trim());
-  if (!raw.trim() || emptyMessage) {
+  const trimmed = raw.trim();
+  if (!trimmed || EMPTY_LOG_MESSAGES.includes(trimmed)) {
     logSummary.innerHTML = '';
-    return '<div class="log-empty">' + esc(raw.trim() || 'No entries yet.') + '</div>';
+    return '<div class="log-empty">' + esc(trimmed || 'No entries yet.') + '</div>';
   }
 
   const entries = parseLogLines(raw, source);
@@ -602,10 +681,16 @@ async function loadLogs() {
     }
     if (!response.ok) return;
     const text = await response.text();
-    const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 60;
-    logBox.innerHTML = renderLogPanel(text, source, logFilterSelect.value);
-    if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+    const filter = logFilterSelect.value;
     document.getElementById('log-ts').textContent = new Date().toLocaleTimeString();
+    if (text === shownText && source === shownSource && filter === shownFilter) return;
+
+    const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 60;
+    logBox.innerHTML = renderLogPanel(text, source, filter);
+    if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+    shownText = text;
+    shownSource = source;
+    shownFilter = filter;
   } catch (_) {}
 }
 
@@ -717,6 +802,15 @@ def render_help_page(
         <li>If the server was switched off at the scheduled time, it runs once when it comes back and then returns to the usual times.</li>
       </ul>
 
+      <h2>When you get told</h2>
+      <p>If notifications are set up, only problems are sent. A run that worked sends nothing.</p>
+      <ul>
+        <li>A download that failed, with the reason.</li>
+        <li>A run where none of your channels or playlists would list at all. Nothing is attempted in that case, so nothing fails, and this message is the only sign.</li>
+        <li>Sign-in cookies that have expired, or are about to.</li>
+        <li>A run that stopped before it could download anything, and a scheduled run that did not happen while the server was off.</li>
+      </ul>
+
       <h2>What happens to a download</h2>
       <ul>
         <li>A new video waits before downloading, so SponsorBlock has time to publish its segment data. <strong>Run now</strong> skips that wait.</li>
@@ -798,6 +892,11 @@ uv run python main.py -f custom_urls.txt -o ./custom_downloads</code></pre>
         That date comes from the file itself, so it is the latest it can last:
         YouTube can end a sign-in sooner. When the date has passed, or the page
         says the file has no sign-in cookies, export a fresh one.
+      </p>
+      <p class="note">
+        Use a throwaway Google account for this if you can. The file is a live sign-in for whatever
+        account exported it, and automated downloading is not what YouTube's terms describe, so the
+        account carries some risk.
       </p>
       <p class="note">
         Cookie exports can contain private sign-in data for many websites. Keep the file private.
@@ -1198,72 +1297,6 @@ def render_queue_page(
     }}
     .btn-remove:hover {{ background:var(--danger-bg); border-color:var(--danger-border); color:var(--danger-hov); }}
     .empty {{ font-size:.85rem; color:var(--muted); font-style:italic; }}
-    .log-bar {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; flex-wrap:wrap; }}
-    .log-controls {{ display:flex; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); }}
-    .log-controls label {{ display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; }}
-    #log-ts {{
-      font-variant-numeric:tabular-nums; font-size:.72rem; color:var(--muted);
-      background:var(--input-bg); border:1px solid var(--border); border-radius:999px;
-      padding:2px 10px;
-    }}
-    .log-source {{
-      font-size:.75rem; font-weight:600; color:var(--text); background:var(--input-bg);
-      border:1px solid var(--border); border-radius:999px; padding:5px 12px; cursor:pointer;
-      transition:border-color .15s,box-shadow .15s;
-    }}
-    .log-source:focus {{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }}
-    .btn-ghost {{
-      padding:5px 12px; font-size:.75rem; font-weight:600; background:transparent;
-      color:var(--accent); border:1px solid var(--accent-border); border-radius:999px;
-      cursor:pointer; transition:all .15s;
-    }}
-    .btn-ghost:hover {{ background:var(--accent-soft); }}
-    #log-box {{
-      background:var(--log-bg); color:var(--log-text); border:1px solid var(--log-border);
-      font-family:"SF Mono","Fira Code","Consolas",monospace;
-      font-size:.74rem; line-height:1.45; border-radius:10px; padding:0 0 6px;
-      height:clamp(300px,46vh,620px); resize:vertical; overflow-y:auto; word-break:break-word;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
-    }}
-    #log-box::-webkit-scrollbar {{ width:6px; }}
-    #log-box::-webkit-scrollbar-thumb {{ background:var(--scrollbar); border-radius:999px; }}
-    .log-empty {{
-      display:flex; align-items:center; justify-content:center; min-height:280px;
-      padding:24px; color:var(--log-dim); font-style:italic; text-align:center;
-    }}
-    .log-line {{
-      display:flex; align-items:flex-start; gap:10px; padding:7px 14px;
-      border-left:3px solid transparent; transition:background .12s;
-    }}
-    .log-line + .log-line {{ border-top:1px solid rgba(255,255,255,.04); }}
-    .log-line:hover {{ background:var(--log-hover); }}
-    .log-line--ok {{ border-left-color:var(--log-ok); }}
-    .log-line--warn {{ border-left-color:var(--log-warn); }}
-    .log-line--err {{ border-left-color:var(--log-err); }}
-    .log-line--info {{ border-left-color:var(--log-info); }}
-    .log-line--dim {{ border-left-color:var(--log-dim); }}
-    .log-line--neutral {{ border-left-color:rgba(255,255,255,.12); }}
-    .log-time {{
-      flex-shrink:0; min-width:64px; font-size:.68rem; color:var(--log-time);
-      font-variant-numeric:tabular-nums; padding-top:1px;
-    }}
-    .log-badge,.log-level {{
-      flex-shrink:0; min-width:42px; text-align:center;
-      font-size:.58rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
-      padding:2px 6px; border-radius:999px; margin-top:1px;
-    }}
-    .log-badge--ok,.log-level--ok {{ color:var(--log-ok); background:var(--log-ok-soft); }}
-    .log-badge--warn,.log-level--warn {{ color:var(--log-warn); background:var(--log-warn-soft); }}
-    .log-badge--err,.log-level--err {{ color:var(--log-err); background:var(--log-err-soft); }}
-    .log-badge--info,.log-level--info {{ color:var(--log-info); background:var(--log-info-soft); }}
-    .log-badge--dim,.log-level--dim {{ color:var(--log-dim); background:var(--log-dim-soft); }}
-    .log-badge--neutral,.log-level--neutral {{ color:var(--log-neutral); background:var(--log-dim-soft); }}
-    .log-msg {{ flex:1; color:var(--log-text); white-space:pre-wrap; }}
-    .log-line--ok .log-msg {{ color:var(--log-ok); }}
-    .log-line--warn .log-msg {{ color:var(--log-warn); }}
-    .log-line--err .log-msg {{ color:var(--log-err); }}
-    .log-line--info .log-msg {{ color:var(--log-info); }}
-    .log-line--dim .log-msg {{ color:var(--log-dim); }}
     .brand p {{ margin-top:3px; font-size:.8rem; }}
     /* One quiet line inside the card rather than a full-width panel: the last
        episode name and the last update time are worth glancing at, not worth a
@@ -1377,6 +1410,7 @@ def render_queue_page(
 
       <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
     {THEME_SCRIPT}
+    const ACTIVITY_STORE_EMPTY_MESSAGES = {EMPTY_LOG_MESSAGES_JSON};
     {ACTIVITY_LOG_SCRIPT}
       </script>
     </body>

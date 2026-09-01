@@ -10,6 +10,9 @@ from src.log_timezone import LOG_TIME_ZONE
 from src.web import routes
 
 NOW = datetime.now(LOG_TIME_ZONE)
+# The settings page reads this from config.ini; the tests pin it so the
+# wording under test does not move with the deployment.
+WARNING_DAYS = 14
 
 
 def write_cookie_file(
@@ -126,14 +129,14 @@ def test_settings_wording_warns_only_when_expiry_is_close(tmp_path: Path) -> Non
 
     write_cookie_file(cookie_file, [("SID", NOW + timedelta(days=90))])
     far_sentence, far_tone = routes._cookie_expiry_line(
-        describe_cookie_file(cookie_file)
+        describe_cookie_file(cookie_file), WARNING_DAYS
     )
     assert far_tone == ""
     assert "Sign-in stops working by" in far_sentence
 
     write_cookie_file(cookie_file, [("SID", NOW + timedelta(days=3))])
     soon_sentence, soon_tone = routes._cookie_expiry_line(
-        describe_cookie_file(cookie_file)
+        describe_cookie_file(cookie_file), WARNING_DAYS
     )
     assert soon_tone == "warn"
     assert "Export a new file soon." in soon_sentence
@@ -145,14 +148,14 @@ def test_settings_wording_calls_out_an_expired_or_useless_file(tmp_path: Path) -
 
     write_cookie_file(cookie_file, [("SID", NOW - timedelta(days=2))])
     expired_sentence, expired_tone = routes._cookie_expiry_line(
-        describe_cookie_file(cookie_file)
+        describe_cookie_file(cookie_file), WARNING_DAYS
     )
     assert expired_tone == "err"
     assert "Sign-in expired on" in expired_sentence
 
     write_cookie_file(cookie_file, [("PREF", NOW + timedelta(days=200))])
     missing_sentence, missing_tone = routes._cookie_expiry_line(
-        describe_cookie_file(cookie_file)
+        describe_cookie_file(cookie_file), WARNING_DAYS
     )
     assert missing_tone == "warn"
     assert "no YouTube sign-in cookies" in missing_sentence

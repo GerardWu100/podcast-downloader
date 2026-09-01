@@ -9,6 +9,7 @@ import subprocess
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -280,7 +281,9 @@ def test_write_download_metadata_keeps_original_mp3_when_copy_back_fails(
         destination_file.write(b"partial")
         raise OSError("no space left on device")
 
-    monkeypatch.setattr(audio_metadata_module.shutil, "copyfileobj", failing_copyfileobj)
+    monkeypatch.setattr(
+        audio_metadata_module.shutil, "copyfileobj", failing_copyfileobj
+    )
 
     writer = AudioMetadataWriter(run_command=fake_run)
     with pytest.raises(OSError):
@@ -2386,9 +2389,7 @@ def test_queue_run_records_how_many_sources_it_started_with(
 ) -> None:
     """The start line counts queue entries, so a reader can see the scope."""
     urls_file = tmp_path / "urls.txt"
-    urls_file.write_text(
-        "https://videos.example.com/watch/one\n", encoding="utf-8"
-    )
+    urls_file.write_text("https://videos.example.com/watch/one\n", encoding="utf-8")
     activity_log_file = tmp_path / "activity.log"
 
     downloader = PodcastDownloadService(
@@ -2413,3 +2414,83 @@ def test_queue_run_records_how_many_sources_it_started_with(
     activity_text = activity_log_file.read_text(encoding="utf-8")
     assert "Run started: 1 source in the queue" in activity_text
     assert "Run finished: 0 successful, 1 failed" in activity_text
+
+
+class _RecordingNotifier:
+    """Capture run alerts instead of posting them to Apprise."""
+
+    settings = SimpleNamespace(is_ready=lambda: True)
+
+    def __init__(self, sent: list[tuple[str, str]]) -> None:
+        """Append every message to the caller's list."""
+        self.sent = sent
+
+    def send(self, title: str, body: str, **_: object) -> SimpleNamespace:
+        """Record one message and report it as delivered."""
+        self.sent.append((title, body))
+        return SimpleNamespace(ok=True, status_code=200, detail="")
+
+
+def test_a_run_where_every_listing_is_empty_sends_one_alert(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Nothing fails when nothing is listed, so the run itself must speak up."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(
+        "https://www.youtube.com/@one\nhttps://www.youtube.com/@two\n",
+        encoding="utf-8",
+    )
+    sent: list[tuple[str, str]] = []
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        notifier=_RecordingNotifier(sent),
+    )
+    monkeypatch.setattr(
+        downloads_service_module,
+        "expand_channel_or_playlist",
+        lambda *args, **kwargs: [],
+    )
+
+    successful, failed = downloader.download_all()
+
+    assert (successful, failed) == (0, 0)
+    assert len(sent) == 1
+    title, body = sent[0]
+    assert title == "Podcast downloader needs attention"
+    assert "returned no videos" in body
+    activity_text = (tmp_path / "activity.log").read_text(encoding="utf-8")
+    assert activity_text.count("No videos listed:") == 2
+    assert "Needs attention:" in activity_text
+
+
+def test_a_run_that_lists_videos_sends_nothing(tmp_path, monkeypatch) -> None:
+    """A working run must stay silent, or the alert channel becomes noise."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("https://www.youtube.com/@one\n", encoding="utf-8")
+    sent: list[tuple[str, str]] = []
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        delay_seconds=0.0,
+        notifier=_RecordingNotifier(sent),
+    )
+    monkeypatch.setattr(
+        downloads_service_module,
+        "expand_channel_or_playlist",
+        lambda *args, **kwargs: ["https://www.youtube.com/watch?v=already0001"],
+    )
+    # The archive already holds it, which is what an ordinary run looks like.
+    downloader.archive_store.append("https://www.youtube.com/watch?v=already0001")
+
+    successful, failed = downloader.download_all()
+
+    assert (successful, failed) == (1, 0)
+    assert sent == []

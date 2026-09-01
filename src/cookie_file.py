@@ -22,7 +22,8 @@ handed to yt-dlp, not to this code.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from enum import StrEnum
 from pathlib import Path
 
 from .log_timezone import LOG_TIME_ZONE
@@ -33,6 +34,8 @@ EXPIRY_FIELD_INDEX = 4
 NAME_FIELD_INDEX = 5
 SESSION_COOKIE_EXPIRY = 0
 # A cookie file is not a document; anything this large is not one of ours.
+# The web upload refuses the same size, so a file the page accepted can always
+# be read back by the code that describes it.
 MAX_COOKIE_FILE_BYTES = 5 * 1024 * 1024
 
 # The cookies that carry a YouTube sign-in. When the earliest of these expires,
@@ -53,6 +56,23 @@ YOUTUBE_LOGIN_COOKIE_NAMES = frozenset(
         "__Secure-3PAPISID",
     }
 )
+
+
+class CookieHealth(StrEnum):
+    """How much use the cookie file still is.
+
+    The settings page and the after-run alert both need this judgement, and
+    they used to make it separately with different thresholds. Deciding it once
+    here means the page and the notification can never disagree; they only
+    choose their own wording for the same answer.
+    """
+
+    ABSENT = "absent"
+    NO_LOGIN_COOKIES = "no_login_cookies"
+    NO_EXPIRY_DATE = "no_expiry_date"
+    EXPIRED = "expired"
+    EXPIRING_SOON = "expiring_soon"
+    GOOD = "good"
 
 
 @dataclass(frozen=True)
@@ -178,3 +198,41 @@ def describe_cookie_file(cookie_file: Path | None) -> CookieFileStatus:
         earliest_login_expiry=earliest_login_expiry,
         updated_at=updated_at,
     )
+
+
+def cookie_health(
+    status: CookieFileStatus,
+    now: datetime,
+    warning_days: int,
+) -> CookieHealth:
+    """Judge how much use the cookie file still is.
+
+    Parameters
+    ----------
+    status:
+        What was read from the cookie file.
+    now:
+        Reference instant, timezone-aware.
+    warning_days:
+        How many days before expiry to start calling the file
+        ``EXPIRING_SOON``. Zero turns that early state off; an expired file is
+        always reported as expired.
+
+    Returns
+    -------
+    CookieHealth
+        One of the six states, from "there is no file" to "good".
+    """
+    if not status.exists:
+        return CookieHealth.ABSENT
+    if status.login_cookie_count == 0:
+        return CookieHealth.NO_LOGIN_COOKIES
+    if status.earliest_login_expiry is None:
+        return CookieHealth.NO_EXPIRY_DATE
+    if status.earliest_login_expiry <= now:
+        return CookieHealth.EXPIRED
+    if warning_days > 0 and status.earliest_login_expiry <= now + timedelta(
+        days=warning_days
+    ):
+        return CookieHealth.EXPIRING_SOON
+    return CookieHealth.GOOD

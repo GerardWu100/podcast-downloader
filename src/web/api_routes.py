@@ -44,10 +44,13 @@ from pydantic import BaseModel, Field
 
 from ..config import PodcastConfig
 from ..credentials import load_ui_accounts
+from ..log_timezone import local_now
+from ..schedule import next_scheduled_run, scheduled_run_is_overdue
 from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
+from ..state.run_state_store import RunStateStore
 from ..trigger import DownloadTrigger
 from .account_auth import CredentialCheck, check_credentials
 from .auth import client_ip
@@ -204,6 +207,65 @@ def ping(request: Request) -> JSONResponse:
     """
     _require_account(request)
     return JSONResponse({"ok": True, "app": "podcast-downloader"})
+
+
+@router.get("/health")
+def health(request: Request) -> JSONResponse:
+    """Report whether the scheduled run actually happened.
+
+    A downloader can fail by doing nothing, and doing nothing is silent: no
+    download fails, so no notification is sent. Nothing inside a dead container
+    can report that it is dead, so this endpoint exists to be polled from
+    outside by a monitor such as Uptime Kuma.
+
+    The status code carries the answer, so a monitor needs no JSON parsing:
+    200 while runs are happening on schedule, 503 once the run that was due is
+    late by more than the allowance in ``src/schedule.py``. ``/api/ping`` cannot
+    replace this: it stays cheerful while the web server answers and the
+    scheduler behind it is dead.
+
+    Returns
+    -------
+    JSONResponse
+        The last run, the next run, and whether the schedule is being kept.
+    """
+    _require_account(request)
+
+    state = request.app.state
+    run_state = _dependency(state, "run_state_store", RunStateStore).load()
+    config = _dependency(state, "config", PodcastConfig)
+    now = local_now()
+    next_run = next_scheduled_run(
+        now,
+        run_hour=config.scheduled_run_hour,
+        interval_days=config.scheduled_run_interval_days,
+    )
+    overdue = scheduled_run_is_overdue(
+        run_state.finished_at,
+        now=now,
+        run_hour=config.scheduled_run_hour,
+        interval_days=config.scheduled_run_interval_days,
+        run_in_progress=run_state.is_running,
+    )
+    if run_state.is_running:
+        status = "running"
+    elif overdue:
+        status = "overdue"
+    else:
+        status = "ok"
+
+    return JSONResponse(
+        {
+            "ok": not overdue,
+            "status": status,
+            "last_run_finished_at": (
+                run_state.finished_at.isoformat() if run_state.finished_at else None
+            ),
+            "last_run_kind": str(run_state.kind),
+            "next_run_at": next_run.isoformat(),
+        },
+        status_code=503 if overdue else 200,
+    )
 
 
 @router.post("/add-url")

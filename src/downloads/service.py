@@ -16,11 +16,14 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from ..config import (
     DEFAULT_CHANNEL_VIDEO_COUNT,
+    DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
     DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
     DEFAULT_YOUTUBE_PLAYER_CLIENT,
     DEFAULT_YTDLP_VERBOSE,
 )
-from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT
+from ..cookie_file import describe_cookie_file
+from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT, local_now
+from ..run_report import RunFacts, build_run_alert
 from ..notifications.apprise_client import AppriseNotifier
 from ..media.youtube import (
     expand_channel_or_playlist,
@@ -135,6 +138,7 @@ class PodcastDownloadService:
         download_timeout_seconds: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
         youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
         ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE,
+        cookie_expiry_warning_days: int = DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
         notifier: AppriseNotifier | None = None,
         ytdlp_client: YtDlpClient | None = None,
     ) -> None:
@@ -181,6 +185,10 @@ class PodcastDownloadService:
         ytdlp_verbose:
             When true, run every ``yt-dlp`` attempt with ``-v``. Retry attempts
             are verbose either way.
+        cookie_expiry_warning_days:
+            How many days before the YouTube sign-in expires to start warning
+            after a run. Zero turns the warning off; an expired file is always
+            reported.
         notifier:
             Optional Apprise sender. Each failure is pushed to it so problems
             surface without anyone opening the web UI. ``None`` disables
@@ -204,6 +212,7 @@ class PodcastDownloadService:
         self.download_timeout_seconds = download_timeout_seconds
         self.youtube_player_client = youtube_player_client
         self.ytdlp_verbose = ytdlp_verbose
+        self.cookie_expiry_warning_days = cookie_expiry_warning_days
         self.notifier = notifier
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
@@ -585,6 +594,35 @@ class PodcastDownloadService:
         else:
             self._record_activity(f"Failed: {video_url}")
         self._notify_failure(video_url, short_reason)
+
+    def _notify_if_run_needs_attention(self, facts: RunFacts) -> None:
+        """Send one message when a finished run looks wrong, and none when it does not.
+
+        Silence is the point. A run that worked sends nothing, so an alert that
+        does arrive means something, and the notification channel stays worth
+        reading.
+
+        Parameters
+        ----------
+        facts:
+            What the finished run did.
+        """
+        if self.notifier is None or not self.notifier.settings.is_ready():
+            return
+
+        alert = build_run_alert(
+            facts,
+            describe_cookie_file(self.cookies_file),
+            now=local_now(),
+            cookie_warning_days=self.cookie_expiry_warning_days,
+        )
+        if alert is None:
+            return
+
+        self._record_activity(f"Needs attention: {alert.summary}")
+        result = self.notifier.send(alert.title, alert.body)
+        if not result.ok:
+            self.logger.warning("Could not send the run alert: %s", result.detail)
 
     def _notify_failure(self, video_url: str, reason: str) -> None:
         """Push one failure to Apprise when notifications are configured.
@@ -1085,9 +1123,20 @@ class PodcastDownloadService:
         self._run_retention_cleanup(retention_dirs)
 
         download_targets: list[DownloadTarget] = []
+        # A source that has to be listed first (a channel or a playlist) is the
+        # one that can fail without anything failing: yt-dlp returns no entries,
+        # so no download is ever attempted. Counting them here is what lets the
+        # end of this method tell a blocked run from a quiet week.
+        listing_source_count = 0
+        listing_sources_without_videos = 0
 
         for url in urls:
             expanded_targets = self._expand_queue_url(url)
+            if is_channel_or_playlist(url):
+                listing_source_count += 1
+                if not expanded_targets:
+                    listing_sources_without_videos += 1
+                    self._record_activity(f"No videos listed: {url}")
             for target in expanded_targets:
                 if (
                     not target.use_archive
@@ -1118,6 +1167,14 @@ class PodcastDownloadService:
                 time.sleep(self.delay_seconds)
 
         self._record_activity(f"Run finished: {successful} successful, {failed} failed")
+        self._notify_if_run_needs_attention(
+            RunFacts(
+                listing_source_count=listing_source_count,
+                listing_sources_without_videos=listing_sources_without_videos,
+                videos_attempted=total,
+                downloads_failed=failed,
+            )
+        )
         return successful, failed
 
     def download_full_playlist_now(self, playlist_url: str) -> tuple[int, int]:

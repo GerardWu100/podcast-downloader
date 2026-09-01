@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import fcntl
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
-from ..log_timezone import LOG_TIME_ZONE
+from ..log_timezone import LOG_TIME_ZONE, local_now
 from .file_locks import locked_text_file
 
 RUN_STATE_FILE_NAME = "run_state.json"
@@ -139,6 +139,28 @@ class RunStateStore:
         with locked_text_file(self._lock_file, "a+", fcntl.LOCK_SH):
             return self._read_unlocked()
 
+    def _update(self, **changes: object) -> RunState:
+        """Apply changes to the saved record under one exclusive lock.
+
+        Every mutation below is the same read-modify-write, so they share this
+        one. Naming only the fields that change also means a new field on
+        ``RunState`` is carried through without editing each method.
+
+        Parameters
+        ----------
+        **changes:
+            Fields to replace on the stored record.
+
+        Returns
+        -------
+        RunState
+            The record as it was written.
+        """
+        with locked_text_file(self._lock_file, "a+", fcntl.LOCK_EX):
+            updated = replace(self._read_unlocked(), **changes)
+            self._write_unlocked(updated)
+            return updated
+
     def mark_run_started(self, kind: RunKind) -> None:
         """Record that a full queue run just began.
 
@@ -147,47 +169,24 @@ class RunStateStore:
         kind:
             Whether the schedule or the operator started this run.
         """
-        with locked_text_file(self._lock_file, "a+", fcntl.LOCK_EX):
-            previous = self._read_unlocked()
-            self._write_unlocked(
-                RunState(
-                    started_at=datetime.now(LOG_TIME_ZONE),
-                    finished_at=previous.finished_at,
-                    kind=kind,
-                    is_running=True,
-                )
-            )
+        self._update(started_at=local_now(), kind=kind, is_running=True)
 
     def mark_run_finished(self) -> None:
         """Record that the run in progress has ended."""
-        with locked_text_file(self._lock_file, "a+", fcntl.LOCK_EX):
-            previous = self._read_unlocked()
-            self._write_unlocked(
-                RunState(
-                    started_at=previous.started_at,
-                    finished_at=datetime.now(LOG_TIME_ZONE),
-                    kind=previous.kind,
-                    is_running=False,
-                )
-            )
+        self._update(finished_at=local_now(), is_running=False)
 
-    def clear_stale_running_flag(self) -> None:
+    def clear_stale_running_flag(self) -> RunState:
         """Drop a leftover "running" flag when the scheduler starts.
 
         A container killed mid-run leaves ``is_running`` set with no process
         behind it, which would make the interface refuse every later manual run.
         The scheduler is the only writer, so its own startup is the safe moment
         to clear the flag.
+
+        Returns
+        -------
+        RunState
+            The settled record, so the caller does not have to read the file
+            again to see what it holds.
         """
-        with locked_text_file(self._lock_file, "a+", fcntl.LOCK_EX):
-            previous = self._read_unlocked()
-            if not previous.is_running:
-                return
-            self._write_unlocked(
-                RunState(
-                    started_at=previous.started_at,
-                    finished_at=previous.finished_at,
-                    kind=previous.kind,
-                    is_running=False,
-                )
-            )
+        return self._update(is_running=False)

@@ -192,7 +192,7 @@ box.
 
 ## API reference
 
-A phone shortcut, `curl`, or scheduled job can call the same two routes:
+A phone shortcut, `curl`, or scheduled job can call the same routes:
 
 ```bash
 USERNAME=<your web interface username>
@@ -201,11 +201,19 @@ BASE=https://podcast.example.com
 
 curl -u "$USERNAME:$PASSWORD" "$BASE/api/ping"
 
+curl -u "$USERNAME:$PASSWORD" "$BASE/api/health"
+
 curl -X POST "$BASE/api/add-url" \
   -u "$USERNAME:$PASSWORD" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://www.youtube.com/watch?v=...", "skip_age_check": false}'
 ```
+
+`GET /api/health` reports whether scheduled runs are still happening, and is
+meant for an uptime monitor rather than a person. It answers `200` while the
+schedule is being kept and `503` once the run that was due is more than three
+hours late, so a monitor can alert on the status code alone. `GET /api/ping`
+only proves the web server is answering. See [operations.md](operations.md).
 
 `POST /api/add-url` returns:
 

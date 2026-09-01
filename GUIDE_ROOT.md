@@ -57,7 +57,9 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
 - `README.md`: setup, usage, configuration, limits, and links to detailed docs.
 - `main.py`: wrapper that calls `src.cli.main()`.
 - `start.py`: Docker supervisor. It runs Uvicorn in the main process and runs
-  the queue at a fixed time of day, 06:00 every other day by default.
+  the queue at a fixed time of day, 06:00 every other day by default. It also
+  reports the two failures only it can see: a run that stopped before
+  downloading anything, and a scheduled run that never happened.
 - `config.ini`: checked-in runtime defaults, including the run hour
   (`scheduled_run_hour`) and how many days apart runs are
   (`scheduled_run_interval_days`).
@@ -79,6 +81,7 @@ uv run python -m pytest -q
 
 ## Journal
 
+- 2026-09-01: The failures that used to be silent now send Apprise alerts, and `GET /api/health` lets an outside monitor catch a container that stopped running.
 - 2026-09-01: Scheduled runs became a wall-clock rule instead of a countdown, the queue page gained last-run and next-run times, and a Run button starts the same pass by hand.
 - 2026-07-26: Split web, media, download, and state ownership and removed the old adapter modules.
 - 2026-08-08: Stopped tracking runtime queue state, moved the live smoke check to `scripts/`, and excluded runtime files from the Docker build.

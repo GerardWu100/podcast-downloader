@@ -18,6 +18,10 @@ segments when available, and run from the command line or a web browser.
 - Manage sources, activity, logs, cookies, and error notifications from the
   password-protected web interface. The activity feed is grouped by day and by
   run, and the settings page says when the YouTube cookies expire.
+- Report the failures that would otherwise be silent: a run where no channel
+  would list, a run that could not start, expiring cookies, and a scheduled run
+  that never happened. `GET /api/health` lets an uptime monitor catch a
+  container that has stopped running altogether.
 - Install the web interface on a phone, or use the Chrome and Firefox
   extension to queue the page you are viewing.
 
@@ -112,6 +116,8 @@ Set the main options in `config.ini`:
 - `retention_days`: how long to keep channel MP3 files.
 - `download_timeout_seconds`: limit for one `yt-dlp` attempt; the default is
   3600 seconds.
+- `cookie_expiry_warning_days`: how many days before the YouTube sign-in
+  expires to start warning after a run. `0` turns the warning off.
 - `scheduled_run_hour` and `scheduled_run_interval_days`: when automatic runs
   happen. The defaults, `6` and `2`, mean 06:00 every other day on the local
   clock. The time comes from the calendar, so restarting or redeploying the
@@ -216,7 +222,7 @@ For troubleshooting, security notes, and the equivalent API calls, see
 
 ## Error notifications
 
-The web interface can send failed downloads to Apprise, which can forward them
+The web interface can send problems to Apprise, which can forward them
 to Telegram, email, Discord, or another service. In **Settings**, enter the
 Apprise notification URL and select **Send test notification** before saving.
 

@@ -15,31 +15,23 @@ other calendar day, and the answer never depends on process state.
 Times are Toronto local time (``LOG_TIME_ZONE``), the same clock the activity
 log and the detailed log already use, so "06:00" in the interface means 06:00
 on the operator's clock even though the container runs on UTC.
+
+This module answers only "when", in calendar terms. The wording a person reads
+lives in ``human_time.py``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date, datetime, time, timedelta
 
+from .human_time import SECONDS_PER_HOUR
 from .log_timezone import LOG_TIME_ZONE
 
-MINUTES_PER_HOUR = 60
-SECONDS_PER_MINUTE = 60
-SECONDS_PER_HOUR = MINUTES_PER_HOUR * SECONDS_PER_MINUTE
-HOURS_PER_DAY = 24
-SECONDS_PER_DAY = HOURS_PER_DAY * SECONDS_PER_HOUR
-# Below this, hours read better than days: "in 30 hours" is clearer than
-# "in 1 day". Above it, hours stop being meaningful ("in 1920 hours").
-HOURS_BEFORE_SWITCHING_TO_DAYS = 48
-
-SCHEDULE_TIME_FORMAT = "%Y-%m-%d %H:%M"
-JUST_NOW_LABEL = "just now"
-NOW_LABEL = "now"
-
-
-def local_now() -> datetime:
-    """Return the current time on the operator's clock."""
-    return datetime.now(LOG_TIME_ZONE)
+# How late a scheduled run may be before something is treated as wrong. A run
+# starts on the hour but takes as long as its downloads take, so a health check
+# that allowed no slack would report a failure every time a run ran long.
+OVERDUE_GRACE_SECONDS = 3 * SECONDS_PER_HOUR
 
 
 def is_run_day(day: date, interval_days: int) -> bool:
@@ -55,6 +47,45 @@ def is_run_day(day: date, interval_days: int) -> bool:
     return day.toordinal() % interval_days == 0
 
 
+def _run_instants(
+    reference: datetime,
+    run_hour: int,
+    interval_days: int,
+    day_step: int,
+) -> Iterator[datetime]:
+    """Yield run instants walking away from ``reference`` one day at a time.
+
+    Both directions are the same scan, so they share one implementation: the
+    next run walks forward, the previous run walks backward. The walk covers
+    ``interval_days`` days either way, which is far enough to be certain of
+    finding a run day.
+
+    Parameters
+    ----------
+    reference:
+        Where the walk starts, already in the operator's timezone.
+    run_hour:
+        Local hour a run starts, 0 to 23.
+    interval_days:
+        Days between run days, at least 1.
+    day_step:
+        ``1`` to walk into the future, ``-1`` into the past.
+
+    Yields
+    ------
+    datetime.datetime
+        Each run instant found, nearest to ``reference`` first.
+    """
+    for day_offset in range(interval_days + 1):
+        candidate_day = reference.date() + timedelta(days=day_offset * day_step)
+        if not is_run_day(candidate_day, interval_days):
+            continue
+        # Built from a date and an hour rather than by adding hours to another
+        # run, so a daylight-saving change keeps the run at the same displayed
+        # time instead of shifting it by an hour.
+        yield datetime.combine(candidate_day, time(hour=run_hour), tzinfo=LOG_TIME_ZONE)
+
+
 def next_scheduled_run(
     now: datetime,
     *,
@@ -62,10 +93,6 @@ def next_scheduled_run(
     interval_days: int,
 ) -> datetime:
     """Return the first scheduled run instant strictly after ``now``.
-
-    The result is built from a calendar date plus a wall-clock hour rather than
-    by adding hours to the previous run, so a daylight-saving change keeps the
-    run at the same displayed time instead of shifting it by an hour.
 
     Parameters
     ----------
@@ -88,19 +115,9 @@ def next_scheduled_run(
     tomorrow is not a run day.
     """
     reference = now.astimezone(LOG_TIME_ZONE)
-
-    # Scan forward day by day. The first run day strictly after `reference` is
-    # at most `interval_days` days out, so this loop always finds one.
-    for day_offset in range(interval_days + 1):
-        candidate_day = reference.date() + timedelta(days=day_offset)
-        if not is_run_day(candidate_day, interval_days):
-            continue
-        candidate = datetime.combine(
-            candidate_day, time(hour=run_hour), tzinfo=LOG_TIME_ZONE
-        )
+    for candidate in _run_instants(reference, run_hour, interval_days, 1):
         if candidate > reference:
             return candidate
-
     raise ValueError("Could not find the next scheduled run day.")
 
 
@@ -112,9 +129,9 @@ def previous_scheduled_run(
 ) -> datetime:
     """Return the most recent scheduled run instant at or before ``now``.
 
-    The scheduler compares this against the last run it actually finished. If
-    the recorded run is older, a scheduled run was missed while the container
-    was down and it can catch up instead of waiting for the next run day.
+    The overdue check compares this against the last run that actually
+    finished. If the recorded run is older, a scheduled run was missed while
+    the container was down.
 
     Parameters
     ----------
@@ -131,20 +148,65 @@ def previous_scheduled_run(
         Toronto-local time of the newest run instant that is not in the future.
     """
     reference = now.astimezone(LOG_TIME_ZONE)
-
-    # Scan backwards day by day; the newest past run day is at most
-    # `interval_days` days behind.
-    for day_offset in range(interval_days + 1):
-        candidate_day = reference.date() - timedelta(days=day_offset)
-        if not is_run_day(candidate_day, interval_days):
-            continue
-        candidate = datetime.combine(
-            candidate_day, time(hour=run_hour), tzinfo=LOG_TIME_ZONE
-        )
+    for candidate in _run_instants(reference, run_hour, interval_days, -1):
         if candidate <= reference:
             return candidate
-
     raise ValueError("Could not find the previous scheduled run day.")
+
+
+def scheduled_run_is_overdue(
+    last_finished_at: datetime | None,
+    *,
+    now: datetime,
+    run_hour: int,
+    interval_days: int,
+    run_in_progress: bool = False,
+    grace_seconds: float = OVERDUE_GRACE_SECONDS,
+) -> bool:
+    """Return whether the last scheduled run failed to happen.
+
+    This is the one question a watchdog needs answered: did the run that was
+    due actually happen? It compares the newest scheduled time that has passed
+    against the last run that finished. A downloader that has never run counts
+    as overdue, because a deployment that has never worked is not healthy.
+
+    Parameters
+    ----------
+    last_finished_at:
+        When the last whole-queue run finished, or ``None`` if none has.
+    now:
+        Reference instant, timezone-aware.
+    run_hour:
+        Local hour a run starts, 0 to 23.
+    interval_days:
+        Days between run days, at least 1.
+    run_in_progress:
+        True while a run is going. A long run is not a late run, however far
+        past the scheduled hour it gets.
+    grace_seconds:
+        How long after the scheduled time a run may still be starting or
+        running before it counts as missed. Pass ``0`` to ask the strict
+        question "has the run that was due already finished?".
+
+    Returns
+    -------
+    bool
+        True when the scheduled run is late or never happened.
+    """
+    if run_in_progress:
+        return False
+
+    reference = now.astimezone(LOG_TIME_ZONE)
+    previous_run = previous_scheduled_run(
+        reference, run_hour=run_hour, interval_days=interval_days
+    )
+    if (reference - previous_run).total_seconds() <= grace_seconds:
+        # The run that was due is still inside its allowance, so whatever the
+        # history says, nothing is late yet.
+        return False
+    if last_finished_at is None:
+        return True
+    return last_finished_at < previous_run
 
 
 def seconds_until_next_scheduled_run(
@@ -169,70 +231,3 @@ def seconds_until_next_scheduled_run(
         reference, run_hour=run_hour, interval_days=interval_days
     )
     return (next_run - reference).total_seconds()
-
-
-def format_schedule_time(moment: datetime) -> str:
-    """Return one instant as ``YYYY-MM-DD HH:MM`` on the operator's clock."""
-    return moment.astimezone(LOG_TIME_ZONE).strftime(SCHEDULE_TIME_FORMAT)
-
-
-def _format_duration(total_seconds: float) -> str:
-    """Return a rounded, plain-language length of time.
-
-    Durations under an hour are reported in minutes, then in hours, then in
-    days, because the interface only needs enough precision to answer "is this
-    recent?" or "how long have I got?". An empty string means "less than a
-    minute", which the two callers below turn into their own wording.
-
-    Parameters
-    ----------
-    total_seconds:
-        Length of time in seconds. Negative values are treated as zero.
-    """
-    seconds = max(0.0, total_seconds)
-    if seconds < SECONDS_PER_HOUR:
-        minutes = int(seconds // SECONDS_PER_MINUTE)
-        if minutes < 1:
-            return ""
-        return f"{minutes} minute{'s' if minutes != 1 else ''}"
-    hours = int(seconds // SECONDS_PER_HOUR)
-    if hours < HOURS_BEFORE_SWITCHING_TO_DAYS:
-        return f"{hours} hour{'s' if hours != 1 else ''}"
-    days = int(seconds // SECONDS_PER_DAY)
-    return f"{days} day{'s' if days != 1 else ''}"
-
-
-def format_time_ago(moment: datetime, now: datetime) -> str:
-    """Return how long ago an instant was, such as ``7 hours ago``.
-
-    Parameters
-    ----------
-    moment:
-        Past instant, timezone-aware.
-    now:
-        Reference instant, timezone-aware.
-    """
-    duration = _format_duration(
-        (now.astimezone(LOG_TIME_ZONE) - moment).total_seconds()
-    )
-    if not duration:
-        return JUST_NOW_LABEL
-    return f"{duration} ago"
-
-
-def format_time_until(moment: datetime, now: datetime) -> str:
-    """Return how long until an instant, such as ``in 41 hours``.
-
-    Parameters
-    ----------
-    moment:
-        Future instant, timezone-aware.
-    now:
-        Reference instant, timezone-aware.
-    """
-    duration = _format_duration(
-        (moment - now.astimezone(LOG_TIME_ZONE)).total_seconds()
-    )
-    if not duration:
-        return NOW_LABEL
-    return f"in {duration}"

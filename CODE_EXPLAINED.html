@@ -815,6 +815,7 @@ leftover temp files: none</pre></div>
 <tr><td><code>POST /remove-url</code></td><td>Removes one source from <code>urls.txt</code>.</td><td>Yes</td></tr>
 <tr><td><code>POST /upload-cookies</code></td><td>Replaces the <code>yt-dlp</code> cookie file from a browser upload.</td><td>Yes</td></tr>
 <tr><td><code>POST /run-now</code></td><td>Asks the scheduler to run the whole queue now, unless one is already running.</td><td>Yes</td></tr>
+<tr><td><code>GET /api/health</code></td><td>Answers 200 while runs happen on schedule and 503 once the due run is late, for an outside monitor.</td><td>Yes</td></tr>
 <tr><td><code>GET /logs</code></td><td>Returns the tail of <code>activity.log</code> or <code>download.log</code> as plain text. The browser does the grouping, badges, and filtering.</td><td>Yes</td></tr>
 </tbody>
 </table>

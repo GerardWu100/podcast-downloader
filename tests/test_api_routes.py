@@ -18,6 +18,7 @@ from src.state.archive_store import ArchiveStore
 from src.state.auth_store import AuthStore
 from src.state.bypass_store import BypassStore
 from src.state.queue_store import QueueStore
+from src.state.run_state_store import RunKind, RunStateStore, run_state_file_for
 from src.web import api_routes, routes
 from src.web.account_auth import (
     MAX_CREDENTIAL_LENGTH,
@@ -41,6 +42,7 @@ class _RecordingDownloadTrigger:
     def __init__(self) -> None:
         self.single_urls: list[str] = []
         self.playlist_urls: list[str] = []
+        self.full_queue_runs = 0
 
     def queue_single_url_download(self, url: str) -> None:
         """Record one direct-media request."""
@@ -49,6 +51,10 @@ class _RecordingDownloadTrigger:
     def queue_full_playlist_download(self, url: str) -> None:
         """Record one full-playlist request."""
         self.playlist_urls.append(url)
+
+    def queue_full_queue_run(self) -> None:
+        """Record one whole-queue request."""
+        self.full_queue_runs += 1
 
 
 def _basic_header(username: str, password: str) -> str:
@@ -104,9 +110,7 @@ def _build_request(
     """
     logger = logging.getLogger("test.web.api_routes")
     credentials_file = (
-        _write_accounts(tmp_path)
-        if with_accounts
-        else tmp_path / CREDENTIALS_FILENAME
+        _write_accounts(tmp_path) if with_accounts else tmp_path / CREDENTIALS_FILENAME
     )
 
     if authorization is None:
@@ -123,6 +127,7 @@ def _build_request(
         queue_store=QueueStore(tmp_path / "urls.txt", logger),
         archive_store=ArchiveStore(tmp_path / "downloaded_urls.txt", logger),
         bypass_store=BypassStore(tmp_path / "bypass_age_check_urls.txt", logger),
+        run_state_store=RunStateStore(run_state_file_for(tmp_path)),
         download_trigger=_RecordingDownloadTrigger(),
     )
     return SimpleNamespace(
@@ -221,9 +226,7 @@ def test_repeated_failures_ban_the_address(tmp_path: Path) -> None:
             api_routes.ping(request)
 
     # The ban now applies even to the correct password.
-    request.headers["authorization"] = _basic_header(
-        ACCOUNT_NAME, ACCOUNT_PASSWORD
-    )
+    request.headers["authorization"] = _basic_header(ACCOUNT_NAME, ACCOUNT_PASSWORD)
     with pytest.raises(HTTPException) as raised:
         api_routes.ping(request)
 
@@ -238,9 +241,7 @@ def test_a_successful_sign_in_clears_earlier_failures(tmp_path: Path) -> None:
     with pytest.raises(HTTPException):
         api_routes.ping(request)
 
-    request.headers["authorization"] = _basic_header(
-        ACCOUNT_NAME, ACCOUNT_PASSWORD
-    )
+    request.headers["authorization"] = _basic_header(ACCOUNT_NAME, ACCOUNT_PASSWORD)
     api_routes.ping(request)
 
     login_state = request.app.state.auth_store.load_login_state()
@@ -330,9 +331,7 @@ def test_add_url_rejects_an_unsupported_link_with_status_400(tmp_path: Path) -> 
     """Clicking the button on a settings page must not write junk to urls.txt."""
     request = _build_request(tmp_path)
 
-    response = api_routes.add_url(
-        request, AddUrlRequest(url="chrome://extensions")
-    )
+    response = api_routes.add_url(request, AddUrlRequest(url="chrome://extensions"))
 
     assert response.status_code == 400
     assert _body(response)["outcome"] == AddUrlOutcome.INVALID
@@ -455,3 +454,96 @@ def test_cheap_refusals_never_read_the_account_file(tmp_path: Path) -> None:
         client_address="10.0.0.9",
     )
     assert reads == ["read"]
+
+
+def test_health_reports_ok_after_a_run_that_finished_on_time(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A monitor polling this needs a 200 while the schedule is being kept."""
+    from datetime import timedelta
+
+    request = _build_request(tmp_path)
+    store = RunStateStore(run_state_file_for(tmp_path))
+    store.mark_run_started(RunKind.SCHEDULED)
+    store.mark_run_finished()
+
+    # The store stamps the real clock, so the reference instant is taken from
+    # what it wrote. That keeps the test correct on any day of the year.
+    finished_at = store.load().finished_at
+    assert finished_at is not None
+    monkeypatch.setattr(
+        api_routes, "local_now", lambda: finished_at + timedelta(minutes=30)
+    )
+
+    response = api_routes.health(request)
+    body = _body(response)
+
+    assert response.status_code == 200
+    assert body["ok"] is True
+    assert body["status"] == "ok"
+    assert body["last_run_finished_at"] == finished_at.isoformat()
+    assert body["next_run_at"] > finished_at.isoformat()
+
+
+def test_health_returns_503_when_the_scheduled_run_never_happened(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The status code carries the answer, so a monitor needs no JSON parsing.
+
+    This is the case nothing inside the container can report: a scheduler that
+    stopped sends no failure, because no download was ever attempted.
+    """
+    from datetime import datetime
+
+    from src.log_timezone import LOG_TIME_ZONE
+
+    request = _build_request(tmp_path)
+    # Well past the 06:00 run on 2026-09-03, with the last run two days before.
+    monkeypatch.setattr(
+        api_routes,
+        "local_now",
+        lambda: datetime(2026, 9, 3, 20, 0, tzinfo=LOG_TIME_ZONE),
+    )
+
+    response = api_routes.health(request)
+    body = _body(response)
+
+    assert response.status_code == 503
+    assert body["ok"] is False
+    assert body["status"] == "overdue"
+    assert body["last_run_finished_at"] is None
+
+
+def test_health_treats_a_run_in_progress_as_healthy(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A long run is not a failed run, whatever the clock says."""
+    from datetime import datetime
+
+    from src.log_timezone import LOG_TIME_ZONE
+
+    request = _build_request(tmp_path)
+    monkeypatch.setattr(
+        api_routes,
+        "local_now",
+        lambda: datetime(2026, 9, 3, 20, 0, tzinfo=LOG_TIME_ZONE),
+    )
+    RunStateStore(run_state_file_for(tmp_path)).mark_run_started(RunKind.SCHEDULED)
+
+    response = api_routes.health(request)
+
+    assert response.status_code == 200
+    assert _body(response)["status"] == "running"
+
+
+def test_health_requires_an_account(tmp_path: Path) -> None:
+    """The endpoint reports deployment state, so it stays behind the accounts."""
+    request = _build_request(tmp_path, authorization="")
+
+    with pytest.raises(HTTPException) as refusal:
+        api_routes.health(request)
+
+    assert refusal.value.status_code == 401

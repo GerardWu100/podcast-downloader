@@ -98,8 +98,9 @@ def test_run_immediate_downloads_runs_whole_queue_when_button_pressed(
     calls: list[tuple[list[str], str | None]] = []
     recorded_kinds: list[RunKind] = []
 
-    def fake_run(command: list[str], check: bool, cwd: str | None = None) -> None:
+    def fake_run(command: list[str], check: bool, cwd: str | None = None):
         calls.append((command, cwd))
+        return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(start.subprocess, "run", fake_run)
     monkeypatch.setattr(start.sys, "executable", "/python")
@@ -173,27 +174,20 @@ def test_scheduled_run_is_treated_as_missed_when_nothing_ran_since(
     """A container that was down over the run time should catch up on startup."""
     now = datetime(2026, 9, 3, 9, 0, tzinfo=LOG_TIME_ZONE)
     monkeypatch.setattr(start, "local_now", lambda: now)
-    stale_finish = now - timedelta(days=3)
-    monkeypatch.setattr(
-        start.RUN_STATE_STORE,
-        "load",
-        lambda: RunState(finished_at=stale_finish),
-    )
 
-    assert start._scheduled_run_was_missed() is True
+    stale_run = RunState(finished_at=now - timedelta(days=3))
+
+    assert start._scheduled_run_was_missed(stale_run) is True
 
 
 def test_scheduled_run_is_not_missed_when_it_already_ran_today(monkeypatch) -> None:
     """A restart after a completed run must not start a second one."""
     now = datetime(2026, 9, 3, 9, 0, tzinfo=LOG_TIME_ZONE)
     monkeypatch.setattr(start, "local_now", lambda: now)
-    monkeypatch.setattr(
-        start.RUN_STATE_STORE,
-        "load",
-        lambda: RunState(finished_at=now - timedelta(hours=2)),
-    )
 
-    assert start._scheduled_run_was_missed() is False
+    recent_run = RunState(finished_at=now - timedelta(hours=2))
+
+    assert start._scheduled_run_was_missed(recent_run) is False
 
 
 def test_full_queue_run_request_is_popped_once(monkeypatch) -> None:
@@ -292,3 +286,60 @@ def test_post_update_delay_waits_five_minutes_without_a_request(monkeypatch) -> 
     start._wait_for_post_update_delay()
 
     assert wait_timeouts == [pytest.approx(start.POST_UPDATE_WAIT_SECONDS, abs=1)]
+
+
+def test_a_run_that_cannot_start_is_reported(monkeypatch) -> None:
+    """A downloader that stops before running has nothing to report with.
+
+    Nothing is downloaded and nothing fails, so without this the failure is
+    invisible until someone notices the library has stopped growing.
+    """
+    alerts: list[str] = []
+
+    monkeypatch.setattr(
+        start.subprocess,
+        "run",
+        lambda command, check=False, cwd=None: SimpleNamespace(returncode=1),
+    )
+    monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_started", lambda kind: None)
+    monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_finished", lambda: None)
+    monkeypatch.setattr(start, "_send_alert", lambda alert: alerts.append(alert.title))
+
+    start.run_full_queue_pass(RunKind.SCHEDULED)
+
+    assert alerts == ["Podcast downloader could not finish a run"]
+
+
+def test_a_successful_run_is_not_reported(monkeypatch) -> None:
+    """Exit status zero means the downloader spoke for itself."""
+    alerts: list[str] = []
+
+    monkeypatch.setattr(
+        start.subprocess,
+        "run",
+        lambda command, check=False, cwd=None: SimpleNamespace(returncode=0),
+    )
+    monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_started", lambda kind: None)
+    monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_finished", lambda: None)
+    monkeypatch.setattr(start, "_send_alert", lambda alert: alerts.append(alert.title))
+
+    start.run_full_queue_pass(RunKind.SCHEDULED)
+
+    assert alerts == []
+
+
+def test_a_missing_ytdlp_does_not_take_the_container_down(monkeypatch) -> None:
+    """The scheduler thread exits the process on an unhandled error.
+
+    Letting a missing binary raise here would turn "yt-dlp is not installed"
+    into a restart loop instead of a message the operator can read.
+    """
+
+    def raise_missing(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory: 'yt-dlp'")
+
+    monkeypatch.setattr(start, "AUTO_UPDATE", False)
+    monkeypatch.setattr(start.subprocess, "run", raise_missing)
+
+    assert start.update_ytdlp() is False
+    assert start._installed_ytdlp_version() == "not installed"

@@ -38,7 +38,10 @@ over their jobs.
 - `credentials.py`: syncs up to three `.env` account pairs into `.ui_credentials.json`.
 - `trigger.py`: in-process requests that wake the Docker scheduler, including the whole-queue request the Run button sends.
 - `schedule.py`: turns `scheduled_run_hour` and `scheduled_run_interval_days` into run times, and writes the "7 hours ago" wording the queue page shows.
-- `log_timezone.py`: shared Toronto/Eastern logging timezone.
+- `log_timezone.py`: the project's clock. Owns the timezone, the timestamp format, and `local_now()`, so nothing else reads the system clock directly.
+- `human_time.py`: writes times and durations the way a person reads them, such as "7 hours ago" and "in 4 days".
+- `schedule.py`: when automatic runs happen, in calendar terms only. No wording, no state.
+- `run_report.py`: decides whether a finished run is worth a notification, and writes the words. Pure; it reads no files and sends nothing.
 - `cookie_file.py`: reads a Netscape `cookies.txt` to report how many cookies it holds and when its YouTube sign-in expires. Read-only; it never rewrites the file.
 - `media/GUIDE_media.md`: URL validation and YouTube policy.
 - `state/GUIDE_state.md`: locked plain-file state.
@@ -51,6 +54,8 @@ queue edit in `state/queue_store.py`.
 
 ## Journal
 
+- 2026-09-01: Split time handling three ways after a review: `log_timezone.py` owns the clock, `human_time.py` owns the wording, `schedule.py` owns the calendar. The download pipeline had been importing the scheduler just to phrase a sentence.
+- 2026-09-01: Added `run_report.py`. The downloader reported failed downloads but not the failure that produces none: a blocked listing attempts nothing, so nothing fails, so nothing was sent.
 - 2026-09-01: Added `cookie_file.py`. Cookie expiry was invisible until downloads started failing, and the expiry date is already in the file's fifth field.
 - 2026-09-01: Automatic runs moved from a countdown between runs to a fixed time of day. `schedule.py` decides when; `state/run_state_store.py` records what happened.
 - 2026-07-26: Removed catch-all compatibility modules and established explicit `web`, `media`, `downloads`, and `state` boundaries.

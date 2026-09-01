@@ -73,6 +73,7 @@ section.
 | `download_timeout_seconds` | Time limit for one attempt; at least `60` | `3600` |
 | `scheduled_run_hour` | Local hour an automatic run starts, `0` to `23` | `6` |
 | `scheduled_run_interval_days` | Calendar days between automatic runs; at least `1` | `2` |
+| `cookie_expiry_warning_days` | Days before the sign-in expires to start warning; `0` turns it off | `14` |
 | `log_file` | Detailed log; rotates at 5 MB and keeps three older copies | `download.log` |
 | `downloaded_urls_file` | Successfully expanded URLs; also prevents duplicates | `downloaded_urls.txt` |
 | `bypass_age_check_file` | One-use YouTube waiting-period exceptions | `bypass_age_check_urls.txt` |

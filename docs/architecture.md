@@ -16,6 +16,8 @@ flowchart LR
     Web --> Media
     Web --> State["src/state/"]
     Web --> Schedule["src/schedule.py"]
+    Downloads --> Report["src/run_report.py"]
+    Start --> Report
     Start["start.py"] --> Schedule
     Start --> State
     Downloads --> Media
@@ -34,6 +36,9 @@ Each area has one job:
 - `src/schedule.py` turns the two schedule settings into run times. `start.py`
   sleeps on them and the queue page displays them, so both agree on when the
   next run is.
+- `src/run_report.py` decides whether a finished run is worth a notification.
+  It is pure: the service collects the facts, the notifier sends whatever comes
+  back, and an ordinary run produces nothing to send.
 - `src/api.py` exports the production app created by `create_app()`.
 
 The web app has two clients, both using the same `.env` accounts. A browser
@@ -205,8 +210,11 @@ they share the `singles` scratch folder.
 - If nothing ran at the last scheduled time, the scheduler catches up once when
   it starts, then follows the fixed schedule again.
 - Each full queue pass is bracketed by a write to `run_state.json`, which is
-  what the queue page reads for "Last run" and what the Run button checks before
-  starting a second pass.
+  what the queue page reads for "Last run", what the Run button checks before
+  starting a second pass, and what `GET /api/health` answers from.
+- A run that stops before downloading anything, and a scheduled run that never
+  happened, are reported by the scheduler rather than the downloader: they are
+  the two failures the downloader is not running to notice.
 - Direct videos added through the web UI start an immediate single-URL run.
 - The Run button on the queue page starts an immediate whole-queue run.
 - Channels and playlists otherwise wait for the scheduled full-queue run.

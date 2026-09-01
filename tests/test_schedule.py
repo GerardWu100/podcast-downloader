@@ -5,12 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import pytest
 from src.log_timezone import LOG_TIME_ZONE
+from src.human_time import format_clock_time
 from src.schedule import (
-    format_schedule_time,
-    format_time_ago,
-    format_time_until,
     is_run_day,
     next_scheduled_run,
     previous_scheduled_run,
@@ -103,7 +100,7 @@ def test_the_run_hour_survives_a_daylight_saving_change() -> None:
     next_run = next_scheduled_run(before_change, run_hour=RUN_HOUR, interval_days=1)
 
     assert next_run == _toronto(2026, 11, 1, 6, 0)
-    assert format_schedule_time(next_run).endswith("06:00")
+    assert format_clock_time(next_run).endswith("06:00")
 
 
 def test_seconds_until_next_run_counts_real_seconds() -> None:
@@ -113,38 +110,6 @@ def test_seconds_until_next_run_counts_real_seconds() -> None:
     )
 
     assert remaining == 3600.0
-
-
-@pytest.mark.parametrize(
-    ("elapsed", "expected"),
-    [
-        (timedelta(seconds=20), "just now"),
-        (timedelta(minutes=1), "1 minute ago"),
-        (timedelta(minutes=42), "42 minutes ago"),
-        (timedelta(hours=1, minutes=5), "1 hour ago"),
-        (timedelta(hours=41), "41 hours ago"),
-    ],
-)
-def test_time_ago_wording(elapsed: timedelta, expected: str) -> None:
-    """The status line reports age in plain words, rounded down."""
-    now = _toronto(2026, 9, 3, 13, 0)
-
-    assert format_time_ago(now - elapsed, now) == expected
-
-
-@pytest.mark.parametrize(
-    ("remaining", "expected"),
-    [
-        (timedelta(seconds=20), "now"),
-        (timedelta(minutes=30), "in 30 minutes"),
-        (timedelta(hours=41), "in 41 hours"),
-    ],
-)
-def test_time_until_wording(remaining: timedelta, expected: str) -> None:
-    """The status line reports the wait the same way it reports the age."""
-    now = _toronto(2026, 9, 3, 13, 0)
-
-    assert format_time_until(now + remaining, now) == expected
 
 
 def test_run_state_round_trips_through_the_file(tmp_path: Path) -> None:

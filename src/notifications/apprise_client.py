@@ -24,6 +24,7 @@ import logging
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlparse
 
 # A notification must never hold up a download run, so the request gets a short
@@ -309,3 +310,29 @@ class AppriseNotifier:
             f"{video_url}\n\n{reason}",
             notification_type=APPRISE_FAILURE_TYPE,
         )
+
+
+def notifier_for_data_dir(data_dir: Path) -> AppriseNotifier:
+    """Return the notifier configured by the settings saved in one data directory.
+
+    The command line and the scheduler both send notifications and both need
+    the same wiring: the settings the web page writes, and the shared
+    ``notifications`` logger. Building it in one place keeps them from drifting
+    onto different files or different logger names.
+
+    Parameters
+    ----------
+    data_dir:
+        Directory holding ``notifications.json``.
+    """
+    # Imported here because the state layer imports this module for its
+    # settings type, and a module-level import would close the loop.
+    from ..state.notification_store import (
+        NotificationStore,
+        notification_settings_file_for,
+    )
+
+    return AppriseNotifier(
+        NotificationStore(notification_settings_file_for(data_dir)).load(),
+        logging.getLogger("notifications"),
+    )
