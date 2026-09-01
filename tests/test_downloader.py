@@ -2353,3 +2353,63 @@ def test_notification_delivery_failure_does_not_break_the_run(
     # The real failure is still recorded for the browser.
     activity_text = (tmp_path / "activity.log").read_text(encoding="utf-8")
     assert "403" in activity_text
+
+
+def test_empty_queue_run_is_still_bracketed_in_the_activity_feed(tmp_path) -> None:
+    """A run that finds nothing must still show that it happened.
+
+    Without both lines, a scheduled run over an empty queue leaves no trace,
+    and the activity page looks the same as a scheduler that has died.
+    """
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("# only a comment\n", encoding="utf-8")
+    activity_log_file = tmp_path / "activity.log"
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+    )
+
+    successful, failed = downloader.download_all()
+
+    assert (successful, failed) == (0, 0)
+    activity_lines = activity_log_file.read_text(encoding="utf-8").strip().splitlines()
+    assert "Run started: 0 sources in the queue" in activity_lines[0]
+    assert "Run finished: 0 successful, 0 failed" in activity_lines[1]
+
+
+def test_queue_run_records_how_many_sources_it_started_with(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """The start line counts queue entries, so a reader can see the scope."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(
+        "https://videos.example.com/watch/one\n", encoding="utf-8"
+    )
+    activity_log_file = tmp_path / "activity.log"
+
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        delay_seconds=0.0,
+    )
+
+    def fake_run(
+        command: list[str],
+        *args,
+        **kwargs,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="no video")
+
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+
+    downloader.download_all()
+
+    activity_text = activity_log_file.read_text(encoding="utf-8")
+    assert "Run started: 1 source in the queue" in activity_text
+    assert "Run finished: 0 successful, 1 failed" in activity_text

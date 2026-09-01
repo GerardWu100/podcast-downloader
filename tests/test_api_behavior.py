@@ -1536,6 +1536,94 @@ def test_settings_page_warns_that_testing_does_not_save() -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
+def test_settings_page_reports_the_cookie_file_in_use(monkeypatch, tmp_path) -> None:
+    """Cookies expire quietly, so the page states what it has and until when."""
+    from datetime import datetime, timedelta
+
+    from src.log_timezone import LOG_TIME_ZONE
+
+    cookie_file = tmp_path / "cookies.txt"
+    expiry = int((datetime.now(LOG_TIME_ZONE) + timedelta(days=60)).timestamp())
+    cookie_file.write_text(
+        "# Netscape HTTP Cookie File\n"
+        f".youtube.com\tTRUE\t/\tTRUE\t{expiry}\tSID\tvalue\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, cookies_file=cookie_file),
+    )
+
+    session_id = "test-settings-cookie-status"
+    api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    body = api_module.settings(request).body.decode("utf-8")
+
+    assert "Current file" in body
+    assert "cookies.txt - 1 cookie - uploaded" in body
+    assert "Sign-in stops working by" in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_settings_page_says_when_no_cookie_file_exists(monkeypatch, tmp_path) -> None:
+    """An empty state is still an answer, and stops the block looking broken."""
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(api_module.CONFIG, cookies_file=tmp_path / "absent.txt"),
+    )
+
+    session_id = "test-settings-cookie-missing"
+    api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
+    request = _FakeRequest(
+        client_host="127.0.0.1",
+        cookies={api_module.SESSION_COOKIE: session_id},
+    )
+
+    body = api_module.settings(request).body.decode("utf-8")
+
+    assert api_module.NO_COOKIE_FILE_LABEL in body
+    assert "Sign-in stops working by" not in body
+
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_queue_page_offers_the_activity_log_controls(monkeypatch, tmp_path) -> None:
+    """The log panel needs its source, its filter, and its counts to be present."""
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=tmp_path / "urls.txt",
+            log_file=tmp_path / "download.log",
+        ),
+    )
+    monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
+
+    session_id = "test-queue-log-controls"
+    api_module.SESSIONS[session_id] = {"created_at": time.time()}
+    request = _FakeRequest(cookies={api_module.SESSION_COOKIE: session_id})
+
+    body = api_module.queue_page(request).body.decode("utf-8")
+
+    assert 'id="log-filter"' in body
+    assert "Problems only" in body
+    assert 'id="log-summary"' in body
+    # Day headings and run brackets are what make a long feed readable.
+    assert "log-day" in body
+    assert "log-line--run" in body
+
+    api_module.SESSIONS.pop(session_id, None)
+    api_module.CSRF_TOKENS.pop(session_id, None)
+
+
 def test_last_download_label_reads_the_newest_download_event(tmp_path) -> None:
     """The status row names the newest finished download, not the newest event."""
     from src.state.activity_store import ActivityLogStore

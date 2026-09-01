@@ -137,6 +137,12 @@ The file uses Netscape/Mozilla text format. Its first line must be
 should use LF line endings. The web UI validates the header, converts line
 endings to LF, and replaces the file with owner-only permissions.
 
+`src/cookie_file.py` reads the same file for display only. Each line's fifth
+field is a Unix expiry timestamp, so the settings page can report the earliest
+expiry among the YouTube sign-in cookies. A zero there is a session cookie and
+has no date to report. That expiry is an upper bound on how long the file
+works: YouTube can end a sign-in before its cookies expire.
+
 ## Download layout
 
 `output_dir` contains finished MP3s. `intermediate_dir` holds temporary work.

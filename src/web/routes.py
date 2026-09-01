@@ -9,6 +9,7 @@ import os
 import secrets
 import threading
 import time
+from datetime import timedelta
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -21,6 +22,7 @@ from fastapi.responses import (
 )
 
 from ..config import ConfigError, PodcastConfig, load_config
+from ..cookie_file import CookieFileStatus, describe_cookie_file
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
 from ..media.urls import is_supported_media_url
 from ..schedule import (
@@ -826,6 +828,79 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
     )
 
 
+# How close to expiry the sign-in cookies have to be before the settings page
+# stops stating the date plainly and starts warning about it.
+COOKIE_EXPIRY_WARNING_DAYS = 14
+NO_COOKIE_FILE_LABEL = "No cookie file yet. Downloads run without a YouTube sign-in."
+
+
+def _cookie_summary_line(status: CookieFileStatus, cookie_file: Path) -> str:
+    """Return the plain description of the cookie file in use.
+
+    Parameters
+    ----------
+    status:
+        What was read from the cookie file.
+    cookie_file:
+        Path the downloader would hand to ``yt-dlp``.
+    """
+    if not status.exists:
+        return NO_COOKIE_FILE_LABEL
+
+    cookie_word = "cookie" if status.cookie_count == 1 else "cookies"
+    parts = [cookie_file.name, f"{status.cookie_count} {cookie_word}"]
+    if status.updated_at is not None:
+        parts.append(f"uploaded {format_schedule_time(status.updated_at)}")
+    return " - ".join(parts)
+
+
+def _cookie_expiry_line(status: CookieFileStatus) -> tuple[str, str]:
+    """Return the sign-in expiry sentence and the tone to show it in.
+
+    The date comes from the file itself. It is when the browser would have
+    stopped sending the cookie, so it is an upper bound: YouTube can invalidate
+    a sign-in earlier. The wording says "stop working by" for that reason.
+
+    Parameters
+    ----------
+    status:
+        What was read from the cookie file.
+
+    Returns
+    -------
+    tuple[str, str]
+        The sentence, and one of ``""``, ``"warn"``, or ``"err"`` for how
+        urgent it is. An empty sentence means there is nothing to show.
+    """
+    if not status.exists:
+        return "", ""
+    if status.login_cookie_count == 0:
+        return (
+            "This file has no YouTube sign-in cookies, so it will not get past "
+            "an age check or a sign-in prompt.",
+            "warn",
+        )
+    if status.earliest_login_expiry is None:
+        return (
+            "The sign-in cookies in this file carry no expiry date, so they "
+            "only last as long as YouTube honours them.",
+            "",
+        )
+
+    now = local_now()
+    expiry_text = format_schedule_time(status.earliest_login_expiry)
+    if status.earliest_login_expiry <= now:
+        age = format_time_ago(status.earliest_login_expiry, now)
+        return f"Sign-in expired on {expiry_text}, {age}. Upload a fresh export.", "err"
+
+    remaining = format_time_until(status.earliest_login_expiry, now)
+    sentence = f"Sign-in stops working by {expiry_text}, {remaining}."
+    warning_threshold = now + timedelta(days=COOKIE_EXPIRY_WARNING_DAYS)
+    if status.earliest_login_expiry <= warning_threshold:
+        return f"{sentence} Export a new file soon.", "warn"
+    return sentence, ""
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings(request: Request, msg: str = "") -> HTMLResponse:
     """Render the settings page for cookies and error notifications.
@@ -855,9 +930,18 @@ def settings(request: Request, msg: str = "") -> HTMLResponse:
         css_class, display_text = _MSG_DISPLAY[msg]
         msg_html = f'<div class="{css_class}">{html.escape(display_text)}</div>'
 
+    cookie_file = _configured_cookie_file(request)
+    cookie_status = describe_cookie_file(cookie_file)
+    cookie_expiry, cookie_expiry_tone = _cookie_expiry_line(cookie_status)
+
     notification_settings = _notification_store(request).load()
     return render_settings_page(
         safe_token=safe_token,
+        safe_cookie_summary=html.escape(
+            _cookie_summary_line(cookie_status, cookie_file)
+        ),
+        safe_cookie_expiry=html.escape(cookie_expiry),
+        cookie_expiry_tone=cookie_expiry_tone,
         safe_server_url=html.escape(notification_settings.server_url, quote=True),
         safe_notification_urls=html.escape(
             notification_settings.notification_urls,

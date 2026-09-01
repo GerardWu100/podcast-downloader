@@ -75,6 +75,8 @@ BASE_STYLES = """
     --log-ok-soft:rgba(74,222,128,.14); --log-warn-soft:rgba(251,191,36,.14);
     --log-err-soft:rgba(248,113,113,.14); --log-info-soft:rgba(125,211,252,.14);
     --log-dim-soft:rgba(139,156,179,.12); --scrollbar:#3d4f66;
+    --log-day-bg:rgba(26,35,50,.94); --log-run-bg:rgba(125,211,252,.07);
+    --log-run-edge:rgba(125,211,252,.30); --log-link:#93c5fd; --log-link-hover:#bfdbfe;
     --shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06); --r:10px;
   }
   body.theme-dark {
@@ -92,6 +94,8 @@ BASE_STYLES = """
     --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
     --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
     --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
+    --log-day-bg:rgba(10,14,20,.94); --log-run-bg:rgba(147,197,253,.08);
+    --log-run-edge:rgba(147,197,253,.32); --log-link:#93c5fd; --log-link-hover:#dbeafe;
     --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
   }
   @media (prefers-color-scheme:dark) {
@@ -110,6 +114,8 @@ BASE_STYLES = """
       --log-ok-soft:rgba(52,211,153,.16); --log-warn-soft:rgba(252,211,77,.16);
       --log-err-soft:rgba(251,113,133,.16); --log-info-soft:rgba(147,197,253,.16);
       --log-dim-soft:rgba(100,116,139,.18); --scrollbar:#334155;
+      --log-day-bg:rgba(10,14,20,.94); --log-run-bg:rgba(147,197,253,.08);
+      --log-run-edge:rgba(147,197,253,.32); --log-link:#93c5fd; --log-link-hover:#dbeafe;
       --shadow:0 1px 2px rgba(0,0,0,.35),0 10px 24px rgba(0,0,0,.24);
     }
   }
@@ -302,6 +308,22 @@ SETTINGS_FORM_STYLES = """
   border-radius:7px; padding:8px 11px;
 }
 .settings-intro { font-size:.82rem; color:var(--muted); line-height:1.55; margin-bottom:16px; }
+/* What the cookie file in use contains, and when its sign-in runs out. Cookies
+   expire quietly, so the answer belongs beside the upload box rather than in a
+   log nobody reads until downloads have already started failing. */
+.cookie-status {
+  margin-bottom:16px; padding:12px 14px; border:1px solid var(--border);
+  border-radius:8px; background:var(--input-bg);
+}
+.cookie-status-label {
+  display:block; font-size:.66rem; font-weight:700; letter-spacing:.07em;
+  text-transform:uppercase; color:var(--muted); margin-bottom:5px;
+}
+.cookie-summary { font-size:.82rem; color:var(--text); overflow-wrap:anywhere; }
+.cookie-expiry { margin-top:6px; font-size:.82rem; line-height:1.5; }
+.cookie-expiry--plain { color:var(--muted); }
+.cookie-expiry--warn { color:var(--warn-text); font-weight:600; }
+.cookie-expiry--err { color:var(--danger); font-weight:600; }
 @media (max-width:640px) {
   .file-row { display:flex; flex-direction:column; }
   .file-row .btn { width:100%; }
@@ -328,6 +350,276 @@ themeButton.addEventListener('click', () => {
   localStorage.setItem('podcast-theme', next);
   applyTheme(next);
 });
+"""
+
+
+# Extra styles for the activity panel: day headings, run dividers, and the
+# filter row. Interpolating this constant into an f-string inserts its braces
+# verbatim, so they are not doubled here.
+LOG_PANEL_STYLES = r"""
+/* A day heading every time the date changes. Timestamps in the log show only
+   the time, so without these a reader cannot tell yesterday from last week. It
+   sticks to the top of the scroll box, so the day stays visible while reading
+   down through it. */
+.log-day {
+  position:sticky; top:0; z-index:1;
+  padding:6px 14px; font-size:.66rem; font-weight:700;
+  letter-spacing:.08em; text-transform:uppercase;
+  color:var(--log-time); background:var(--log-day-bg);
+  border-bottom:1px solid rgba(255,255,255,.07);
+  backdrop-filter:blur(2px);
+}
+/* The first and last line of a run. These bracket everything one run did, so
+   they are the anchors a reader scrolls between. */
+.log-line--run { background:var(--log-run-bg); }
+.log-line--run .log-msg { font-weight:650; color:var(--log-text); }
+.log-line--run-start { border-top:1px solid var(--log-run-edge); }
+.log-line--run-end { border-bottom:1px solid var(--log-run-edge); }
+.log-msg a { color:var(--log-link); text-decoration:none; border-bottom:1px dotted currentColor; }
+.log-msg a:hover { color:var(--log-link-hover); }
+/* Counts for the lines currently loaded, so "did anything fail?" is answered
+   without reading the log itself. */
+#log-summary { font-size:.72rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+#log-summary .count-ok { color:var(--log-ok); font-weight:650; }
+#log-summary .count-err { color:var(--log-err); font-weight:650; }
+#log-summary .count-warn { color:var(--log-warn); font-weight:650; }
+.log-empty-filtered { display:flex; align-items:center; justify-content:center; min-height:120px; padding:24px; color:var(--log-dim); font-style:italic; }
+"""
+
+# The activity panel: fetch, parse, group by day, filter, and render. Kept out
+# of the page f-string so its braces and regular expressions are not doubled.
+ACTIVITY_LOG_SCRIPT = r"""
+let logTimer = null;
+const logSourceSelect = document.getElementById('log-source');
+const logFilterSelect = document.getElementById('log-filter');
+const logSummary = document.getElementById('log-summary');
+const logBox = document.getElementById('log-box');
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Message prefixes are dropped from the text because the badge beside the line
+// already says the same thing. "Downloaded: creator - ep.mp3" becomes the
+// episode name next to a "Done" badge.
+const ACTIVITY_KINDS = [
+  { test: /^Downloaded:\s*/i, kind: 'ok', label: 'Done', strip: true, dropSuffix: '.mp3' },
+  { test: /^Failed:\s*/i, kind: 'err', label: 'Fail', strip: true },
+  { test: /^Waiting for age gate:\s*/i, kind: 'warn', label: 'Wait', strip: true },
+  { test: /^Skipped Short:\s*/i, kind: 'warn', label: 'Skip', strip: true },
+  { test: /^Run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
+  { test: /^Playlist run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
+  { test: /^Run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
+  { test: /^Playlist run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
+  { test: /^Deleted expired MP3:\s*/i, kind: 'dim', label: 'Keep', strip: true },
+  { test: /^Retention cleanup/i, kind: 'dim', label: 'Keep' },
+];
+
+function classifyActivity(message) {
+  for (const rule of ACTIVITY_KINDS) {
+    if (rule.test.test(message)) {
+      let text = rule.strip ? message.replace(rule.test, '') : message;
+      if (rule.dropSuffix && text.endsWith(rule.dropSuffix)) {
+        text = text.slice(0, -rule.dropSuffix.length);
+      }
+      return { kind: rule.kind, label: rule.label, text: text, boundary: rule.boundary || '' };
+    }
+  }
+  return { kind: 'neutral', label: 'Log', text: message, boundary: '' };
+}
+
+function classifyDownload(level, message) {
+  const upper = level.toUpperCase();
+  if (upper === 'ERROR' || upper === 'CRITICAL') return 'err';
+  if (upper === 'WARNING') return 'warn';
+  if (upper === 'DEBUG') return 'dim';
+  if (/failed|error|timed out/i.test(message)) return 'err';
+  if (/waiting|skipped/i.test(message)) return 'warn';
+  if (/downloaded|finished|success/i.test(message)) return 'ok';
+  return 'info';
+}
+
+// A failed line is only useful if you can reach the video it names, so URLs
+// become links. The visible text drops the scheme and any long tail; the full
+// address stays in the link's tooltip.
+const URL_PATTERN = /https?:\/\/[^\s<>"']+/g;
+const URL_TEXT_MAX_CHARS = 52;
+
+function shortenUrl(url) {
+  const bare = url.replace(/^https?:\/\//, '').replace(/^www\./, '');
+  if (bare.length <= URL_TEXT_MAX_CHARS) return bare;
+  return bare.slice(0, URL_TEXT_MAX_CHARS - 1) + '\u2026';
+}
+
+function linkifyMessage(message) {
+  let rendered = '';
+  let lastIndex = 0;
+  URL_PATTERN.lastIndex = 0;
+  let match;
+  while ((match = URL_PATTERN.exec(message)) !== null) {
+    rendered += esc(message.slice(lastIndex, match.index));
+    const url = match[0];
+    rendered +=
+      '<a href="' + esc(url) + '" title="' + esc(url) +
+      '" target="_blank" rel="noopener noreferrer">' + esc(shortenUrl(url)) + '</a>';
+    lastIndex = match.index + url.length;
+  }
+  rendered += esc(message.slice(lastIndex));
+  return rendered;
+}
+
+// "2026-09-01 06:04" -> { day: '2026-09-01', time: '06:04' }
+function splitTimestamp(timestamp) {
+  const parts = timestamp.split(' ');
+  if (parts.length < 2) return { day: '', time: timestamp };
+  return { day: parts[0], time: parts[1] };
+}
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                     'August', 'September', 'October', 'November', 'December'];
+
+function dayHeadingText(day) {
+  const parts = day.split('-');
+  if (parts.length !== 3) return day;
+  const logDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  if (isNaN(logDate.getTime())) return day;
+  const written = DAY_NAMES[logDate.getDay()] + ' ' + Number(parts[2]) + ' ' +
+    MONTH_NAMES[logDate.getMonth()];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayGap = Math.round((today - logDate) / 86400000);
+  if (dayGap === 0) return 'Today, ' + written;
+  if (dayGap === 1) return 'Yesterday, ' + written;
+  return written;
+}
+
+function parseLogLines(raw, source) {
+  return raw.split('\n').map(line => {
+    if (!line.trim()) return null;
+
+    if (source === 'download') {
+      const match = line.match(/^\[([^\]]+)\]\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*(.*)$/);
+      if (match) {
+        const stamp = splitTimestamp(match[1]);
+        return {
+          day: stamp.day, time: stamp.time, timestamp: match[1],
+          kind: classifyDownload(match[2], match[3]),
+          label: match[2], text: match[3], boundary: '', levelStyle: true,
+        };
+      }
+    } else {
+      const match = line.match(/^\[([^\]]+)\]\s*(.*)$/);
+      if (match) {
+        const stamp = splitTimestamp(match[1]);
+        const classified = classifyActivity(match[2]);
+        return {
+          day: stamp.day, time: stamp.time, timestamp: match[1],
+          kind: classified.kind, label: classified.label,
+          text: classified.text, boundary: classified.boundary, levelStyle: false,
+        };
+      }
+    }
+
+    const fallbackKind =
+      /Failed|Error|Timed out/i.test(line) ? 'err' :
+      /Waiting|Skipped/i.test(line) ? 'warn' :
+      /Downloaded|finished/i.test(line) ? 'ok' : 'neutral';
+    return {
+      day: '', time: '\u2014', timestamp: '',
+      kind: fallbackKind, label: 'Log', text: line, boundary: '', levelStyle: false,
+    };
+  }).filter(Boolean);
+}
+
+function renderEntry(entry) {
+  const badgeClass = entry.levelStyle ? 'log-level' : 'log-badge';
+  const boundaryClass = entry.boundary
+    ? ' log-line--run log-line--run-' + entry.boundary
+    : '';
+  const title = entry.timestamp ? ' title="' + esc(entry.timestamp) + '"' : '';
+  return (
+    '<div class="log-line log-line--' + entry.kind + boundaryClass + '"' + title + '>' +
+      '<span class="log-time">' + esc(entry.time) + '</span>' +
+      '<span class="' + badgeClass + ' ' + badgeClass + '--' + entry.kind + '">' +
+        esc(entry.label) + '</span>' +
+      '<span class="log-msg">' + linkifyMessage(entry.text) + '</span>' +
+    '</div>'
+  );
+}
+
+function summarize(entries) {
+  const done = entries.filter(e => e.kind === 'ok').length;
+  const failed = entries.filter(e => e.kind === 'err').length;
+  const waiting = entries.filter(e => e.kind === 'warn').length;
+  const counts = [];
+  if (done) counts.push('<span class="count-ok">' + done + '</span> done');
+  if (failed) counts.push('<span class="count-err">' + failed + '</span> failed');
+  if (waiting) counts.push('<span class="count-warn">' + waiting + '</span> waiting or skipped');
+  if (!counts.length) return entries.length ? entries.length + ' entries' : '';
+  return counts.join(' \u00b7 ');
+}
+
+function renderLogPanel(raw, source, filter) {
+  const emptyMessage = /^No (activity|log entries) yet\./i.test(raw.trim());
+  if (!raw.trim() || emptyMessage) {
+    logSummary.innerHTML = '';
+    return '<div class="log-empty">' + esc(raw.trim() || 'No entries yet.') + '</div>';
+  }
+
+  const entries = parseLogLines(raw, source);
+  logSummary.innerHTML = summarize(entries);
+
+  const shown = filter === 'problems'
+    ? entries.filter(e => e.kind === 'err' || e.kind === 'warn')
+    : entries;
+  if (!shown.length) {
+    return '<div class="log-empty-filtered">Nothing failed or waited in this window.</div>';
+  }
+
+  let html = '';
+  let currentDay = null;
+  for (const entry of shown) {
+    if (entry.day && entry.day !== currentDay) {
+      currentDay = entry.day;
+      html += '<div class="log-day">' + esc(dayHeadingText(entry.day)) + '</div>';
+    }
+    html += renderEntry(entry);
+  }
+  return html;
+}
+
+async function loadLogs() {
+  try {
+    const source = logSourceSelect.value;
+    const response = await fetch('/logs?source=' + encodeURIComponent(source));
+    // An expired session answers 401. Reload so the server can send the
+    // login page instead of leaving a stale queue on screen.
+    if (response.status === 401) {
+      clearInterval(logTimer);
+      window.location.reload();
+      return;
+    }
+    if (!response.ok) return;
+    const text = await response.text();
+    const atBottom = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 60;
+    logBox.innerHTML = renderLogPanel(text, source, logFilterSelect.value);
+    if (atBottom) logBox.scrollTop = logBox.scrollHeight;
+    document.getElementById('log-ts').textContent = new Date().toLocaleTimeString();
+  } catch (_) {}
+}
+
+function setAuto(on) {
+  clearInterval(logTimer);
+  if (on) logTimer = setInterval(loadLogs, 15000);
+}
+
+document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));
+document.getElementById('refresh-logs').addEventListener('click', loadLogs);
+logSourceSelect.addEventListener('change', loadLogs);
+logFilterSelect.addEventListener('change', loadLogs);
+loadLogs();
+setAuto(true);
 """
 
 
@@ -434,6 +726,14 @@ def render_help_page(
         <li>Activity is the short summary. The detailed log is for working out why something failed.</li>
       </ul>
 
+      <h2>Reading the activity log</h2>
+      <ul>
+        <li>Entries are grouped by day, newest at the bottom. The badge on the left says what happened: <strong>Run</strong> for the first and last line of a run, <strong>Done</strong> for a finished download, <strong>Fail</strong> for one that did not, <strong>Wait</strong> for a video still inside its waiting period, <strong>Skip</strong> for a YouTube Short, and <strong>Keep</strong> for retention deleting an old file.</li>
+        <li>Every run is bracketed by a <strong>Run started</strong> and a <strong>Run finished</strong> line, so one run's work is everything between them.</li>
+        <li>The counts beside the log add up the lines currently loaded. <strong>Problems only</strong> hides everything that worked.</li>
+        <li>Links open the video an entry is about. Drag the bottom edge of the box to make it taller.</li>
+      </ul>
+
       <h2>Browser extension</h2>
       <p>Adds the page you are watching to this queue without opening the site. It uses the same username and password you signed in with, and nothing needs changing on the server. Install it on the computer you browse with, which may not be the one running this server.</p>
 
@@ -493,6 +793,12 @@ uv run python main.py -f custom_urls.txt -o ./custom_downloads</code></pre>
         <li>Open Settings in the downloader.</li>
         <li>Select the exported file and choose Upload.</li>
       </ol>
+      <p>
+        The Settings page names the file in use and says when its sign-in stops working.
+        That date comes from the file itself, so it is the latest it can last:
+        YouTube can end a sign-in sooner. When the date has passed, or the page
+        says the file has no sign-in cookies, export a fresh one.
+      </p>
       <p class="note">
         Cookie exports can contain private sign-in data for many websites. Keep the file private.
         See the official
@@ -608,6 +914,9 @@ def render_login_page(
 def render_settings_page(
     *,
     safe_token: str,
+    safe_cookie_summary: str,
+    safe_cookie_expiry: str,
+    cookie_expiry_tone: str,
     safe_server_url: str,
     safe_notification_urls: str,
     safe_tag: str,
@@ -628,6 +937,14 @@ def render_settings_page(
     ----------
     safe_token:
         Escaped CSRF token shared by every form on the page.
+    safe_cookie_summary:
+        Escaped one-line description of the cookie file in use.
+    safe_cookie_expiry:
+        Escaped sentence about when the sign-in stops working, or an empty
+        string when there is nothing to say.
+    cookie_expiry_tone:
+        ``"warn"``, ``"err"``, or an empty string, choosing how urgently the
+        expiry sentence is shown.
     safe_server_url:
         Escaped Apprise notify endpoint.
     safe_notification_urls:
@@ -649,6 +966,12 @@ def render_settings_page(
         The complete settings page.
     """
     checked_attribute = " checked" if notifications_enabled else ""
+    expiry_html = (
+        f'<p class="cookie-expiry cookie-expiry--{cookie_expiry_tone or "plain"}">'
+        f"{safe_cookie_expiry}</p>"
+        if safe_cookie_expiry
+        else ""
+    )
     return HTMLResponse(
         content=f"""<!doctype html>
     <html lang="en">
@@ -690,6 +1013,11 @@ def render_settings_page(
         ordinary requests. Export one with
         <code>yt-dlp --cookies-from-browser chrome --cookies cookies.txt</code>.
       </p>
+      <div class="cookie-status">
+        <span class="cookie-status-label">Current file</span>
+        <p class="cookie-summary">{safe_cookie_summary}</p>
+        {expiry_html}
+      </div>
       <form method="post" action="/upload-cookies" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{safe_token}" />
         <div class="file-row">
@@ -849,6 +1177,7 @@ def render_queue_page(
       <style>
     {BASE_STYLES}
     {APP_LAYOUT_STYLES}
+    {LOG_PANEL_STYLES}
     .card-row {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }}
     .badge {{
       background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent-border);
@@ -892,8 +1221,8 @@ def render_queue_page(
     #log-box {{
       background:var(--log-bg); color:var(--log-text); border:1px solid var(--log-border);
       font-family:"SF Mono","Fira Code","Consolas",monospace;
-      font-size:.74rem; line-height:1.45; border-radius:10px; padding:6px 0;
-      height:340px; overflow-y:auto; word-break:break-word;
+      font-size:.74rem; line-height:1.45; border-radius:10px; padding:0 0 6px;
+      height:clamp(300px,46vh,620px); resize:vertical; overflow-y:auto; word-break:break-word;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
     }}
     #log-box::-webkit-scrollbar {{ width:6px; }}
@@ -1029,6 +1358,11 @@ def render_queue_page(
             <option value="activity" selected>Activity</option>
             <option value="download">Detailed log</option>
           </select>
+          <select id="log-filter" class="log-source" aria-label="Choose what to show">
+            <option value="all" selected>Everything</option>
+            <option value="problems">Problems only</option>
+          </select>
+          <span id="log-summary" aria-live="polite"></span>
         </div>
         <div class="log-controls">
           <span id="log-ts"></span>
@@ -1042,150 +1376,8 @@ def render_queue_page(
       </div>
 
       <script nonce="{script_nonce}">{SERVICE_WORKER_SCRIPT}
-    let timer = null;
     {THEME_SCRIPT}
-
-    function esc(s) {{
-      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }}
-
-    function classifyActivity(message) {{
-      if (/^Downloaded:/i.test(message)) return 'ok';
-      if (/^Failed:/i.test(message)) return 'err';
-      if (/^Waiting for age gate:/i.test(message)) return 'warn';
-      if (/^Skipped Short:/i.test(message)) return 'warn';
-      if (/^Run finished:/i.test(message) || /^Playlist run finished:/i.test(message)) return 'info';
-      if (/^Retention cleanup|^Deleted expired/i.test(message)) return 'dim';
-      if (/^No activity yet\\./i.test(message)) return 'empty';
-      return 'neutral';
-    }}
-
-    function classifyDownload(level, message) {{
-      const upper = level.toUpperCase();
-      if (upper === 'ERROR' || upper === 'CRITICAL') return 'err';
-      if (upper === 'WARNING') return 'warn';
-      if (upper === 'DEBUG') return 'dim';
-      if (/failed|error|timed out/i.test(message)) return 'err';
-      if (/waiting|skipped/i.test(message)) return 'warn';
-      if (/downloaded|finished|success/i.test(message)) return 'ok';
-      return 'info';
-    }}
-
-    function activityBadge(kind) {{
-      const labels = {{ ok: 'Done', err: 'Fail', warn: 'Wait', info: 'Run', dim: 'Keep', neutral: 'Log' }};
-      return labels[kind] || 'Log';
-    }}
-
-    function renderLogLine(kind, timeLabel, badge, message, fullTimestamp) {{
-      const safeTime = esc(timeLabel);
-      const safeBadge = esc(badge);
-      const safeMessage = esc(message);
-      const safeTitle = fullTimestamp ? ' title="' + esc(fullTimestamp) + '"' : '';
-      return (
-        '<div class="log-line log-line--' + kind + '"' + safeTitle + '>' +
-          '<span class="log-time">' + safeTime + '</span>' +
-          '<span class="log-badge log-badge--' + kind + '">' + safeBadge + '</span>' +
-          '<span class="log-msg">' + safeMessage + '</span>' +
-        '</div>'
-      );
-    }}
-
-    function renderDownloadLine(kind, timeLabel, level, message, fullTimestamp) {{
-      const safeTime = esc(timeLabel);
-      const safeLevel = esc(level);
-      const safeMessage = esc(message);
-      const safeTitle = fullTimestamp ? ' title="' + esc(fullTimestamp) + '"' : '';
-      return (
-        '<div class="log-line log-line--' + kind + '"' + safeTitle + '>' +
-          '<span class="log-time">' + safeTime + '</span>' +
-          '<span class="log-level log-level--' + kind + '">' + safeLevel + '</span>' +
-          '<span class="log-msg">' + safeMessage + '</span>' +
-        '</div>'
-      );
-    }}
-
-    function renderLogLines(raw, source) {{
-      const lines = raw.split('\\n');
-      if (!lines.length || (lines.length === 1 && !lines[0].trim())) {{
-        return '<div class="log-empty">No entries yet.</div>';
-      }}
-
-      const rendered = lines.map(line => {{
-        if (!line.trim()) return '';
-
-        if (source === 'download') {{
-          if (/^No log entries yet\\./i.test(line)) {{
-            return '<div class="log-empty">' + esc(line) + '</div>';
-          }}
-
-          const downloadMatch = line.match(/^\\[([^\\]]+)\\]\\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL):\\s*(.*)$/);
-          if (downloadMatch) {{
-            const timestamp = downloadMatch[1];
-            const level = downloadMatch[2];
-            const message = downloadMatch[3];
-            const kind = classifyDownload(level, message);
-            const timeLabel = timestamp.includes(' ') ? timestamp.split(' ')[1] : timestamp;
-            return renderDownloadLine(kind, timeLabel, level, message, timestamp);
-          }}
-        }} else {{
-          if (/^No activity yet\\./i.test(line)) {{
-            return '<div class="log-empty">' + esc(line) + '</div>';
-          }}
-
-          const activityMatch = line.match(/^\\[([^\\]]+)\\]\\s*(.*)$/);
-          if (activityMatch) {{
-            const timestamp = activityMatch[1];
-            const message = activityMatch[2];
-            const kind = classifyActivity(message);
-            const timeLabel = timestamp.includes(' ') ? timestamp.split(' ')[1] : timestamp;
-            return renderLogLine(kind, timeLabel, activityBadge(kind), message, timestamp);
-          }}
-        }}
-
-        const fallbackKind =
-          /Failed|Error|Timed out/i.test(line) ? 'err' :
-          /Waiting|Skipped/i.test(line) ? 'warn' :
-          /Downloaded|finished/i.test(line) ? 'ok' :
-          'neutral';
-        return renderLogLine(fallbackKind, '—', activityBadge(fallbackKind), line, '');
-      }}).filter(Boolean);
-
-      return rendered.join('') || '<div class="log-empty">No entries yet.</div>';
-    }}
-
-    const logSourceSelect = document.getElementById('log-source');
-
-    async function loadLogs() {{
-      try {{
-        const source = logSourceSelect.value;
-        const r = await fetch('/logs?source=' + encodeURIComponent(source));
-        // An expired session answers 401. Reload so the server can send the
-        // login page instead of leaving a stale queue on screen.
-        if (r.status === 401) {{
-          clearInterval(timer);
-          window.location.reload();
-          return;
-        }}
-        if (!r.ok) return;
-        const text = await r.text();
-        const box = document.getElementById('log-box');
-        const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
-        box.innerHTML = renderLogLines(text, source);
-        if (atBottom) box.scrollTop = box.scrollHeight;
-        document.getElementById('log-ts').textContent = new Date().toLocaleTimeString();
-      }} catch (_) {{}}
-    }}
-
-    function setAuto(on) {{
-      clearInterval(timer);
-      if (on) timer = setInterval(loadLogs, 15000);
-    }}
-
-    document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));
-    document.getElementById('refresh-logs').addEventListener('click', loadLogs);
-    logSourceSelect.addEventListener('change', loadLogs);
-    loadLogs();
-    setAuto(true);
+    {ACTIVITY_LOG_SCRIPT}
       </script>
     </body>
     </html>

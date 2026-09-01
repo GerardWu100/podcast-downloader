@@ -1067,8 +1067,14 @@ class PodcastDownloadService:
             skipped as completed.
         """
         urls = self.queue_store.read_urls()
+        # Both ends of a run are recorded so the activity page can show where
+        # one run's work starts and stops. Without a start line, a run that
+        # downloads nothing leaves no trace at all.
+        source_word = "source" if len(urls) == 1 else "sources"
+        self._record_activity(f"Run started: {len(urls)} {source_word} in the queue")
         if not urls:
             self.logger.info("No URLs to process.")
+            self._record_activity("Run finished: 0 successful, 0 failed")
             return 0, 0
 
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -1130,6 +1136,7 @@ class PodcastDownloadService:
             )
             return 0, 1
 
+        self._record_activity(f"Playlist run started: {normalized_url}")
         current_queue_urls = self.queue_store.read_urls()
         retention_dirs = self._retention_channel_output_dirs(current_queue_urls)
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -1145,6 +1152,7 @@ class PodcastDownloadService:
             full_playlist=True,
         )
         if not video_urls:
+            self._record_activity("Playlist run finished: 0 successful, 0 failed")
             self._run_retention_cleanup(retention_dirs)
             return 0, 0
 

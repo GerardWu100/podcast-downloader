@@ -814,7 +814,8 @@ leftover temp files: none</pre></div>
 <tr><td><code>POST /add-url</code></td><td>Validates a URL, adds it to the queue, and may wake the scheduler.</td><td>Yes</td></tr>
 <tr><td><code>POST /remove-url</code></td><td>Removes one source from <code>urls.txt</code>.</td><td>Yes</td></tr>
 <tr><td><code>POST /upload-cookies</code></td><td>Replaces the <code>yt-dlp</code> cookie file from a browser upload.</td><td>Yes</td></tr>
-<tr><td><code>GET /logs</code></td><td>Returns the tail of <code>activity.log</code> or <code>download.log</code> as plain text.</td><td>Yes</td></tr>
+<tr><td><code>POST /run-now</code></td><td>Asks the scheduler to run the whole queue now, unless one is already running.</td><td>Yes</td></tr>
+<tr><td><code>GET /logs</code></td><td>Returns the tail of <code>activity.log</code> or <code>download.log</code> as plain text. The browser does the grouping, badges, and filtering.</td><td>Yes</td></tr>
 </tbody>
 </table>
 </div>
@@ -910,7 +911,9 @@ verify_password("x", "not-a-hash")                        -&gt; False</pre></div
 │       ├── ArchiveStore.load()                  duplicate check before queuing
 │       ├── BypassStore.add()                    "run now" for a YouTube video
 │       ├── ActivityLogStore.read_tail()         the log box
-│       └── trigger.queue_single_url_download() / queue_full_playlist_download()
+│       ├── RunStateStore.load()                 "last run" and the Run button
+│       ├── describe_cookie_file()               cookie expiry on /settings
+│       └── trigger.queue_single_url_download() / queue_full_playlist_download() / queue_full_queue_run()
 └── run_scheduler()
     └── subprocess: python -m src.cli  [--download-single-url | --download-full-playlist]
         └── src/cli.py main()

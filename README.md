@@ -16,7 +16,8 @@ segments when available, and run from the command line or a web browser.
 - Keep the queue, download history, and one-use age-check exceptions in
   `urls.txt`, `downloaded_urls.txt`, and `bypass_age_check_urls.txt`.
 - Manage sources, activity, logs, cookies, and error notifications from the
-  password-protected web interface.
+  password-protected web interface. The activity feed is grouped by day and by
+  run, and the settings page says when the YouTube cookies expire.
 - Install the web interface on a phone, or use the Chrome and Firefox
   extension to queue the page you are viewing.
 
@@ -93,7 +94,9 @@ If YouTube blocks downloads, export fresh browser cookies:
 yt-dlp --cookies-from-browser chrome --cookies cookies.txt
 ```
 
-Upload the file on the **Settings** page. See
+Upload the file on the **Settings** page, which then shows how many cookies
+the file holds and when its sign-in stops working. That date is read from the
+file, so it is an upper bound: YouTube can end a sign-in earlier. See
 [docs/web-ui-security.md](docs/web-ui-security.md) for sign-in and session
 details, and [docs/operations.md](docs/operations.md) for cookies and Docker.
 

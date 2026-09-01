@@ -39,6 +39,7 @@ over their jobs.
 - `trigger.py`: in-process requests that wake the Docker scheduler, including the whole-queue request the Run button sends.
 - `schedule.py`: turns `scheduled_run_hour` and `scheduled_run_interval_days` into run times, and writes the "7 hours ago" wording the queue page shows.
 - `log_timezone.py`: shared Toronto/Eastern logging timezone.
+- `cookie_file.py`: reads a Netscape `cookies.txt` to report how many cookies it holds and when its YouTube sign-in expires. Read-only; it never rewrites the file.
 - `media/GUIDE_media.md`: URL validation and YouTube policy.
 - `state/GUIDE_state.md`: locked plain-file state.
 - `downloads/GUIDE_downloads.md`: download workflow and external clients.
@@ -50,5 +51,6 @@ queue edit in `state/queue_store.py`.
 
 ## Journal
 
+- 2026-09-01: Added `cookie_file.py`. Cookie expiry was invisible until downloads started failing, and the expiry date is already in the file's fifth field.
 - 2026-09-01: Automatic runs moved from a countdown between runs to a fixed time of day. `schedule.py` decides when; `state/run_state_store.py` records what happened.
 - 2026-07-26: Removed catch-all compatibility modules and established explicit `web`, `media`, `downloads`, and `state` boundaries.

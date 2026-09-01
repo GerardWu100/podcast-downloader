@@ -57,7 +57,7 @@ from installing the app.
   smaller URL-field limit during normal validation.
 - `account_auth.py`: `check_credentials()` plus the failed-attempt ban ledger, shared by the login form and the API. It owns the constant-time name comparison and decoy password hash, so an unknown name takes about as long to reject as a wrong password. Keeping one implementation ensures both entry points apply the ban.
 - `auth.py`: `security_headers()`, `client_ip()`, and `request_is_secure()` enforce browser security and proxy rules.
-- `templates.py`: shared styles and renderers for the help, login, queue, and settings pages. Route code supplies escaped values and security headers. `HEAD_APP_TAGS` and `SERVICE_WORKER_SCRIPT` add install support to each page.
+- `templates.py`: shared styles and renderers for the help, login, queue, and settings pages. `LOG_PANEL_STYLES` and `ACTIVITY_LOG_SCRIPT` hold the activity panel's styles and browser code as ordinary strings, so their braces and regular expressions are written once rather than doubled for an f-string. Route code supplies escaped values and security headers. `HEAD_APP_TAGS` and `SERVICE_WORKER_SCRIPT` add install support to each page.
 - `static/`: icons, the web manifest, and the service worker. These ship with the code, not in the mounted data directory. Regenerate the icons with `uv run --group dev python scripts/generate_app_icons.py` after changing the artwork; the PNG files are committed so the container needs no image library.
 - `__init__.py`: package marker.
 
@@ -79,6 +79,8 @@ pages stay consistent.
 
 ## Journal
 
+- 2026-09-01: The activity panel was rewritten to be read rather than scrolled: entries are grouped under day headings, each run is bracketed by its start and finish line, badges name the event, URLs became links, counts sit beside the picker, and a "Problems only" filter hides what worked. The browser code moved out of the page f-string into `ACTIVITY_LOG_SCRIPT`, because escaping every brace of a regular expression twice is how the old version stayed small.
+- 2026-09-01: The settings page reports the cookie file in use and when its sign-in expires. The date was always in the file; nothing surfaced it, so the first sign of an expired cookie was a run of failed downloads.
 - 2026-09-01: The status line under the add-source form now answers three questions instead of one: what was downloaded last, when the queue last ran and how long ago, and when the next run is due. The next-run time comes from the calendar rule in `src/schedule.py`, so the page can show it whether or not a scheduler thread is running in this process.
 - 2026-07-26: The deployment entry point became a factory call. Request-security policy, rendering, and authentication state each gained a clear owner.
 - 2026-07-26: Route handlers began receiving configuration, stores, and the scheduler trigger from the application factory instead of rebuilding production dependencies from module globals.

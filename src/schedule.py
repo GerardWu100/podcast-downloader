@@ -26,6 +26,11 @@ from .log_timezone import LOG_TIME_ZONE
 MINUTES_PER_HOUR = 60
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = MINUTES_PER_HOUR * SECONDS_PER_MINUTE
+HOURS_PER_DAY = 24
+SECONDS_PER_DAY = HOURS_PER_DAY * SECONDS_PER_HOUR
+# Below this, hours read better than days: "in 30 hours" is clearer than
+# "in 1 day". Above it, hours stop being meaningful ("in 1920 hours").
+HOURS_BEFORE_SWITCHING_TO_DAYS = 48
 
 SCHEDULE_TIME_FORMAT = "%Y-%m-%d %H:%M"
 JUST_NOW_LABEL = "just now"
@@ -174,10 +179,10 @@ def format_schedule_time(moment: datetime) -> str:
 def _format_duration(total_seconds: float) -> str:
     """Return a rounded, plain-language length of time.
 
-    Durations under an hour are reported in minutes and the rest in hours,
-    because the interface only needs enough precision to answer "is this
-    recent?". An empty string means "less than a minute", which the two callers
-    below turn into their own wording.
+    Durations under an hour are reported in minutes, then in hours, then in
+    days, because the interface only needs enough precision to answer "is this
+    recent?" or "how long have I got?". An empty string means "less than a
+    minute", which the two callers below turn into their own wording.
 
     Parameters
     ----------
@@ -191,7 +196,10 @@ def _format_duration(total_seconds: float) -> str:
             return ""
         return f"{minutes} minute{'s' if minutes != 1 else ''}"
     hours = int(seconds // SECONDS_PER_HOUR)
-    return f"{hours} hour{'s' if hours != 1 else ''}"
+    if hours < HOURS_BEFORE_SWITCHING_TO_DAYS:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    days = int(seconds // SECONDS_PER_DAY)
+    return f"{days} day{'s' if days != 1 else ''}"
 
 
 def format_time_ago(moment: datetime, now: datetime) -> str:

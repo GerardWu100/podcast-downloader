@@ -170,6 +170,33 @@ missing entry appears only on a machine that ran the generator before building.
 - An immediate single-URL run does not inspect the rest of `urls.txt` or expand older channel and playlist entries.
 - An immediate run never changes the next scheduled time.
 
+## Reading the activity log
+
+- The browser groups activity by day and marks each run with a `Run started`
+  and a `Run finished` line, so one run's work is everything between the two.
+  An empty queue still writes both lines: a run that logs nothing looks the
+  same as a scheduler that has died.
+- The badge on each line is the event type: `Run`, `Done`, `Fail`, `Wait` (a
+  video still inside `min_channel_video_age_hours`), `Skip` (a YouTube Short),
+  and `Keep` (retention deleting a file).
+- The counts beside the picker total the lines currently loaded, and
+  **Problems only** hides everything that worked.
+- URLs in the feed are links, so a failed line leads straight to the video.
+- Both logs read the same way. `activity.log` is the summary; `download.log`
+  keeps the full `yt-dlp` command and output and is chosen from the same picker.
+
+## Cookie expiry
+
+- The settings page names the cookie file in use, counts its cookies, and says
+  when the sign-in stops working.
+- The date is the earliest expiry among the YouTube sign-in cookies
+  (`SID`, `HSID`, `SSID`, `APISID`, `SAPISID`, `LOGIN_INFO`, and the
+  `__Secure-` variants), read from the file's own fifth field. It is an upper
+  bound: YouTube can invalidate a sign-in before its cookies expire.
+- The page warns within 14 days of that date, and marks a passed date in red.
+- A file with no sign-in cookies is also called out. It will not get past an
+  age check, whatever else it contains.
+
 ## Downloaded file dates
 
 Completed MP3 files receive an embedded MP3 `date` tag set to the Toronto/Eastern completion time. Audiobookshelf shows it as the episode date. The same pass stores the source URL in the MP3 `comment` tag.
