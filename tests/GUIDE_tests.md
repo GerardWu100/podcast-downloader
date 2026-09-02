@@ -30,7 +30,7 @@ The live SponsorBlock check is
 - `test_ytdlp_client.py`: result types, command policy, changed files, and
   cookie retries.
 - `test_downloader.py`: publication, metadata recovery, retention, archive
-  serialization, and queue outcomes.
+  serialization, queue outcomes, and per-source age-gate behavior.
 - `test_url_utils_behavior.py`: media policy and queue-store concurrency.
 - `test_api_routes.py`: shared-account sign-in, identical refusals for a wrong
   password and unknown name, the ban shared with the login page, every
@@ -76,3 +76,4 @@ uv run python -m pytest -q
 - 2026-09-01: Added coverage for the silent-failure alerts, the health endpoint, and a scheduler that survives a missing yt-dlp.
 - 2026-09-01: Added cookie-expiry coverage and run-bracket coverage for the activity feed.
 - 2026-09-01: Scheduler tests moved from "waits N hours" to "waits until the next 06:00 run day", and gained the missed-run catch-up and the Run button.
+- 2026-09-02: Added end-to-end contract coverage for the saved-source Run now request, including direct-video bypass, playlist age filtering, scheduler dispatch, and deletion logging.

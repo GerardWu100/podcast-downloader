@@ -30,6 +30,7 @@ from ..cookie_file import (
 )
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
 from ..media.urls import is_supported_media_url
+from ..media.youtube import normalize_youtube_url
 from ..human_time import format_clock_time, format_time_ago, format_time_until
 from ..log_timezone import local_now
 from ..schedule import next_scheduled_run
@@ -738,6 +739,10 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
     ),
     "notifications_error": ("msg-err", "Could not save notification settings."),
     "run_started": ("msg-ok", "Queue run started. Watch the activity log below."),
+    "source_run_started": (
+        "msg-ok",
+        "Source run requested. Watch the activity log below.",
+    ),
     "run_already_running": ("msg-warn", "A queue run is already in progress."),
 }
 
@@ -800,11 +805,17 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
         items = "".join(
             f'<li class="q-item"><span class="q-dot"></span>'
             f'<span class="q-url">{safe_url}</span>'
-            f'<form method="post" action="/remove-url" class="remove-form">'
+            f'<div class="q-actions">'
+            f'<form method="post" action="/run-source">'
             f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
             f'<input type="hidden" name="url" value="{safe_url}" />'
-            f'<button type="submit" class="btn-remove">Remove</button>'
-            f"</form></li>"
+            f'<button type="submit" class="btn-run-source">Run now</button>'
+            f"</form>"
+            f'<form method="post" action="/remove-url">'
+            f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
+            f'<input type="hidden" name="url" value="{safe_url}" />'
+            f'<button type="submit" class="btn-remove">Delete</button>'
+            f"</form></div></li>"
             for safe_url in safe_queue_urls
         )
         queue_html = f'<ul class="q-list">{items}</ul>'
@@ -1273,4 +1284,36 @@ def remove_url_form(
     if not removed:
         return RedirectResponse(url="/?msg=notfound", status_code=303)
 
+    normalized_url = normalize_youtube_url(url.strip())
+    try:
+        _activity_store(request).write_event(f"{normalized_url} URL has been deleted")
+    except OSError as exc:
+        # The queue deletion has already succeeded. A logging problem should
+        # not turn that completed action into a misleading browser error.
+        _logger.warning("Could not record deleted source in activity log: %s", exc)
     return RedirectResponse(url="/?msg=removed", status_code=303)
+
+
+@router.post("/run-source")
+def run_source_form(
+    request: Request,
+    url: str = Form(...),
+    csrf_token: str = Form(...),
+) -> RedirectResponse:
+    """Request immediate processing for one source still in the queue."""
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    if not _verify_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    if not is_supported_media_url(url):
+        return RedirectResponse(url="/?msg=invalid", status_code=303)
+
+    normalized_url = normalize_youtube_url(url.strip())
+    if normalized_url not in _queue_store(request).load_normalized_urls():
+        return RedirectResponse(url="/?msg=notfound", status_code=303)
+
+    _download_trigger(request).queue_source_download(normalized_url)
+    return RedirectResponse(url="/?msg=source_run_started", status_code=303)

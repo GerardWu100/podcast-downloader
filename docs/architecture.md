@@ -65,6 +65,8 @@ same way from the form and the API.
    `min_channel_video_age_hours > 0`, unless the user skips the wait.
 5. For channel results, skip Shorts and videos that are too new when the upload
    age is known.
+   A row-level playlist run applies the same age test to its recent entries.
+   A row-level direct-video run deliberately skips this test.
 6. Download the selected items as audio. Use SponsorBlock only for YouTube.
 7. For exact Rumble hosts, use Chrome request impersonation through
    `curl-cffi` so Cloudflare accepts the requests.

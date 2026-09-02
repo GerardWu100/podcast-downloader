@@ -25,6 +25,7 @@ from ..cookie_file import describe_cookie_file
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT, local_now
 from ..run_report import RunFacts, build_run_alert
 from ..notifications.apprise_client import AppriseNotifier
+from ..media.urls import is_supported_media_url
 from ..media.youtube import (
     expand_channel_or_playlist,
     get_video_metadata,
@@ -1234,6 +1235,71 @@ class PodcastDownloadService:
 
         self._record_activity(
             f"Playlist run finished: {successful} successful, {failed} failed"
+        )
+        self._run_retention_cleanup(retention_dirs)
+        return successful, failed
+
+    def download_queue_source_now(self, source_url: str) -> tuple[int, int]:
+        """Process exactly one saved source using per-source Run now rules.
+
+        Direct videos run without the minimum-age check. Channels use their
+        normal expansion filter. Playlist entries receive the same age check
+        individually because normal playlist expansion preserves playlist
+        order but does not filter by upload age.
+
+        Parameters
+        ----------
+        source_url:
+            Direct video, YouTube channel, or YouTube playlist URL selected on
+            the queue page.
+
+        Returns
+        -------
+        tuple[int, int]
+            ``(successful, failed)`` counts for concrete videos attempted.
+        """
+        normalized_url = normalize_youtube_url(source_url.strip())
+        if not is_supported_media_url(normalized_url):
+            self.logger.info("Targeted source run requires a media URL: %s", source_url)
+            return 0, 1
+
+        self._record_activity(f"Source run started: {normalized_url}")
+        current_queue_urls = self.queue_store.read_urls()
+        retention_dirs = self._retention_channel_output_dirs(current_queue_urls)
+        self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        self.intermediate_dir.mkdir(parents=True, exist_ok=True)
+
+        download_targets = self._expand_queue_url(normalized_url)
+        if is_youtube_playlist(normalized_url):
+            # Playlist expansion keeps source order. Apply the video-age gate
+            # here so this manual run cannot pull a just-published episode.
+            download_targets = [
+                target
+                for target in download_targets
+                if not self._youtube_video_is_too_new(target.video_url)
+            ]
+
+        successful = 0
+        failed = 0
+        total = len(download_targets)
+        for index, target in enumerate(download_targets, 1):
+            _, success = self._download_video(
+                target.video_url,
+                index=index,
+                total=total,
+                use_archive=target.use_archive,
+                final_output_dir=target.output_dir,
+            )
+            if success:
+                successful += 1
+            else:
+                failed += 1
+
+            if index < total and self.delay_seconds > 0:
+                time.sleep(self.delay_seconds)
+
+        self._record_activity(
+            f"Source run finished: {successful} successful, {failed} failed"
         )
         self._run_retention_cleanup(retention_dirs)
         return successful, failed

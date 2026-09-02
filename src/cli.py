@@ -159,6 +159,15 @@ Examples:
         ),
     )
 
+    parser.add_argument(
+        "--download-source-now",
+        default="",
+        help=(
+            "Process exactly one saved source now. Direct videos bypass the age "
+            "gate; channels and playlists keep the configured age and entry limits."
+        ),
+    )
+
     return parser
 
 
@@ -203,11 +212,12 @@ def main() -> int:
 
     single_url = args.download_single_url.strip()
     full_playlist_url = args.download_full_playlist.strip()
-    if single_url and full_playlist_url:
-        print(
-            f"{Colors.RED}Error: use only one of --download-single-url or "
-            f"--download-full-playlist{Colors.NC}"
-        )
+    source_url = args.download_source_now.strip()
+    selected_download_modes = sum(
+        bool(value) for value in (single_url, full_playlist_url, source_url)
+    )
+    if selected_download_modes > 1:
+        print(f"{Colors.RED}Error: use only one immediate download option{Colors.NC}")
         return 1
 
     if single_url and not is_supported_media_url(single_url):
@@ -231,6 +241,12 @@ def main() -> int:
     if full_playlist_url and not is_youtube_playlist(full_playlist_url):
         print(
             f"{Colors.RED}Error: --download-full-playlist requires a YouTube playlist URL{Colors.NC}"
+        )
+        return 1
+
+    if source_url and not is_supported_media_url(source_url):
+        print(
+            f"{Colors.RED}Error: --download-source-now must be a web media URL{Colors.NC}"
         )
         return 1
 
@@ -271,7 +287,9 @@ def main() -> int:
     print(f"{Colors.BLUE}={'=' * 35}{Colors.NC}")
     print()
 
-    if single_url:
+    if source_url:
+        successful, failed = downloader.download_queue_source_now(source_url)
+    elif single_url:
         successful, failed = downloader.download_single_queue_url(single_url)
     elif full_playlist_url:
         successful, failed = downloader.download_full_playlist_now(full_playlist_url)

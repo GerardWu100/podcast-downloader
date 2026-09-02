@@ -42,6 +42,7 @@ class _RecordingDownloadTrigger:
     def __init__(self) -> None:
         self.single_urls: list[str] = []
         self.playlist_urls: list[str] = []
+        self.source_urls: list[str] = []
         self.full_queue_runs = 0
 
     def queue_single_url_download(self, url: str) -> None:
@@ -51,6 +52,10 @@ class _RecordingDownloadTrigger:
     def queue_full_playlist_download(self, url: str) -> None:
         """Record one full-playlist request."""
         self.playlist_urls.append(url)
+
+    def queue_source_download(self, url: str) -> None:
+        """Record one targeted saved-source request."""
+        self.source_urls.append(url)
 
     def queue_full_queue_run(self) -> None:
         """Record one whole-queue request."""

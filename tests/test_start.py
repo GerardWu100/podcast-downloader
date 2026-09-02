@@ -13,8 +13,10 @@ from src.state.run_state_store import RunKind, RunState
 from src.trigger import (
     pop_full_queue_run_request,
     pop_single_url_download_requests,
+    pop_source_download_requests,
     queue_full_queue_run,
     queue_single_url_download,
+    queue_source_download,
 )
 
 
@@ -74,6 +76,29 @@ def test_run_immediate_downloads_processes_full_playlist_requests(monkeypatch) -
     ]
 
 
+def test_run_immediate_downloads_processes_targeted_source_requests(
+    monkeypatch,
+) -> None:
+    """Saved-source payloads should use the targeted source CLI path."""
+    calls: list[tuple[list[str], str | None]] = []
+
+    def fake_run(command: list[str], check: bool, cwd: str | None = None) -> None:
+        calls.append((command, cwd))
+
+    monkeypatch.setattr(start.subprocess, "run", fake_run)
+    monkeypatch.setattr(start.sys, "executable", "/python")
+
+    source_url = "https://www.youtube.com/@examplechannel"
+    start._run_immediate_downloads([], [], [source_url])
+
+    assert calls == [
+        (
+            ["/python", "-m", "src.cli", "--download-source-now", source_url],
+            str(start.PROJECT_ROOT),
+        )
+    ]
+
+
 def test_run_immediate_downloads_without_any_payload_runs_nothing(
     monkeypatch,
 ) -> None:
@@ -111,7 +136,7 @@ def test_run_immediate_downloads_runs_whole_queue_when_button_pressed(
     )
     monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_finished", lambda: None)
 
-    start._run_immediate_downloads([], [], True)
+    start._run_immediate_downloads([], [], [], True)
 
     assert calls == [(["/python", "-m", "src.cli"], str(start.PROJECT_ROOT))]
     assert recorded_kinds == [RunKind.MANUAL]
@@ -128,6 +153,7 @@ def test_post_update_delay_runs_pending_request_and_still_returns(
     def fake_run_immediate_downloads(
         single_url_requests: list[str],
         full_playlist_requests: list[str] | None = None,
+        source_requests: list[str] | None = None,
         full_queue_run_requested: bool = False,
     ) -> None:
         handled.append(single_url_requests)
@@ -139,6 +165,28 @@ def test_post_update_delay_runs_pending_request_and_still_returns(
     start._wait_for_post_update_delay()
 
     assert handled == [["https://www.youtube.com/watch?v=abc123"]]
+
+
+def test_pending_source_request_is_popped_for_the_scheduler(monkeypatch) -> None:
+    """The scheduler handoff should carry one row-level Run now request."""
+    handled: list[tuple[list[str], list[str]]] = []
+    pop_source_download_requests()
+    source_url = "https://www.youtube.com/playlist?list=PL123"
+    queue_source_download(source_url)
+
+    def fake_run_immediate_downloads(
+        single_url_requests: list[str],
+        full_playlist_requests: list[str] | None = None,
+        source_requests: list[str] | None = None,
+        full_queue_run_requested: bool = False,
+    ) -> None:
+        handled.append((single_url_requests, source_requests or []))
+
+    monkeypatch.setattr(start, "_run_immediate_downloads", fake_run_immediate_downloads)
+
+    start._handle_pending_ui_requests()
+
+    assert handled == [([], [source_url])]
 
 
 def test_scheduled_wait_uses_seconds_until_the_next_fixed_run_time(

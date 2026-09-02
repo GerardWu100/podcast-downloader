@@ -150,6 +150,9 @@ missing entry appears only on a machine that ran the generator before building.
 - **Run queue now** on the queue page starts the same whole-queue pass by hand.
   It is refused while a run is already going, and it does not shift the
   schedule.
+- **Run now** beside a saved source processes only that row. A direct video
+  bypasses the configured video-age wait. A channel or playlist checks its
+  newest `channel_count` entries now and keeps the age gate.
 - The queue page shows when the last run finished, how long ago that was, and
   when the next one is due. The record lives in `run_state.json` beside the
   other state files.
@@ -168,6 +171,7 @@ missing entry appears only on a machine that ran the generator before building.
 - A selected playlist starts an immediate full-playlist run and downloads every entry instead of applying the `channel_count` limit.
 - Channel and playlist additions stay queued for the scheduled full-queue run. Each run considers only the newest `channel_count` entries from each monitored source.
 - An immediate single-URL run does not inspect the rest of `urls.txt` or expand older channel and playlist entries.
+- Deleting a saved source writes `<URL> URL has been deleted` to `activity.log`.
 - An immediate run never changes the next scheduled time.
 
 ## Knowing when it has stopped working
@@ -235,7 +239,8 @@ answers, which it does while the scheduler behind it is dead.
   same as a scheduler that has died.
 - The badge on each line is the event type: `Run`, `Done`, `Fail`, `Wait` (a
   video still inside `min_channel_video_age_hours`), `Skip` (a YouTube Short),
-  and `Keep` (retention deleting a file).
+  `Delete` (a source removed from the queue), and `Keep` (retention deleting a
+  file).
 - The counts beside the picker total the lines currently loaded, and
   **Problems only** hides everything that worked.
 - URLs in the feed are links, so a failed line leads straight to the video.

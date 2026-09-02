@@ -45,6 +45,12 @@ For a playlist, it starts
 playlist entry immediately; scheduled runs consider only the newest
 `channel_count` entries.
 
+Each saved queue row also has **Run now**. It starts
+`python -m src.cli --download-source-now "<url>"` for only that source. A direct
+video bypasses `min_channel_video_age_hours`. A channel or playlist keeps that
+age gate and the `channel_count` limit while checking for eligible videos
+immediately.
+
 Override the queue file, output folder, or number of recent channel/playlist
 entries:
 
@@ -54,6 +60,7 @@ uv run python main.py -f custom_urls.txt -o ./custom_downloads -n 3
 
 `-n` must be at least `1`. `--download-single-url` accepts only individual
 URLs. `--download-full-playlist` requires a dedicated YouTube playlist URL.
+`--download-source-now` accepts any supported saved source URL.
 An add command exits with an error if it adds no new valid URL.
 
 ## `config.ini`

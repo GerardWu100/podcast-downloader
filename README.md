@@ -70,6 +70,7 @@ uv run python main.py --add-url "https://www.youtube.com/watch?v=..." [--skip-ag
 uv run python main.py --add-url-stdin < new_urls.txt
 uv run python main.py --download-single-url "https://videos.example.com/watch/episode-1"
 uv run python main.py --download-full-playlist "https://www.youtube.com/playlist?list=..."
+uv run python main.py --download-source-now "https://www.youtube.com/@channel"
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 uv run python -m pytest -q
 uv run python scripts/sponsorblock_smoke_check.py
@@ -77,15 +78,20 @@ uv run python scripts/sponsorblock_smoke_check.py
 
 The first command runs one queue pass. The second uses a different queue file,
 output folder, and number of recent channel or playlist entries. The remaining
-commands add URLs, download one URL or a full playlist, start the web
-interface, run offline tests, or check the live SponsorBlock service.
+commands add URLs, download one URL, a full playlist, or one saved source,
+start the web interface, run offline tests, or check the live SponsorBlock
+service.
 
 To open the web interface, start Uvicorn and visit
 `http://127.0.0.1:8000/`. Sign in to manage the queue. The line under the
 add-source box shows the last download, when the queue last ran and how long
 ago, and when the next run is due; **Run queue now** beside it starts a run
-immediately without changing the schedule. Use **Settings** for cookies and
-notifications, and open `/help` for cookie-export instructions.
+immediately without changing the schedule. Each saved source also has **Run
+now** and **Delete** controls. A direct video's **Run now** bypasses the
+configured video-age wait. A channel or playlist checks its recent entries now
+but keeps the age gate. Deleting a source records its URL in the activity log.
+Use **Settings** for cookies and notifications, and open `/help` for
+cookie-export instructions.
 
 On a phone, open the site in Chrome or Safari and choose **Install app** or
 **Add to Home Screen**. The app hides the address bar and keeps you signed in

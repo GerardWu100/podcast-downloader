@@ -50,6 +50,9 @@ from installing the app.
 
 - `app.py`: `create_app()` builds the application and its dependencies. Each application instance has its own session and Cross-Site Request Forgery (CSRF) token maps.
 - `routes.py`: FastAPI handlers for login, the queue, cookie upload, logs, help, notifications, and scheduler triggers. It owns the login flow and CSRF tokens. `POST /run-now` starts the same whole-queue pass the schedule runs; it is refused while one is already going, so two passes cannot fight over the same state files.
+- `POST /run-source` validates that the submitted URL is still saved, then
+  queues only that source. A direct video bypasses the configured age gate;
+  channels and playlists keep the age and recent-entry limits.
 - `queue_actions.py`: `add_url_to_queue()`, the single place that decides what happens to a submitted URL — reject, normalize, refuse as a duplicate or as already downloaded, append, and wake the scheduler. Both `routes.add_url_form` and `api_routes.add_url` call it, so the browser form and the extension always behave the same.
 - `api_routes.py`: `GET /api/ping`, `GET /api/health`, and `POST /api/add-url`. `/api/health` answers 503 once the scheduled run is more than three hours late, so an uptime monitor can alert on the status code alone. It exists because nothing inside a dead container can report that it is dead, and `/api/ping` stays cheerful while the web server answers and the scheduler behind it is gone. Clients send the same account name and password as the login form in an `Authorization: Basic` header. These routes do not check a CSRF token: CSRF protection is for credentials that browsers attach automatically, while this header comes from the client's own settings. They also omit `WWW-Authenticate`, so a browser tab shows the JSON refusal instead of its own sign-in box. No CORS headers are sent. A Manifest V3 extension with host permissions can call the routes, while an ordinary cross-origin page cannot.
 - `app.py` rejects an undeclared or oversized `/api/add-url` body before
@@ -79,6 +82,7 @@ pages stay consistent.
 
 ## Journal
 
+- 2026-09-02: Each saved source gained a targeted Run now control. Direct videos bypass the age gate, while channels and playlists keep it; deleting a row now leaves its normalized URL in the activity log.
 - 2026-09-01: Added `GET /api/health` for an external monitor.
 - 2026-09-01: The activity panel was rewritten to be read rather than scrolled: entries are grouped under day headings, each run is bracketed by its start and finish line, badges name the event, URLs became links, counts sit beside the picker, and a "Problems only" filter hides what worked. The browser code moved out of the page f-string into `ACTIVITY_LOG_SCRIPT`, because escaping every brace of a regular expression twice is how the old version stayed small.
 - 2026-09-01: The settings page reports the cookie file in use and when its sign-in expires. The date was always in the file; nothing surfaced it, so the first sign of an expired cookie was a run of failed downloads.

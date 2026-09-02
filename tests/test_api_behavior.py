@@ -1378,7 +1378,9 @@ def test_ui_shows_monitored_urls_with_remove_controls(tmp_path, monkeypatch) -> 
     assert "https://www.youtube.com/watch?v=abc123" in body
     assert "https://www.youtube.com/@channelname" in body
     assert 'action="/remove-url"' in body
-    assert "Remove</button>" in body
+    assert "Delete</button>" in body
+    assert 'action="/run-source"' in body
+    assert "Run now</button>" in body
 
     api_module.SESSIONS.pop(session_id, None)
 
@@ -1452,6 +1454,7 @@ def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> Non
     """Removing a monitored URL should update urls.txt and return a success banner."""
     session_id = "test-remove-url-session"
     queue_file = tmp_path / "urls.txt"
+    activity_file = tmp_path / "activity.log"
     queue_file.write_text(
         "https://www.youtube.com/watch?v=abc123\nhttps://www.youtube.com/@channelname\n",
         encoding="utf-8",
@@ -1459,7 +1462,11 @@ def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr(
         api_module,
         "CONFIG",
-        replace(api_module.CONFIG, urls_file=queue_file),
+        replace(
+            api_module.CONFIG,
+            urls_file=queue_file,
+            log_file=tmp_path / "download.log",
+        ),
     )
     api_module.SESSIONS[session_id] = {
         "ip": "127.0.0.1",
@@ -1486,6 +1493,10 @@ def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> Non
     assert (
         queue_file.read_text(encoding="utf-8")
         == "https://www.youtube.com/@channelname\n"
+    )
+    assert (
+        "https://www.youtube.com/watch?v=abc123 URL has been deleted"
+        in activity_file.read_text(encoding="utf-8")
     )
 
     api_module.SESSIONS.pop(session_id, None)

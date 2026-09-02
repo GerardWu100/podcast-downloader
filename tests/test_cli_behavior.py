@@ -232,3 +232,40 @@ def test_cli_rejects_url_kind_that_does_not_match_download_mode(
 
     assert result == 1
     assert expected_message in capsys.readouterr().out
+
+
+def test_cli_dispatches_targeted_source_run(tmp_path: Path, monkeypatch) -> None:
+    """The scheduler's source command should call the targeted service method."""
+    source_url = "https://www.youtube.com/@examplechannel"
+    called_urls: list[str] = []
+
+    class FakeDownloadService:
+        """Minimal downloader used to observe CLI dispatch."""
+
+        def __init__(self, **kwargs) -> None:
+            """Accept production construction arguments without using them."""
+
+        def _check_ytdlp(self) -> bool:
+            """Report the external downloader as available."""
+            return True
+
+        def download_queue_source_now(self, url: str) -> tuple[int, int]:
+            """Record the selected source and return a successful result."""
+            called_urls.append(url)
+            return 1, 0
+
+        def show_stats(self, successful: int, failed: int) -> None:
+            """Accept the CLI summary callback."""
+
+    monkeypatch.setattr(cli_module, "load_config", lambda *args: _test_config(tmp_path))
+    monkeypatch.setattr(cli_module, "PodcastDownloadService", FakeDownloadService)
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        ["main.py", "--download-source-now", source_url],
+    )
+
+    result = cli_module.main()
+
+    assert result == 0
+    assert called_urls == [source_url]

@@ -2,9 +2,10 @@
 
 The web UI and Docker scheduler run in the same Python process under
 ``start.py``. Waking the scheduler is not enough on its own: it also needs to
-know which exact URL to act on. Direct videos go to the single-URL queue and
-playlists to the full-playlist queue, so an immediate run processes only what
-the browser submitted rather than the whole of ``urls.txt``.
+know which exact URL to act on. Newly added direct videos go to the single-URL
+queue, checked playlist additions go to the full-playlist queue, and a saved
+source's Run now button goes to the targeted-source queue. These paths process
+only the named URL rather than the whole of ``urls.txt``.
 
 The Run button is the one exception. It asks for the same work the scheduled
 06:00 run does, so it sets a flag instead of naming a URL.
@@ -20,6 +21,7 @@ download_trigger: threading.Event = threading.Event()
 _requests_lock = threading.Lock()
 _single_url_download_requests: list[str] = []
 _full_playlist_download_requests: list[str] = []
+_source_download_requests: list[str] = []
 _full_queue_run_requested = False
 
 
@@ -31,6 +33,9 @@ class DownloadTrigger(Protocol):
 
     def queue_full_playlist_download(self, url: str) -> None:
         """Queue one playlist URL for immediate full-playlist processing."""
+
+    def queue_source_download(self, url: str) -> None:
+        """Queue one saved source for its normal targeted processing."""
 
     def queue_full_queue_run(self) -> None:
         """Ask for one immediate pass over the whole queue."""
@@ -58,6 +63,16 @@ class InProcessDownloadTrigger:
             Normalized YouTube playlist URL.
         """
         queue_full_playlist_download(url)
+
+    def queue_source_download(self, url: str) -> None:
+        """Queue one saved source for its normal targeted processing.
+
+        Parameters
+        ----------
+        url:
+            Normalized saved source URL.
+        """
+        queue_source_download(url)
 
     def queue_full_queue_run(self) -> None:
         """Ask for one immediate pass over the whole queue."""
@@ -89,6 +104,22 @@ def queue_full_playlist_download(url: str) -> None:
     """
     with _requests_lock:
         _full_playlist_download_requests.append(url)
+    download_trigger.set()
+
+
+def queue_source_download(url: str) -> None:
+    """Queue one saved source for immediate targeted processing.
+
+    Direct videos bypass the video-age gate. Channels and playlists retain the
+    configured recent-entry limit and minimum video age.
+
+    Parameters
+    ----------
+    url:
+        Normalized source URL from ``urls.txt``.
+    """
+    with _requests_lock:
+        _source_download_requests.append(url)
     download_trigger.set()
 
 
@@ -126,6 +157,14 @@ def pop_single_url_download_requests() -> list[str]:
     with _requests_lock:
         pending_requests = list(_single_url_download_requests)
         _single_url_download_requests.clear()
+    return pending_requests
+
+
+def pop_source_download_requests() -> list[str]:
+    """Return and clear pending saved-source download requests."""
+    with _requests_lock:
+        pending_requests = list(_source_download_requests)
+        _source_download_requests.clear()
     return pending_requests
 
 

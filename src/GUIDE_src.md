@@ -36,7 +36,7 @@ over their jobs.
 - `config.py`: validated `PodcastConfig` loading.
 - `passwords.py`: Password-Based Key Derivation Function 2 (PBKDF2) hashing and verification.
 - `credentials.py`: syncs up to three `.env` account pairs into `.ui_credentials.json`.
-- `trigger.py`: in-process requests that wake the Docker scheduler, including the whole-queue request the Run button sends.
+- `trigger.py`: in-process requests that wake the Docker scheduler, including whole-queue, newly added URL, full-playlist, and targeted saved-source requests.
 - `schedule.py`: turns `scheduled_run_hour` and `scheduled_run_interval_days` into run times, and writes the "7 hours ago" wording the queue page shows.
 - `log_timezone.py`: the project's clock. Owns the timezone, the timestamp format, and `local_now()`, so nothing else reads the system clock directly.
 - `human_time.py`: writes times and durations the way a person reads them, such as "7 hours ago" and "in 4 days".

@@ -1867,6 +1867,167 @@ def test_single_queue_url_bypass_downloads_too_new_youtube_video(
     assert BypassStore(bypass_file, logging.getLogger("test")).load() == set()
 
 
+def test_targeted_direct_source_run_ignores_the_video_age_gate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A row-level Run now click must attempt a direct video immediately."""
+    video_url = "https://www.youtube.com/watch?v=brandnew123"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        intermediate_dir=tmp_path / "download_work",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        min_channel_video_age_hours=48,
+        delay_seconds=0,
+    )
+    attempted_urls: list[str] = []
+
+    def reject_age_check(*args, **kwargs) -> bool:
+        raise AssertionError("a direct row-level run must not inspect video age")
+
+    def fake_download(
+        url: str,
+        *args,
+        **kwargs,
+    ) -> tuple[str, bool]:
+        attempted_urls.append(url)
+        return url, True
+
+    monkeypatch.setattr(downloader, "_youtube_video_is_too_new", reject_age_check)
+    monkeypatch.setattr(downloader, "_download_video", fake_download)
+
+    successful, failed = downloader.download_queue_source_now(video_url)
+
+    assert (successful, failed) == (1, 0)
+    assert attempted_urls == [video_url]
+
+
+def test_targeted_playlist_source_run_keeps_the_video_age_gate(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A row-level playlist run should skip fresh entries and try old ones now."""
+    playlist_url = "https://www.youtube.com/playlist?list=playlist-name1"
+    fresh_video_url = "https://www.youtube.com/watch?v=fresh123"
+    old_video_url = "https://www.youtube.com/watch?v=old123"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{playlist_url}\n", encoding="utf-8")
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        intermediate_dir=tmp_path / "download_work",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        min_channel_video_age_hours=48,
+        delay_seconds=0,
+    )
+    playlist_output_dir = tmp_path / "downloads" / "playlist-name1"
+    expanded_targets = [
+        downloads_service_module.DownloadTarget(
+            video_url=fresh_video_url,
+            output_dir=playlist_output_dir,
+            use_archive=True,
+        ),
+        downloads_service_module.DownloadTarget(
+            video_url=old_video_url,
+            output_dir=playlist_output_dir,
+            use_archive=True,
+        ),
+    ]
+    attempted_urls: list[str] = []
+
+    monkeypatch.setattr(
+        downloader,
+        "_expand_queue_url",
+        lambda url: expanded_targets,
+    )
+    monkeypatch.setattr(
+        downloader,
+        "_youtube_video_is_too_new",
+        lambda url: url == fresh_video_url,
+    )
+
+    def fake_download(
+        url: str,
+        *args,
+        **kwargs,
+    ) -> tuple[str, bool]:
+        attempted_urls.append(url)
+        return url, True
+
+    monkeypatch.setattr(downloader, "_download_video", fake_download)
+
+    successful, failed = downloader.download_queue_source_now(playlist_url)
+
+    assert (successful, failed) == (1, 0)
+    assert attempted_urls == [old_video_url]
+    activity_text = (tmp_path / "activity.log").read_text(encoding="utf-8")
+    assert f"Source run started: {playlist_url}" in activity_text
+    assert "Source run finished: 1 successful, 0 failed" in activity_text
+
+
+def test_targeted_channel_source_run_uses_normal_age_filtered_expansion(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A row-level channel run should keep its configured age and entry limits."""
+    channel_url = "https://www.youtube.com/@examplechannel"
+    channel_video_url = "https://www.youtube.com/watch?v=oldchannel123"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{channel_url}\n", encoding="utf-8")
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        intermediate_dir=tmp_path / "download_work",
+        channel_count=3,
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        min_channel_video_age_hours=48,
+        delay_seconds=0,
+    )
+    expansion_arguments: list[tuple[str, int, int]] = []
+    attempted_urls: list[str] = []
+
+    monkeypatch.setattr(
+        downloader,
+        "_download_output_dir_for_source",
+        lambda url: tmp_path / "downloads" / "examplechannel",
+    )
+
+    def fake_expand(
+        url: str,
+        channel_count: int,
+        minimum_age_hours: int,
+        *args,
+        **kwargs,
+    ) -> list[str]:
+        expansion_arguments.append((url, channel_count, minimum_age_hours))
+        return [channel_video_url]
+
+    def fake_download(
+        url: str,
+        *args,
+        **kwargs,
+    ) -> tuple[str, bool]:
+        attempted_urls.append(url)
+        return url, True
+
+    monkeypatch.setattr(
+        downloads_service_module, "expand_channel_or_playlist", fake_expand
+    )
+    monkeypatch.setattr(downloader, "_download_video", fake_download)
+
+    successful, failed = downloader.download_queue_source_now(channel_url)
+
+    assert (successful, failed) == (1, 0)
+    assert expansion_arguments == [(channel_url, 3, 48)]
+    assert attempted_urls == [channel_video_url]
+
+
 def test_download_full_playlist_now_downloads_every_expanded_video(
     tmp_path,
     monkeypatch,

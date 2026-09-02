@@ -42,6 +42,7 @@ from src.trigger import (
     pop_full_playlist_download_requests,
     pop_full_queue_run_request,
     pop_single_url_download_requests,
+    pop_source_download_requests,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -204,6 +205,7 @@ def _handle_pending_ui_requests() -> None:
     _run_immediate_downloads(
         pop_single_url_download_requests(),
         pop_full_playlist_download_requests(),
+        pop_source_download_requests(),
         pop_full_queue_run_request(),
     )
 
@@ -325,6 +327,7 @@ def run_scheduler() -> None:
 def _run_immediate_downloads(
     single_url_requests: list[str],
     full_playlist_requests: list[str] | None = None,
+    source_requests: list[str] | None = None,
     full_queue_run_requested: bool = False,
 ) -> None:
     """Run downloads requested by the browser without updating ``yt-dlp`` first.
@@ -335,11 +338,15 @@ def _run_immediate_downloads(
         Direct video URLs submitted through the UI single-item path.
     full_playlist_requests:
         Playlist URLs submitted through the UI full-playlist immediate path.
+    source_requests:
+        Saved queue sources whose own Run now button was pressed. Direct videos
+        bypass the age gate; channels and playlists retain normal source rules.
     full_queue_run_requested:
         True when the Run button asked for the same whole-queue pass the
         schedule performs.
     """
     playlist_requests = full_playlist_requests or []
+    targeted_source_requests = source_requests or []
     if playlist_requests:
         for url in playlist_requests:
             print(
@@ -348,6 +355,17 @@ def _run_immediate_downloads(
             )
             subprocess.run(
                 [*_cli_command(), "--download-full-playlist", url],
+                check=False,
+                cwd=str(PROJECT_ROOT),
+            )
+    if targeted_source_requests:
+        for url in targeted_source_requests:
+            print(
+                f"[scheduler] Source run requested via UI: {url}",
+                flush=True,
+            )
+            subprocess.run(
+                [*_cli_command(), "--download-source-now", url],
                 check=False,
                 cwd=str(PROJECT_ROOT),
             )

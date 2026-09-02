@@ -30,6 +30,7 @@ class _RecordingDownloadTrigger:
     def __init__(self) -> None:
         self.single_urls: list[str] = []
         self.playlist_urls: list[str] = []
+        self.source_urls: list[str] = []
         self.full_queue_runs = 0
 
     def queue_single_url_download(self, url: str) -> None:
@@ -51,6 +52,10 @@ class _RecordingDownloadTrigger:
             Normalized YouTube playlist URL.
         """
         self.playlist_urls.append(url)
+
+    def queue_source_download(self, url: str) -> None:
+        """Record one targeted saved-source request."""
+        self.source_urls.append(url)
 
     def queue_full_queue_run(self) -> None:
         """Record one whole-queue run request from the Run button."""
@@ -383,6 +388,51 @@ def test_run_button_asks_the_scheduler_for_a_whole_queue_pass(tmp_path: Path) ->
     assert response.headers["location"] == "/?msg=run_started"
     assert trigger.full_queue_runs == 1
     assert trigger.single_urls == []
+
+
+def test_source_run_button_targets_only_the_selected_saved_source(
+    tmp_path: Path,
+) -> None:
+    """A source-row button should queue its URL without running the whole queue."""
+    source_url = "https://www.youtube.com/@examplechannel"
+    queue_file = tmp_path / "urls.txt"
+    queue_file.write_text(f"{source_url}\n", encoding="utf-8")
+    trigger = _RecordingDownloadTrigger()
+    app = create_app(
+        replace(routes.CONFIG, urls_file=queue_file),
+        trigger=trigger,
+    )
+    request = _signed_in_request(app, "source-now-session", "source-now-csrf")
+
+    response = routes.run_source_form(
+        request,
+        url=source_url,
+        csrf_token="source-now-csrf",
+    )
+
+    assert response.headers["location"] == "/?msg=source_run_started"
+    assert trigger.source_urls == [source_url]
+    assert trigger.full_queue_runs == 0
+    assert trigger.single_urls == []
+
+
+def test_source_run_button_rejects_a_url_no_longer_in_queue(tmp_path: Path) -> None:
+    """A stale or forged source-row form must not start arbitrary work."""
+    trigger = _RecordingDownloadTrigger()
+    app = create_app(
+        replace(routes.CONFIG, urls_file=tmp_path / "urls.txt"),
+        trigger=trigger,
+    )
+    request = _signed_in_request(app, "stale-source-session", "stale-source-csrf")
+
+    response = routes.run_source_form(
+        request,
+        url="https://www.youtube.com/watch?v=not-saved",
+        csrf_token="stale-source-csrf",
+    )
+
+    assert response.headers["location"] == "/?msg=notfound"
+    assert trigger.source_urls == []
 
 
 def test_run_button_is_refused_while_a_run_is_already_going(tmp_path: Path) -> None:

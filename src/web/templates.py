@@ -481,8 +481,9 @@ const ACTIVITY_KINDS = [
   { test: /^Skipped Short:\s*/i, kind: 'warn', label: 'Skip', strip: true },
   { test: /^No videos listed:\s*/i, kind: 'warn', label: 'Empty', strip: true },
   { test: /^Needs attention:\s*/i, kind: 'err', label: 'Alert', strip: true },
-  { test: /^(Playlist )?Run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
-  { test: /^(Playlist )?Run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
+  { test: /^(Playlist |Source )?Run started:/i, kind: 'info', label: 'Run', boundary: 'start' },
+  { test: /^(Playlist |Source )?Run finished:/i, kind: 'info', label: 'Run', boundary: 'end' },
+  { test: / URL has been deleted$/i, kind: 'dim', label: 'Delete' },
   { test: /^Deleted expired MP3:\s*/i, kind: 'dim', label: 'Keep', strip: true },
   { test: /^Retention cleanup/i, kind: 'dim', label: 'Keep' },
 ];
@@ -1289,12 +1290,17 @@ def render_queue_page(
     .q-item:last-child {{ border-bottom:none; }}
     .q-dot {{ width:6px; height:6px; background:var(--accent); border-radius:50%; margin-top:5px; flex-shrink:0; opacity:.5; }}
     .q-url {{ flex:1; font-size:.8rem; color:var(--muted); word-break:break-all; }}
-    .remove-form {{ flex-shrink:0; }}
+    .q-actions {{ display:flex; gap:6px; flex-shrink:0; }}
+    .q-actions form {{ margin:0; }}
+    .btn-run-source,
     .btn-remove {{
       padding:5px 10px; font-size:.75rem; font-weight:600; background:var(--surface);
-      color:var(--danger); border:1px solid var(--danger-border); border-radius:6px; cursor:pointer;
+      border:1px solid var(--border-strong); border-radius:6px; cursor:pointer;
       transition:background .15s,border-color .15s,color .15s;
     }}
+    .btn-run-source {{ color:var(--accent); }}
+    .btn-run-source:hover {{ background:var(--accent-soft); border-color:var(--accent-border); }}
+    .btn-remove {{ color:var(--danger); border-color:var(--danger-border); }}
     .btn-remove:hover {{ background:var(--danger-bg); border-color:var(--danger-border); color:var(--danger-hov); }}
     .empty {{ font-size:.85rem; color:var(--muted); font-style:italic; }}
     .brand p {{ margin-top:3px; font-size:.8rem; }}
@@ -1322,7 +1328,7 @@ def render_queue_page(
       .input-row {{ display:flex; flex-direction:column; }}
       .input-row .btn {{ width:100%; }}
       .q-item {{ display:grid; grid-template-columns:auto minmax(0,1fr); }}
-      .remove-form {{ grid-column:2; }}
+      .q-actions {{ grid-column:2; flex-wrap:wrap; }}
       .log-bar {{ align-items:flex-start; }}
       .log-controls {{ flex-wrap:wrap; }}
       .log-line {{ gap:7px; padding:8px 10px; }}
