@@ -78,6 +78,10 @@ Its reason is the same one-line cause written to `activity.log`. The full
 
 Successful downloads send nothing.
 
+Upcoming YouTube premieres and livestreams also send nothing. Their public
+pages exist before their audio streams do, so the downloader leaves those URLs
+queued and tries them again on a later run.
+
 ## Understand a failed test
 
 | Message | What it means |

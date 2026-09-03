@@ -21,6 +21,13 @@ Keeping every attempt matters: a YouTube download can fail once with cookies and
 
 Retry attempts always run with `-v`, so failures include the full extractor trail while successful runs stay quiet. The `ytdlp_verbose` setting adds `-v` to first attempts as well.
 
+An upcoming YouTube premiere or livestream is a neutral deferral, not a
+failure. The client recognizes yt-dlp's future-release message and skips the
+alternate-cookie retry because cookies cannot release the stream early. The
+service leaves the URL queued, does not increment either result count, and
+sends no failure activity or notification. Other unavailable-video messages
+remain failures because they may require operator attention.
+
 Two command details are easy to break:
 
 - Keep `--output` as a bare filename template. `yt-dlp` ignores `--paths` and warns about absolute output templates. Put the destination in `--paths home:` and the scratch folder in `--paths temp:`.
@@ -46,6 +53,7 @@ $$
 
 ## Journal
 
+- 2026-09-03: Upcoming YouTube premieres and livestreams became silent deferrals that remain queued for a later run.
 - 2026-09-02: Added a targeted saved-source run so the web UI can bypass the age gate for one direct video without weakening channel or playlist filtering.
 - 2026-07-26: Audio subprocess execution, cookie retries, and snapshots moved into the injectable, typed `YtDlpClient`; the service now consumes its result directly.
 - 2026-08-10: The per-attempt timeout became the configurable `download_timeout_seconds`, with a default of one hour. The old five-minute limit could not finish a full-length episode, and timed-out items were never archived. `download.log` also gained 5 MB rotation with three retained copies.

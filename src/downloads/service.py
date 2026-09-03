@@ -884,8 +884,13 @@ class PodcastDownloadService:
         total: int,
         use_archive: bool,
         final_output_dir: Path | None = None,
-    ) -> tuple[str, bool]:
-        """Download one concrete media URL and update queue/archive state."""
+    ) -> tuple[str, bool | None]:
+        """Download one concrete URL and update queue/archive state.
+
+        Returns ``True`` for success, ``False`` for failure, and ``None`` when
+        an upcoming premiere or livestream should remain queued without being
+        counted or reported as a failure.
+        """
         normalized_url = normalize_youtube_url(video_url)
         target_final_output_dir = final_output_dir or (
             self.downloads_dir / FALLBACK_SINGLE_DOWNLOAD_FOLDER
@@ -932,8 +937,12 @@ class PodcastDownloadService:
         total: int,
         final_output_dir: Path,
         work_dir: Path,
-    ) -> tuple[str, bool]:
-        """Run the external download after history checks are settled."""
+    ) -> tuple[str, bool | None]:
+        """Run the external download after history checks are settled.
+
+        A ``None`` result is a neutral deferral: the page exists, but YouTube
+        has not released its audio stream yet.
+        """
         self.logger.info("[%s/%s] Downloading: %s", index, total, video_url)
 
         if is_youtube_short_url(video_url):
@@ -969,6 +978,13 @@ class PodcastDownloadService:
             return video_url, False
 
         if execution.final.returncode != 0:
+            if execution.is_unreleased_youtube_content():
+                self.logger.info(
+                    "Not released yet; leaving queued for a later run: %s",
+                    video_url,
+                )
+                self._finalize_intermediate_cleanup(work_dir)
+                return video_url, None
             self.logger.error("Failed: %s", video_url)
             self.logger.error("yt-dlp report:\n%s", execution.diagnostic_report())
             self._record_failure(video_url, execution.activity_reason())
@@ -1159,9 +1175,9 @@ class PodcastDownloadService:
                 target.use_archive,
                 target.output_dir,
             )
-            if success:
+            if success is True:
                 successful += 1
-            else:
+            elif success is False:
                 failed += 1
 
             if index < total and self.delay_seconds > 0:
@@ -1225,9 +1241,9 @@ class PodcastDownloadService:
                 use_archive=True,
                 final_output_dir=output_dir,
             )
-            if success:
+            if success is True:
                 successful += 1
-            else:
+            elif success is False:
                 failed += 1
 
             if index < total and self.delay_seconds > 0:
@@ -1290,9 +1306,9 @@ class PodcastDownloadService:
                 use_archive=target.use_archive,
                 final_output_dir=target.output_dir,
             )
-            if success:
+            if success is True:
                 successful += 1
-            else:
+            elif success is False:
                 failed += 1
 
             if index < total and self.delay_seconds > 0:
@@ -1338,7 +1354,11 @@ class PodcastDownloadService:
             final_output_dir=output_dir,
         )
         self._run_retention_cleanup(retention_dirs)
-        return (1, 0) if success else (0, 1)
+        if success is True:
+            return 1, 0
+        if success is False:
+            return 0, 1
+        return 0, 0
 
     def show_stats(self, successful: int, failed: int) -> None:
         """Log a short run summary."""

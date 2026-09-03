@@ -23,6 +23,18 @@ ACTIVITY_REASON_MAX_CHARS = 160
 # yt-dlp prefixes fatal messages with this marker. Picking the last one out of
 # stderr gives the actual cause rather than a preceding warning.
 YTDLP_ERROR_PREFIX = "ERROR:"
+# These are yt-dlp's fatal messages for media whose public page exists but whose
+# audio stream has not been released. Cookies cannot make the stream available,
+# so these outcomes should wait for a later run instead of retrying immediately.
+UNRELEASED_YOUTUBE_ERROR_MARKERS = (
+    "premieres in ",
+    "premieres at ",
+    "premieres on ",
+    "premiere will begin",
+    "live event will begin",
+    "live stream will begin",
+    "livestream will begin",
+)
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -118,6 +130,21 @@ class YtDlpAttempt:
             return remaining_lines[-1]
         return f"yt-dlp exited {self.returncode} with no error output"
 
+    def is_unreleased_youtube_content(self) -> bool:
+        """Return whether yt-dlp says a premiere or livestream is not ready.
+
+        Returns
+        -------
+        bool
+            ``True`` only for a recognized future-release message. Other
+            unavailable-video messages remain failures because they may need
+            operator attention.
+        """
+        normalized_error = self.error_line().casefold()
+        return any(
+            marker in normalized_error for marker in UNRELEASED_YOUTUBE_ERROR_MARKERS
+        )
+
 
 @dataclass(frozen=True)
 class YtDlpResult:
@@ -155,6 +182,10 @@ class YtDlpResult:
     def activity_reason(self) -> str:
         """Return one short line naming the cause, for the browser feed."""
         return shorten_to_one_line(self.final.error_line())
+
+    def is_unreleased_youtube_content(self) -> bool:
+        """Return whether the final outcome is known to be not released yet."""
+        return self.final.is_unreleased_youtube_content()
 
 
 class YtDlpClient:
@@ -404,7 +435,8 @@ class YtDlpClient:
             url,
             first_attempt_cookies,
         )
-        if first_attempt_failed and should_retry:
+        unreleased_youtube_content = attempts[0].is_unreleased_youtube_content()
+        if first_attempt_failed and should_retry and not unreleased_youtube_content:
             if first_attempt_cookies is not None:
                 self.logger.info(
                     "Cookie YouTube download failed (%s); "

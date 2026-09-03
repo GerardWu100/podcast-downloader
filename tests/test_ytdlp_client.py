@@ -52,6 +52,40 @@ def test_youtube_download_retries_with_cookies_and_reports_changed_audio(
     assert "--sponsorblock-remove" in commands[1]
 
 
+def test_unreleased_youtube_premiere_does_not_retry_with_cookies(
+    tmp_path: Path,
+) -> None:
+    """Cookies cannot make a scheduled stream available before its release."""
+    commands: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        **_: object,
+    ) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="ERROR: [youtube] abc123: Premieres in 2 hours",
+        )
+
+    client = YtDlpClient(
+        cookies_file=tmp_path / "cookies.txt",
+        always_use_cookies=False,
+        logger=logging.getLogger("test.ytdlp"),
+        run_command=fake_run,
+    )
+
+    result = client.download(
+        "https://www.youtube.com/watch?v=abc123",
+        tmp_path / "work",
+    )
+
+    assert result.is_unreleased_youtube_content() is True
+    assert len(commands) == 1
+
+
 def test_non_youtube_download_disables_playlist_without_cookie_retry(
     tmp_path: Path,
 ) -> None:

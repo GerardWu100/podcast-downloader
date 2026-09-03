@@ -2479,6 +2479,50 @@ def test_failure_pushes_a_notification_with_the_cause(tmp_path, monkeypatch) -> 
     assert "403" in sent_reason
 
 
+def test_unreleased_youtube_premiere_stays_queued_without_failure_report(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """A future release is normal queue state, not an operator-facing failure."""
+    from src.notifications.apprise_client import AppriseSettings
+
+    video_url = "https://www.youtube.com/watch?v=abc123"
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text(f"{video_url}\n", encoding="utf-8")
+    notifier = RecordingNotifier(
+        AppriseSettings(enabled=True, server_url="http://apprise.test/notify/key")
+    )
+    downloader = PodcastDownloadService(
+        urls_file=urls_file,
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=tmp_path / "downloaded_urls.txt",
+        notifier=notifier,
+    )
+
+    monkeypatch.setattr(downloads_service_module, "get_video_metadata", lambda *_: None)
+
+    def fake_run(command: list[str], *args, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="ERROR: [youtube] abc123: Premieres in 2 hours",
+        )
+
+    monkeypatch.setattr(downloads_service_module.subprocess, "run", fake_run)
+
+    successful, failed = downloader.download_single_queue_url(video_url)
+
+    assert (successful, failed) == (0, 0)
+    assert downloader.queue_store.read_urls() == [video_url]
+    assert notifier.sent == []
+    activity_file = tmp_path / "activity.log"
+    assert not activity_file.exists() or "Failed:" not in activity_file.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_unconfigured_notifier_is_never_called(tmp_path, monkeypatch) -> None:
     """Settings that are enabled but have no endpoint must not be used."""
     from src.notifications.apprise_client import AppriseSettings
