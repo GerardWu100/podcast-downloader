@@ -173,7 +173,7 @@ def test_settings_summary_names_the_file_and_its_size(tmp_path: Path) -> None:
         describe_cookie_file(cookie_file), cookie_file
     )
 
-    assert summary.startswith("cookies.txt - 2 cookies - uploaded ")
+    assert summary.startswith("cookies.txt - 2 cookies - last written ")
 
     missing = tmp_path / "not-there.txt"
     assert routes._cookie_summary_line(describe_cookie_file(missing), missing) == (

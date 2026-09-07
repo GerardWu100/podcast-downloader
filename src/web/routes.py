@@ -29,10 +29,16 @@ from ..cookie_file import (
     describe_cookie_file,
 )
 from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
-from ..media.urls import is_supported_media_url
-from ..media.youtube import normalize_youtube_url
 from ..human_time import format_clock_time, format_time_ago, format_time_until
 from ..log_timezone import local_now
+from ..media.urls import is_supported_media_url
+from ..media.youtube import normalize_youtube_url
+from ..notifications.apprise_client import (
+    APPRISE_INFO_TYPE,
+    AppriseNotifier,
+    AppriseSettings,
+    validate_server_url,
+)
 from ..schedule import next_scheduled_run
 from ..state.activity_store import (
     NO_DOWNLOAD_LOG_MESSAGE,
@@ -40,12 +46,6 @@ from ..state.activity_store import (
     activity_log_file_for,
 )
 from ..state.archive_store import ArchiveStore
-from ..notifications.apprise_client import (
-    APPRISE_INFO_TYPE,
-    AppriseNotifier,
-    AppriseSettings,
-    validate_server_url,
-)
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.notification_store import (
@@ -540,8 +540,7 @@ def _last_download_label(activity_store: ActivityLogStore) -> str:
             continue
         # "Downloaded: creator - ep.mp3" -> "creator - ep"
         name = message[len(DOWNLOADED_EVENT_PREFIX) :].strip()
-        if name.endswith(DOWNLOADED_FILE_SUFFIX):
-            name = name[: -len(DOWNLOADED_FILE_SUFFIX)]
+        name = name.removesuffix(DOWNLOADED_FILE_SUFFIX)
         if not name:
             continue
         if len(name) > LAST_DOWNLOAD_NAME_MAX_CHARS:
@@ -861,7 +860,9 @@ def _cookie_summary_line(status: CookieFileStatus, cookie_file: Path) -> str:
     cookie_word = "cookie" if status.cookie_count == 1 else "cookies"
     parts = [cookie_file.name, f"{status.cookie_count} {cookie_word}"]
     if status.updated_at is not None:
-        parts.append(f"uploaded {format_clock_time(status.updated_at)}")
+        # yt-dlp rewrites the cookie jar on every download that uses it, so
+        # this timestamp tracks the last download, not the last upload.
+        parts.append(f"last written {format_clock_time(status.updated_at)}")
     return " - ".join(parts)
 
 

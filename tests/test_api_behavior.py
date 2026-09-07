@@ -1576,7 +1576,7 @@ def test_settings_page_reports_the_cookie_file_in_use(monkeypatch, tmp_path) -> 
     body = api_module.settings(request).body.decode("utf-8")
 
     assert "Current file" in body
-    assert "cookies.txt - 1 cookie - uploaded" in body
+    assert "cookies.txt - 1 cookie - last written" in body
     assert "Sign-in stops working by" in body
 
     api_module.SESSIONS.pop(session_id, None)
