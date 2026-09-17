@@ -79,8 +79,20 @@ downloaded_urls.txt
 ._*
 __MACOSX/
 
-# Obsidian vault state. Markdown notes stay tracked.
-.obsidian/
+# Obsidian local state and plugin code; keep shared settings and styling.
+**/.obsidian/*
+!**/.obsidian/app.json
+!**/.obsidian/appearance.json
+!**/.obsidian/community-plugins.json
+!**/.obsidian/core-plugins.json
+!**/.obsidian/hotkeys.json
+!**/.obsidian/plugins/
+**/.obsidian/plugins/*
+!**/.obsidian/plugins/*/
+**/.obsidian/plugins/*/*
+!**/.obsidian/plugins/*/data.json
+!**/.obsidian/themes/
+!**/.obsidian/snippets/
 .obsidian-*/
 .obsidian.vimrc
 .trash/
