@@ -84,3 +84,19 @@ __MACOSX/
 .obsidian-*/
 .obsidian.vimrc
 .trash/
+
+# Shared repository hygiene
+credentials.*
+secrets.*
+.venv/
+venv/
+node_modules/
+*.py[cod]
+logs/
+*.log
+*.egg-info/
+Thumbs.db
+Desktop.ini
+*~
+*.swp
+*.swo

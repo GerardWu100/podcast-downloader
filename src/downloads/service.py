@@ -23,8 +23,6 @@ from ..config import (
 )
 from ..cookie_file import describe_cookie_file
 from ..log_timezone import LOG_TIME_ZONE, OPERATOR_LOG_TIMESTAMP_FORMAT, local_now
-from ..run_report import RunFacts, build_run_alert
-from ..notifications.apprise_client import AppriseNotifier
 from ..media.urls import is_supported_media_url
 from ..media.youtube import (
     expand_channel_or_playlist,
@@ -40,6 +38,8 @@ from ..media.youtube import (
     looks_like_youtube_channel_id,
     normalize_youtube_url,
 )
+from ..notifications.apprise_client import AppriseNotifier
+from ..run_report import RunFacts, build_run_alert
 from ..state.activity_store import ActivityLogStore, activity_log_file_for
 from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore

@@ -94,10 +94,7 @@ def check_credentials(
     if already_banned:
         return CredentialCheck.BANNED
 
-    if (
-        len(password) > MAX_CREDENTIAL_LENGTH
-        or len(username) > MAX_CREDENTIAL_LENGTH
-    ):
+    if len(password) > MAX_CREDENTIAL_LENGTH or len(username) > MAX_CREDENTIAL_LENGTH:
         return CredentialCheck.OVERSIZED
 
     accounts = load_accounts()

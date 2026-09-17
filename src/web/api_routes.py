@@ -153,9 +153,7 @@ def _read_basic_auth_header(request: Request) -> tuple[str, str]:
 
     username, separator, password = decoded.partition(":")
     if not separator:
-        raise HTTPException(
-            status_code=401, detail="Malformed Authorization header."
-        )
+        raise HTTPException(status_code=401, detail="Malformed Authorization header.")
     return username, password
 
 

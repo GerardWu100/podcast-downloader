@@ -12,7 +12,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 import src.downloads.audio_metadata as audio_metadata_module
 import src.downloads.service as downloads_service_module
 from src.downloads.audio_metadata import AudioMetadataWriter

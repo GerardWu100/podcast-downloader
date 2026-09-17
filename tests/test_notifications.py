@@ -171,9 +171,7 @@ def test_settings_survive_a_save_and_load_round_trip(tmp_path: Path) -> None:
     )
 
     store.save(saved_settings)
-    loaded_settings = NotificationStore(
-        notification_settings_file_for(tmp_path)
-    ).load()
+    loaded_settings = NotificationStore(notification_settings_file_for(tmp_path)).load()
 
     assert loaded_settings.enabled is True
     assert loaded_settings.server_url == "http://apprise.test/notify/key"
@@ -204,8 +202,12 @@ def test_missing_or_damaged_settings_fall_back_to_defaults(tmp_path: Path) -> No
 def test_settings_are_not_ready_without_an_endpoint() -> None:
     """Enabling notifications with no URL must not attempt a request."""
     assert AppriseSettings(enabled=True, server_url="").is_ready() is False
-    assert AppriseSettings(enabled=False, server_url="http://x.test/n").is_ready() is False
-    assert AppriseSettings(enabled=True, server_url="http://x.test/n").is_ready() is True
+    assert (
+        AppriseSettings(enabled=False, server_url="http://x.test/n").is_ready() is False
+    )
+    assert (
+        AppriseSettings(enabled=True, server_url="http://x.test/n").is_ready() is True
+    )
 
 
 def test_html_error_body_is_replaced_with_a_diagnosis() -> None:

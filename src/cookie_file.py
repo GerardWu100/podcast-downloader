@@ -116,8 +116,7 @@ def _parse_cookie_line(line: str) -> tuple[str, int] | None:
         The cookie name and its Unix expiry timestamp, or ``None`` when the
         line is a comment, blank, or does not have the seven expected fields.
     """
-    if line.startswith(HTTP_ONLY_PREFIX):
-        line = line[len(HTTP_ONLY_PREFIX) :]
+    line = line.removeprefix(HTTP_ONLY_PREFIX)
     if not line.strip() or line.startswith("#"):
         return None
 

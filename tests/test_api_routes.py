@@ -11,7 +11,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
-
 from src.credentials import CREDENTIALS_FILENAME
 from src.passwords import hash_password
 from src.state.archive_store import ArchiveStore
@@ -64,7 +63,7 @@ class _RecordingDownloadTrigger:
 
 def _basic_header(username: str, password: str) -> str:
     """Return the ``Authorization`` value a client sends for these credentials."""
-    encoded = base64.b64encode(f"{username}:{password}".encode("utf-8"))
+    encoded = base64.b64encode(f"{username}:{password}".encode())
     return f"Basic {encoded.decode('ascii')}"
 
 

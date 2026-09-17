@@ -312,9 +312,7 @@ def sign_firefox_build(
     """
     api_key, api_secret = read_amo_credentials()
 
-    firefox_target = next(
-        target for target in TARGETS if target.name == "firefox"
-    )
+    firefox_target = next(target for target in TARGETS if target.name == "firefox")
     if not (firefox_target.output_dir / CHROME_MANIFEST).is_file():
         raise FileNotFoundError(
             f"no Firefox build at {firefox_target.output_dir}; run this script "
@@ -340,9 +338,7 @@ def sign_firefox_build(
     # The key and secret travel in the environment rather than in the command,
     # because every process on the machine can read another process's arguments
     # from /proc. web-ext reads any option from a matching WEB_EXT_ variable.
-    signing_environment = dict(
-        os.environ if environment is None else environment
-    )
+    signing_environment = dict(os.environ if environment is None else environment)
     signing_environment["WEB_EXT_API_KEY"] = api_key
     signing_environment["WEB_EXT_API_SECRET"] = api_secret
 

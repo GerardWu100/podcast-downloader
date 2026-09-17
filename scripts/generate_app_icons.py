@@ -138,9 +138,7 @@ def main() -> None:
         icon = render_icon(size, glyph_scale=1.0, rounded_corners=True)
         icon.save(STATIC_DIR / f"icon-{size}.png")
 
-    maskable = render_icon(
-        512, glyph_scale=MASKABLE_GLYPH_SCALE, rounded_corners=False
-    )
+    maskable = render_icon(512, glyph_scale=MASKABLE_GLYPH_SCALE, rounded_corners=False)
     maskable.save(STATIC_DIR / "icon-maskable-512.png")
 
     # iOS renders the home-screen icon on an opaque background and ignores

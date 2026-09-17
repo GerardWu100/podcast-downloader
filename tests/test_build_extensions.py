@@ -13,7 +13,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from scripts.build_extensions import (
     BUILD_ROOT,
     CHROME_MANIFEST,
@@ -136,9 +135,7 @@ def test_the_archive_is_named_for_its_browser_and_version() -> None:
     """A downloaded file should say which build it is without being opened."""
     target = TARGETS_BY_NAME["chrome"]
     build_target(target, make_zip=True)
-    archive_file = BUILD_ROOT / (
-        f"podcast-downloader-chrome-{manifest_version()}.zip"
-    )
+    archive_file = BUILD_ROOT / (f"podcast-downloader-chrome-{manifest_version()}.zip")
 
     assert archive_file.is_file()
     with zipfile.ZipFile(archive_file) as archive:
@@ -179,9 +176,7 @@ def test_building_without_an_archive_keeps_the_chrome_archive() -> None:
     """
     chrome_target = TARGETS_BY_NAME["chrome"]
     build_target(chrome_target, make_zip=True)
-    archive_file = BUILD_ROOT / (
-        f"podcast-downloader-chrome-{manifest_version()}.zip"
-    )
+    archive_file = BUILD_ROOT / (f"podcast-downloader-chrome-{manifest_version()}.zip")
     assert archive_file.is_file()
 
     build_target(chrome_target, make_zip=False)
@@ -286,9 +281,7 @@ def test_signing_refuses_a_world_readable_credentials_file(
         build_module.read_amo_credentials()
 
 
-def test_the_environment_wins_over_the_credentials_file(
-    monkeypatch, tmp_path
-) -> None:
+def test_the_environment_wins_over_the_credentials_file(monkeypatch, tmp_path) -> None:
     """A CI job supplies credentials by environment; that must not be overridden."""
     import scripts.build_extensions as build_module
 
@@ -323,7 +316,6 @@ def test_signing_keeps_the_secret_out_of_the_command_line(monkeypatch) -> None:
     def fake_runner(command, env=None, check=False):
         recorded["command"] = command
         recorded["env"] = env
-        return None
 
     build_module.sign_firefox_build(runner=fake_runner, environment={})
 
