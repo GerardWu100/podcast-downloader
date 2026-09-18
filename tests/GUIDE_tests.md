@@ -21,6 +21,9 @@ The live SponsorBlock check is
 
 ## Code reference
 
+- `test_agent_remote.py`: portable agent helper dotenv loading, selected-account
+  authentication, destination validation, redirect refusal, and safe write failures.
+
 - `test_api_behavior.py` and `test_security.py`: browser behavior, sessions,
   Cross-Site Request Forgery (CSRF), Content Security Policy (CSP), proxy
   trust, safe uploads, and command separators.

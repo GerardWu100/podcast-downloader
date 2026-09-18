@@ -63,6 +63,13 @@ delays, and retention.
 
 ## Usage
 
+Agents can use [the portable CLI skill](.agents/skills/podcast-downloader-cli/SKILL.md)
+with Hermes or another skill-aware agent. It documents local commands and includes
+a remote API helper. Keep the deployment address in `PODCAST_SERVER_URL` and the
+login in `UI_USERNAME`/`UI_PASSWORD` in an ignored `.env`; never copy that file
+into a skill or commit it. Copy the whole skill folder to an agent's skill
+directory if needed, and pass the private `.env` path to its helper.
+
 ```bash
 uv run python main.py
 uv run python main.py -f custom_urls.txt -o ./custom_downloads -n 3

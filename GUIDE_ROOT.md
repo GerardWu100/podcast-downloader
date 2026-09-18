@@ -13,6 +13,13 @@ Root files handle deployment and operator settings. Application code is in
 [`src/`](src/), offline tests are in [`tests/`](tests/), and user and operator
 documentation is in [`docs/`](docs/).
 
+The portable agent instructions and remote API client live in
+[`.agents/skills/podcast-downloader-cli/`](.agents/skills/podcast-downloader-cli/SKILL.md).
+The helper reads an explicitly selected `.env` with python-dotenv, using
+`PODCAST_SERVER_URL` and one UI account pair. It does not load server runtime
+state or change schedules. Its dependency is supplied with `uv run --with
+python-dotenv`; it is not part of the deployed application.
+
 ```text
 podcast-downloader/
 ├── README.md
