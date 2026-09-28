@@ -22,14 +22,24 @@ class NoRedirects(HTTPRedirectHandler):
     """Keep authentication headers from following a server redirect."""
 
     def redirect_request(
-        self, req: Request, fp: Any, code: int, msg: str,
-        headers: Any, newurl: str,
+        self,
+        req: Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
     ) -> None:
         return None
 
 
-def build_request(env_file: Path, account: int, command: str,
-                  media_url: str | None, skip_age_check: bool) -> Request:
+def build_request(
+    env_file: Path,
+    account: int,
+    command: str,
+    media_url: str | None,
+    skip_age_check: bool,
+) -> Request:
     """Build an authenticated request without putting secrets in process arguments.
 
     Parameters
@@ -56,11 +66,20 @@ def build_request(env_file: Path, account: int, command: str,
     values = dotenv_values(env_file, interpolate=False)
     server = (values.get("PODCAST_SERVER_URL") or "").strip().rstrip("/")
     parsed = urlsplit(server)
-    if (not parsed.hostname or parsed.username or parsed.password
-            or parsed.query or parsed.fragment
-            or (parsed.scheme != "https" and not (
-                parsed.scheme == "http" and parsed.hostname in
-                {"localhost", "127.0.0.1", "::1"}))):
+    if (
+        not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or (
+            parsed.scheme != "https"
+            and not (
+                parsed.scheme == "http"
+                and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+            )
+        )
+    ):
         raise ValueError("Set PODCAST_SERVER_URL to HTTPS (or loopback HTTP) in .env.")
     suffix = "" if account == 1 else f"_{account}"
     username = values.get(f"UI_USERNAME{suffix}") or ""
@@ -89,20 +108,32 @@ def main() -> int:
     add.add_argument("--skip-age-check", action="store_true")
     args = parser.parse_args()
     try:
-        request = build_request(args.env_file, args.account, args.command,
-                                getattr(args, "url", None),
-                                getattr(args, "skip_age_check", False))
-        with build_opener(NoRedirects()).open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        request = build_request(
+            args.env_file,
+            args.account,
+            args.command,
+            getattr(args, "url", None),
+            getattr(args, "skip_age_check", False),
+        )
+        with build_opener(NoRedirects()).open(
+            request, timeout=REQUEST_TIMEOUT_SECONDS
+        ) as response:
             payload = json.load(response)
         print(json.dumps(payload, indent=2))
         return 0
     except HTTPError as exc:
         # Response bodies and exception strings can contain the private server URL.
-        print(f"HTTP {exc.code}: request failed; check account or server health. "
-              "Do not blindly retry an add-url request.", file=sys.stderr)
+        print(
+            f"HTTP {exc.code}: request failed; check account or server health. "
+            "Do not blindly retry an add-url request.",
+            file=sys.stderr,
+        )
     except (URLError, OSError, ValueError):
-        print("Request failed: check the .env file, connectivity, and JSON response. "
-              "Connection details are withheld.", file=sys.stderr)
+        print(
+            "Request failed: check the .env file, connectivity, and JSON response. "
+            "Connection details are withheld.",
+            file=sys.stderr,
+        )
     return 1
 
 
