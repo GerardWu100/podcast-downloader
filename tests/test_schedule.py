@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.human_time import format_clock_time
+from src.human_time import format_clock_time, format_time_until
 from src.log_timezone import LOG_TIME_ZONE
 from src.schedule import (
     is_run_day,
     next_scheduled_run,
     previous_scheduled_run,
-    seconds_until_next_scheduled_run,
+    scheduled_run_is_overdue,
 )
 from src.state.run_state_store import (
     RunKind,
@@ -103,13 +103,30 @@ def test_the_run_hour_survives_a_daylight_saving_change() -> None:
     assert format_clock_time(next_run).endswith("06:00")
 
 
-def test_seconds_until_next_run_counts_real_seconds() -> None:
-    """The scheduler sleeps on this number, so it must be the true gap."""
-    remaining = seconds_until_next_scheduled_run(
-        _toronto(2026, 9, 3, 5, 0), run_hour=RUN_HOUR, interval_days=INTERVAL_DAYS
+def test_time_until_next_run_counts_real_seconds_across_a_clock_change() -> None:
+    """Toronto gains an hour on 2026-11-01, so 18:00 to 06:00 is 13 real hours."""
+    evening_before_change = _toronto(2026, 10, 31, 18, 0)
+    next_run = next_scheduled_run(
+        evening_before_change, run_hour=RUN_HOUR, interval_days=1
     )
 
-    assert remaining == 3600.0
+    assert format_time_until(next_run, evening_before_change) == "in 13 hours"
+
+
+def test_overdue_grace_counts_real_seconds_across_a_clock_change() -> None:
+    """A 01:00 run seen from the second 01:30 (EST) is 90 real minutes old."""
+    half_hour_later_real = datetime(2026, 11, 1, 1, 30, fold=1, tzinfo=LOG_TIME_ZONE)
+
+    assert (
+        scheduled_run_is_overdue(
+            None,
+            now=half_hour_later_real,
+            run_hour=1,
+            interval_days=1,
+            grace_seconds=3600,
+        )
+        is True
+    )
 
 
 def test_run_state_round_trips_through_the_file(tmp_path: Path) -> None:

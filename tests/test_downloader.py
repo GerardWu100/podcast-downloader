@@ -261,7 +261,7 @@ def test_write_audio_download_date_metadata_avoids_scannable_temp_mp3(
     assert audio_file.read_text(encoding="utf-8") == "audio after metadata"
 
 
-def test_write_download_metadata_keeps_original_mp3_when_copy_back_fails(
+def test_write_download_metadata_keeps_original_mp3_when_swap_fails(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -276,13 +276,10 @@ def test_write_download_metadata_keeps_original_mp3_when_copy_back_fails(
         Path(command[-1]).write_bytes(b"tagged audio")
         return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
 
-    def failing_copyfileobj(source_file, destination_file, *args, **kwargs) -> None:
-        destination_file.write(b"partial")
-        raise OSError("no space left on device")
+    def failing_replace(source_path, destination_path) -> None:
+        raise OSError("read-only file system")
 
-    monkeypatch.setattr(
-        audio_metadata_module.shutil, "copyfileobj", failing_copyfileobj
-    )
+    monkeypatch.setattr(audio_metadata_module.os, "replace", failing_replace)
 
     writer = AudioMetadataWriter(run_command=fake_run)
     with pytest.raises(OSError):
@@ -2162,11 +2159,11 @@ def test_download_all_routes_mp3s_to_source_folders_without_moving_queue(
     assert f"{channel_url}\n{playlist_url}\n" == urls_file.read_text(encoding="utf-8")
 
 
-def test_delete_expired_channel_audio_removes_archive_url_and_preserves_other_sources(
+def test_delete_expired_channel_audio_keeps_archive_url_and_preserves_other_sources(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """Retention should apply only to channel files and remove their archive URL."""
+    """Retention should apply only to channel files and keep their archive URL."""
     channel_url = "https://www.youtube.com/@channel-one"
     playlist_url = "https://www.youtube.com/playlist?list=playlist-name1"
     channel_video_url = "https://www.youtube.com/watch?v=channel001"
@@ -2237,14 +2234,20 @@ def test_delete_expired_channel_audio_removes_archive_url_and_preserves_other_so
     assert playlist_file.exists()
     assert single_file.exists()
     assert missing_url_file.exists()
-    assert archive_file.read_text(encoding="utf-8") == f"{playlist_video_url}\n"
+    assert archive_file.read_text(encoding="utf-8") == (
+        f"{channel_video_url}\n{playlist_video_url}\n"
+    )
 
 
-def test_download_all_retries_channel_item_after_retention_removes_archive_entry(
+def test_download_all_does_not_redownload_channel_item_deleted_by_retention(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """A scheduled run should delete expired channel audio before archive checks."""
+    """A quiet channel's newest video must not return after retention deletes it.
+
+    Expansion lists a channel's newest videos however old they are, so without
+    the archive entry the same episode would come back every retention period.
+    """
     channel_url = "https://www.youtube.com/@channel-one"
     channel_video_url = "https://www.youtube.com/watch?v=channel001"
     urls_file = tmp_path / "urls.txt"
@@ -2312,7 +2315,7 @@ def test_download_all_retries_channel_item_after_retention_removes_archive_entry
     successful, failed = downloader.download_all()
 
     assert (successful, failed) == (1, 0)
-    assert attempted_urls == [channel_video_url]
+    assert attempted_urls == []
     assert not expired_audio_file.exists()
     assert archive_file.read_text(encoding="utf-8") == f"{channel_video_url}\n"
 
@@ -2698,3 +2701,107 @@ def test_a_run_that_lists_videos_sends_nothing(tmp_path, monkeypatch) -> None:
 
     assert (successful, failed) == (1, 0)
     assert sent == []
+
+
+def test_recovery_ignores_a_leftover_mp3_from_a_different_youtube_video(
+    tmp_path,
+) -> None:
+    """Another video's preserved MP3 must never be published under this URL."""
+    downloader = PodcastDownloadService(
+        urls_file=tmp_path / "urls.txt",
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+    )
+    leftover = tmp_path / "Channel - Episode A [videoAAAAAA].mp3"
+    snapshot = AudioSnapshot(files={leftover: (1, 10)})
+
+    other_video = downloader._find_recoverable_existing_audio(
+        "https://www.youtube.com/watch?v=videoBBBBBB", snapshot, snapshot
+    )
+    same_video = downloader._find_recoverable_existing_audio(
+        "https://www.youtube.com/watch?v=videoAAAAAA", snapshot, snapshot
+    )
+
+    assert other_video == []
+    assert same_video == [leftover]
+
+
+def test_channel_path_without_an_id_is_not_a_retention_source(tmp_path) -> None:
+    """A bare "/channel/" resolves to singles, which retention must not touch."""
+    downloader = PodcastDownloadService(
+        urls_file=tmp_path / "urls.txt",
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+    )
+
+    assert (
+        downloader._is_youtube_channel_source("https://www.youtube.com/channel/")
+        is False
+    )
+    assert (
+        downloader._is_youtube_channel_source("https://www.youtube.com/@handle") is True
+    )
+
+
+def test_archived_targets_are_skipped_without_pausing(tmp_path, monkeypatch) -> None:
+    """Only real download attempts are paced; archived items cost no sleep."""
+    archive_file = tmp_path / "downloaded_urls.txt"
+    archived_url = "https://www.youtube.com/watch?v=archived001"
+    archive_file.write_text(f"{archived_url}\n", encoding="utf-8")
+    downloader = PodcastDownloadService(
+        urls_file=tmp_path / "urls.txt",
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+        downloaded_urls_file=archive_file,
+        delay_seconds=5,
+    )
+    sleeps: list[float] = []
+    attempted: list[str] = []
+    monkeypatch.setattr(downloads_service_module.time, "sleep", sleeps.append)
+    monkeypatch.setattr(
+        downloader,
+        "_download_video",
+        lambda video_url, **_kwargs: (attempted.append(video_url), (video_url, True))[
+            1
+        ],
+    )
+    output_dir = tmp_path / "downloads" / "channel"
+    new_urls = [
+        "https://www.youtube.com/watch?v=fresh000001",
+        "https://www.youtube.com/watch?v=fresh000002",
+    ]
+    targets = [
+        downloads_service_module.DownloadTarget(url, output_dir, use_archive=True)
+        for url in [archived_url, *new_urls, archived_url]
+    ]
+
+    assert downloader._download_targets(targets) == (4, 0)
+    assert attempted == new_urls
+    assert sleeps == [5]
+
+
+def test_source_folder_name_is_resolved_once_per_run(tmp_path, monkeypatch) -> None:
+    """A channel-ID lookup runs once, so every stage of a run uses one folder."""
+    downloader = PodcastDownloadService(
+        urls_file=tmp_path / "urls.txt",
+        downloads_dir=tmp_path / "downloads",
+        log_file=tmp_path / "download.log",
+    )
+    lookups: list[str] = []
+
+    def fake_channel_folder_name(url: str, *_args: object) -> str:
+        lookups.append(url)
+        return "Readable Name"
+
+    monkeypatch.setattr(
+        downloads_service_module,
+        "get_youtube_channel_folder_name",
+        fake_channel_folder_name,
+    )
+    channel_url = "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"
+
+    first = downloader._download_output_dir_for_source(channel_url)
+    second = downloader._download_output_dir_for_source(channel_url)
+
+    assert first == second == tmp_path / "downloads" / "Readable-Name"
+    assert lookups == [channel_url]

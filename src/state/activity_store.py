@@ -33,12 +33,16 @@ class ActivityLogStore:
     def write_event(self, message: str) -> None:
         """Append one timestamped user-facing activity event."""
         timestamp = datetime.now(LOG_TIME_ZONE).strftime(OPERATOR_LOG_TIMESTAMP_FORMAT)
+        # One event is one line. A title or error text carrying a newline would
+        # otherwise start a second line that the web page parses as its own
+        # timestamped event.
+        single_line_message = " ".join(message.strip().splitlines())
         with locked_line_file(
             self.activity_log_file,
             "a+",
             fcntl.LOCK_EX,
         ) as activity_lines:
-            activity_lines.append_line(f"[{timestamp}] {message.strip()}")
+            activity_lines.append_line(f"[{timestamp}] {single_line_message}")
 
     def read_tail(
         self,

@@ -26,6 +26,10 @@ from .state.notification_store import (
 from .state.queue_store import QueueStore
 
 _logger = logging.getLogger("cli")
+# The run finished but at least one download failed. Each failure has already
+# been reported on its own, so the scheduler must not treat this status as a
+# run that stopped before downloading anything (status 1, or 2 from argparse).
+EXIT_DOWNLOADS_FAILED = 3
 
 
 class Colors:
@@ -298,7 +302,7 @@ def main() -> int:
 
     downloader.show_stats(successful, failed)
 
-    return 0 if failed == 0 else 1
+    return 0 if failed == 0 else EXIT_DOWNLOADS_FAILED
 
 
 if __name__ == "__main__":

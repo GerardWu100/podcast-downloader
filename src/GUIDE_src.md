@@ -54,6 +54,7 @@ queue edit in `state/queue_store.py`.
 
 ## Journal
 
+- 2026-09-27: Scheduler and time fixes. `start.py` fixes the target run instant before waiting, so a browser request still running at the scheduled hour no longer pushes the run to the following run day. Elapsed time in `schedule.py` and `human_time.py` uses timestamps: subtracting two datetimes that share one `ZoneInfo` gives wall-clock time, which was an hour off across daylight-saving changes and could run the queue an hour early and then again. `config.py` turns `configparser` errors into `ConfigError` and disables `%` interpolation. Cookie expiries of `inf` or beyond year 9999 are clamped instead of crashing the settings page.
 - 2026-09-01: Split time handling three ways after a review: `log_timezone.py` owns the clock, `human_time.py` owns the wording, `schedule.py` owns the calendar. The download pipeline had been importing the scheduler just to phrase a sentence.
 - 2026-09-01: Added `run_report.py`. The downloader reported failed downloads but not the failure that produces none: a blocked listing attempts nothing, so nothing fails, so nothing was sent.
 - 2026-09-01: Added `cookie_file.py`. Cookie expiry was invisible until downloads started failing, and the expiry date is already in the file's fifth field.

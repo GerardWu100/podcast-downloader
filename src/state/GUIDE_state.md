@@ -22,7 +22,8 @@ Every one-entry-per-line store uses `locked_line_file()`, which yields a `Locked
 
 - `file_locks.py`: `locked_text_file()`, `LockedLineFile`, and `locked_line_file()`.
 - `queue_store.py`: queue creation, reads, normalized append, and removal.
-- `archive_store.py`: archive reads, append/remove, and long transactions.
+- `archive_store.py`: archive reads, appends, and long transactions. Entries
+  are never removed, so retention cannot make a deleted episode download again.
 - `bypass_store.py`: one-shot age-bypass state.
 - `activity_store.py`: activity path derivation, timestamped writes, locked tail
   reads, and diagnostic-log empty messages.

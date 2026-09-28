@@ -21,7 +21,7 @@ from src.state.notification_store import (
 from src.state.queue_store import QueueStore
 from src.state.run_state_store import RunKind, RunStateStore, run_state_file_for
 from src.web import routes
-from src.web.app import api_body_size_refusal, create_app
+from src.web.app import post_body_size_refusal, create_app
 
 
 class _RecordingDownloadTrigger:
@@ -86,8 +86,8 @@ def test_api_body_limit_rejects_unbounded_or_oversized_json() -> None:
         headers={"content-length": "1000000"},
     )
 
-    missing_length_response = api_body_size_refusal(request_without_length)
-    oversized_response = api_body_size_refusal(oversized_request)
+    missing_length_response = post_body_size_refusal(request_without_length)
+    oversized_response = post_body_size_refusal(oversized_request)
 
     assert missing_length_response is not None
     assert missing_length_response.status_code == 411
@@ -107,9 +107,32 @@ def test_api_body_limit_allows_small_json_and_unrelated_routes() -> None:
         url=SimpleNamespace(path="/"),
         headers={},
     )
+    cookie_upload_request = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/upload-cookies"),
+        headers={"content-length": str(1024 * 1024)},
+    )
 
-    assert api_body_size_refusal(small_request) is None
-    assert api_body_size_refusal(web_request) is None
+    assert post_body_size_refusal(small_request) is None
+    assert post_body_size_refusal(web_request) is None
+    assert post_body_size_refusal(cookie_upload_request) is None
+
+
+def test_form_body_limit_rejects_oversized_uploads_before_login() -> None:
+    """A form route must not store a large body before its login check runs."""
+    oversized_login = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/login"),
+        headers={"content-length": str(3 * 1024 * 1024)},
+    )
+    oversized_cookie_upload = SimpleNamespace(
+        method="POST",
+        url=SimpleNamespace(path="/upload-cookies"),
+        headers={"content-length": str(50 * 1024 * 1024)},
+    )
+
+    assert post_body_size_refusal(oversized_login).status_code == 413
+    assert post_body_size_refusal(oversized_cookie_upload).status_code == 413
 
 
 def test_create_app_uses_injected_temporary_collaborators(tmp_path: Path) -> None:

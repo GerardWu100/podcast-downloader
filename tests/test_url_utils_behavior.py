@@ -169,23 +169,6 @@ def test_archive_store_append_returns_true_only_once(tmp_path) -> None:
     assert store.load() == {"https://www.youtube.com/watch?v=abc123"}
 
 
-def test_archive_store_remove_deletes_only_matching_normalized_url(tmp_path) -> None:
-    """ArchiveStore.remove should rewrite the archive without duplicating entries."""
-    archive_file = tmp_path / "downloaded_urls.txt"
-    archive_file.write_text(
-        "https://youtu.be/abc123\nhttps://www.youtube.com/watch?v=keep456\n",
-        encoding="utf-8",
-    )
-    store = ArchiveStore(archive_file, logging.getLogger("test"))
-
-    removed = store.remove("https://www.youtube.com/watch?v=abc123")
-
-    assert removed is True
-    assert archive_file.read_text(encoding="utf-8") == (
-        "https://www.youtube.com/watch?v=keep456\n"
-    )
-
-
 def test_bypass_store_adds_loads_and_removes_normalized_urls(tmp_path) -> None:
     """BypassStore should own one-shot age-bypass state."""
     bypass_file = tmp_path / "bypass_age_check_urls.txt"

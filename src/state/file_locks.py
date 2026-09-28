@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import fcntl
 import os
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TextIO
@@ -98,16 +98,6 @@ class LockedLineFile:
             self._separator_is_missing = False
         self.file_handle.write(f"{text}\n")
         self.file_handle.flush()
-
-    def rewrite_lines(self, lines: Iterable[str]) -> None:
-        """Replace the whole file with newline-terminated ``lines``."""
-        self.file_handle.seek(0)
-        for line in lines:
-            self.file_handle.write(f"{line}\n")
-        self.file_handle.truncate()
-        self.file_handle.flush()
-        # Every written line ends with a newline, so a later append is safe.
-        self._separator_is_missing = False
 
 
 @contextmanager

@@ -101,6 +101,24 @@ def check_credentials(
     if not accounts:
         return CredentialCheck.NO_ACCOUNTS_CONFIGURED
 
+    # Count this attempt as a failure before hashing, in the same locked step
+    # that re-checks the ban. Checking first and recording after the slow hash
+    # would let a burst of parallel guesses all pass the check before any of
+    # them was recorded, multiplying the guesses a ban allows.
+    attempt_admitted = False
+
+    def reserve_attempt(state: dict) -> None:
+        nonlocal attempt_admitted
+        banned_now, _deadline = is_banned(state, client_address)
+        if not banned_now:
+            record_failure(state, client_address)
+            attempt_admitted = True
+
+    with LOGIN_STATE_LOCK:
+        state_after_reservation = auth_store.update_login_state(reserve_attempt)
+    if not attempt_admitted:
+        return CredentialCheck.BANNED
+
     matched_account = None
     for account in accounts:
         # compare_digest, not ==, so the time taken does not reveal how many
@@ -123,16 +141,14 @@ def check_credentials(
     password_verified = verify_password(password, hash_to_check)
 
     if matched_account is None or not password_verified:
-        with LOGIN_STATE_LOCK:
-            updated_state = auth_store.update_login_state(
-                lambda state: record_failure(state, client_address),
-            )
-            now_banned, _deadline = is_banned(updated_state, client_address)
+        # The failure was already recorded by the reservation above.
+        now_banned, _deadline = is_banned(state_after_reservation, client_address)
         return CredentialCheck.BANNED if now_banned else CredentialCheck.WRONG
 
-    auth_store.update_login_state(
-        lambda state: clear_failures(state, client_address),
-    )
+    with LOGIN_STATE_LOCK:
+        auth_store.update_login_state(
+            lambda state: clear_failures(state, client_address),
+        )
     return CredentialCheck.ACCEPTED
 
 

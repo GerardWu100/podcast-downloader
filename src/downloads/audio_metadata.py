@@ -9,7 +9,6 @@ debugging and file provenance.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -17,7 +16,6 @@ from pathlib import Path
 FFMPEG_METADATA_TIMEOUT_SECONDS = 120
 ID3V2_VERSION_WITH_FULL_DATE = "4"
 METADATA_TEMP_SUFFIX = ".download-date.tmp"
-PUBLISH_TEMP_SUFFIX = ".publish.tmp"
 
 
 class AudioMetadataWriter:
@@ -127,23 +125,13 @@ class AudioMetadataWriter:
                 )
                 raise RuntimeError(error_message)
 
-            # Stage the tagged audio in a second hidden temporary file, then
-            # swap it into place. The original MP3 is never opened for writing,
-            # so a failure part-way through leaves the untagged file intact
-            # instead of truncating it. Neither temporary name ends in ".mp3",
-            # so library scanners still see exactly one audio file.
-            publish_temp_file = audio_file.with_name(
-                f".{audio_file.name}{PUBLISH_TEMP_SUFFIX}",
-            )
-            try:
-                with temp_audio_file.open("rb") as tagged_audio:
-                    with publish_temp_file.open("wb") as staged_audio:
-                        shutil.copyfileobj(tagged_audio, staged_audio)
-                # os.replace is atomic within one filesystem: readers see either
-                # the old file or the fully written tagged file, never a partial one.
-                os.replace(publish_temp_file, audio_file)
-            finally:
-                publish_temp_file.unlink(missing_ok=True)
+            # Swap the tagged copy into place. The original MP3 is never opened
+            # for writing, so a failure part-way through leaves the untagged
+            # file intact instead of truncating it. The temporary name does not
+            # end in ".mp3", so library scanners still see exactly one audio
+            # file. os.replace is atomic within one filesystem: readers see
+            # either the old file or the fully written tagged file.
+            os.replace(temp_audio_file, audio_file)
         finally:
             # A failed ffmpeg run can leave a partial temporary file behind.
             temp_audio_file.unlink(missing_ok=True)

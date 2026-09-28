@@ -262,3 +262,24 @@ def test_schedule_can_be_moved_to_another_hour_and_cadence(tmp_path: Path) -> No
 
     assert config.scheduled_run_hour == 23
     assert config.scheduled_run_interval_days == 7
+
+
+def test_unparseable_config_raises_config_error(tmp_path: Path) -> None:
+    """A duplicated key must reach the operator as a one-line startup error."""
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        "[podcast]\nchannel_count = 2\nchannel_count = 3\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ConfigError, match="could not be parsed"):
+        load_config(config_path, tmp_path)
+
+
+def test_percent_sign_in_config_value_is_literal(tmp_path: Path) -> None:
+    """A "%" in a value is data, not configparser interpolation syntax."""
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        "[podcast]\nyoutube_player_client = web%embedded\n", encoding="utf-8"
+    )
+
+    assert load_config(config_path, tmp_path).youtube_player_client == "web%embedded"

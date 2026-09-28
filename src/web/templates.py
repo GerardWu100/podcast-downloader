@@ -467,8 +467,10 @@ const logFilterSelect = document.getElementById('log-filter');
 const logSummary = document.getElementById('log-summary');
 const logBox = document.getElementById('log-box');
 
+// Quotes too: some escaped values land inside title="..." attributes.
 function esc(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // Message prefixes are dropped from the text because the badge beside the line

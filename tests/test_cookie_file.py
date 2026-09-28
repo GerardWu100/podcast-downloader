@@ -179,3 +179,23 @@ def test_settings_summary_names_the_file_and_its_size(tmp_path: Path) -> None:
     assert routes._cookie_summary_line(describe_cookie_file(missing), missing) == (
         routes.NO_COOKIE_FILE_LABEL
     )
+
+
+def test_an_unrepresentable_expiry_does_not_crash_the_description(
+    tmp_path: Path,
+) -> None:
+    """An "inf" or huge expiry must not break the settings page or run alerts."""
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text(
+        "# Netscape HTTP Cookie File\n"
+        ".youtube.com\tTRUE\t/\tTRUE\tinf\tSID\tvalue\n"
+        ".youtube.com\tTRUE\t/\tTRUE\t1e18\tHSID\tvalue\n"
+        ".youtube.com\tTRUE\t/\tTRUE\tnan\tSSID\tvalue\n",
+        encoding="utf-8",
+    )
+
+    status = describe_cookie_file(cookie_file)
+
+    assert status.login_cookie_count == 2
+    assert status.earliest_login_expiry is not None
+    assert status.earliest_login_expiry.year >= 9998

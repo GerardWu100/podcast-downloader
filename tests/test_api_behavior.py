@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from dataclasses import replace
@@ -43,7 +42,7 @@ class _FakeRequest:
 
 
 class _FakeUploadFile:
-    """Small async upload double with the attributes the API reads."""
+    """Small upload double with the attributes the cookie route reads."""
 
     def __init__(self, filename: str, content: bytes) -> None:
         self.filename = filename
@@ -51,8 +50,10 @@ class _FakeUploadFile:
         # Largest number of bytes the route asked for, so a test can prove the
         # route never pulls a whole oversized upload into memory.
         self.largest_read_request = -1
+        # FastAPI's UploadFile exposes the spooled file as ``.file``.
+        self.file = self
 
-    async def read(self, size: int = -1) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         """Return up to ``size`` bytes, like FastAPI's UploadFile.
 
         Parameters
@@ -648,12 +649,10 @@ def test_upload_cookies_overwrites_existing_cookie_file(
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = asyncio.run(
-        api_module.upload_cookies_form(
-            request,
-            csrf_token="csrf-token",
-            cookie_file=_FakeUploadFile("cookies.txt", uploaded_text.encode("utf-8")),
-        )
+    response = api_module.upload_cookies_form(
+        request,
+        csrf_token="csrf-token",
+        cookie_file=_FakeUploadFile("cookies.txt", uploaded_text.encode("utf-8")),
     )
 
     assert response.headers["location"] == "/settings?msg=cookies_updated"
@@ -699,12 +698,10 @@ def test_upload_cookies_refuses_oversized_file_without_buffering_it(
     )
 
     with pytest.raises(api_module.HTTPException) as raised:
-        asyncio.run(
-            api_module.upload_cookies_form(
-                request,
-                csrf_token="csrf-token",
-                cookie_file=oversized_upload,
-            )
+        api_module.upload_cookies_form(
+            request,
+            csrf_token="csrf-token",
+            cookie_file=oversized_upload,
         )
 
     assert raised.value.status_code == 413
@@ -746,12 +743,10 @@ def test_upload_cookies_rejects_invalid_cookie_header(
         cookies={api_module.SESSION_COOKIE: session_id},
     )
 
-    response = asyncio.run(
-        api_module.upload_cookies_form(
-            request,
-            csrf_token="csrf-token",
-            cookie_file=_FakeUploadFile("cookies.txt", b'{"not": "cookies"}\n'),
-        )
+    response = api_module.upload_cookies_form(
+        request,
+        csrf_token="csrf-token",
+        cookie_file=_FakeUploadFile("cookies.txt", b'{"not": "cookies"}\n'),
     )
 
     assert response.headers["location"] == "/settings?msg=cookies_invalid"
@@ -787,15 +782,13 @@ def test_upload_cookies_requires_valid_csrf_token(tmp_path, monkeypatch) -> None
     )
 
     with pytest.raises(api_module.HTTPException) as exc_info:
-        asyncio.run(
-            api_module.upload_cookies_form(
-                request,
-                csrf_token="wrong-token",
-                cookie_file=_FakeUploadFile(
-                    "cookies.txt",
-                    b"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\n",
-                ),
-            )
+        api_module.upload_cookies_form(
+            request,
+            csrf_token="wrong-token",
+            cookie_file=_FakeUploadFile(
+                "cookies.txt",
+                b"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\n",
+            ),
         )
 
     assert exc_info.value.status_code == 403

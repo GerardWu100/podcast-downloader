@@ -551,3 +551,50 @@ def test_health_requires_an_account(tmp_path: Path) -> None:
         api_routes.health(request)
 
     assert refusal.value.status_code == 401
+
+
+def test_parallel_wrong_guesses_cannot_exceed_the_ban_threshold(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A burst of simultaneous guesses must not all reach the password hash."""
+    import threading
+    import time
+
+    import src.web.account_auth as account_auth_module
+    from src.credentials import StoredAccount
+
+    hashed_attempts: list[str] = []
+
+    def slow_verify(password: str, _stored_hash: str) -> bool:
+        hashed_attempts.append(password)
+        time.sleep(0.05)
+        return False
+
+    monkeypatch.setattr(account_auth_module, "verify_password", slow_verify)
+    auth_store = AuthStore(
+        session_file=tmp_path / ".ui_sessions.json",
+        login_state_file=tmp_path / ".login_state.json",
+    )
+    accounts = [StoredAccount("owner", "unused-hash")]
+    outcomes: list[CredentialCheck] = []
+
+    def guess(attempt_number: int) -> None:
+        outcomes.append(
+            check_credentials(
+                "owner",
+                f"guess-{attempt_number}",
+                load_accounts=lambda: accounts,
+                auth_store=auth_store,
+                client_address="10.0.0.7",
+            )
+        )
+
+    threads = [threading.Thread(target=guess, args=(n,)) for n in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(hashed_attempts) == account_auth_module.MAX_FAILED_ATTEMPTS
+    assert outcomes.count(CredentialCheck.BANNED) == 20 - len(hashed_attempts) + 1

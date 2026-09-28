@@ -194,26 +194,59 @@ def test_scheduled_wait_uses_seconds_until_the_next_fixed_run_time(
 ) -> None:
     """The wait length must come from the wall clock, not a fixed interval."""
     wait_timeouts: list[float] = []
+    # 05:00 on a run day, so the next 06:00 run is exactly one hour away.
+    run_day = datetime(2026, 9, 3, 5, 0, tzinfo=LOG_TIME_ZONE)
+    assert run_day.date().toordinal() % start.RUN_INTERVAL_DAYS == 0
+    clock = [run_day]
 
     class FakeTrigger:
-        """Event-like test double that reports a plain scheduler timeout."""
+        """Event-like test double whose timeout advances the fake clock."""
 
         def wait(self, timeout: float) -> bool:
             wait_timeouts.append(timeout)
+            clock[0] = clock[0] + timedelta(seconds=timeout)
             return False
 
         def clear(self) -> None:
             raise AssertionError("A plain timeout must not clear the trigger.")
 
     monkeypatch.setattr(start, "download_trigger", FakeTrigger())
-    # 05:00 on a run day, so the next 06:00 run is exactly one hour away.
-    run_day = datetime(2026, 9, 3, 5, 0, tzinfo=LOG_TIME_ZONE)
-    assert run_day.date().toordinal() % start.RUN_INTERVAL_DAYS == 0
-    monkeypatch.setattr(start, "local_now", lambda: run_day)
+    monkeypatch.setattr(start, "local_now", lambda: clock[0])
 
     start._wait_for_next_scheduled_run()
 
     assert wait_timeouts == [3600.0]
+
+
+def test_browser_request_running_past_the_run_hour_does_not_skip_the_run(
+    monkeypatch,
+) -> None:
+    """A request that finishes at 07:00 must be followed by the 06:00 run."""
+    run_day = datetime(2026, 9, 3, 4, 0, tzinfo=LOG_TIME_ZONE)
+    assert run_day.date().toordinal() % start.RUN_INTERVAL_DAYS == 0
+    clock = [run_day]
+    wait_timeouts: list[float] = []
+
+    class FakeTrigger:
+        """Event-like test double that reports one browser request."""
+
+        def wait(self, timeout: float) -> bool:
+            wait_timeouts.append(timeout)
+            return True
+
+        def clear(self) -> None:
+            return None
+
+    def slow_browser_request() -> None:
+        clock[0] = run_day.replace(hour=7)
+
+    monkeypatch.setattr(start, "download_trigger", FakeTrigger())
+    monkeypatch.setattr(start, "local_now", lambda: clock[0])
+    monkeypatch.setattr(start, "_handle_pending_ui_requests", slow_browser_request)
+
+    start._wait_for_next_scheduled_run()
+
+    assert wait_timeouts == [2 * 3600.0]
 
 
 def test_scheduled_run_is_treated_as_missed_when_nothing_ran_since(
@@ -356,6 +389,28 @@ def test_a_run_that_cannot_start_is_reported(monkeypatch) -> None:
     start.run_full_queue_pass(RunKind.SCHEDULED)
 
     assert alerts == ["Podcast downloader could not finish a run"]
+
+
+def test_a_run_with_failed_downloads_is_not_reported_as_unstarted(
+    monkeypatch,
+) -> None:
+    """Each failed download sends its own alert; the run itself did finish."""
+    alerts: list[str] = []
+
+    monkeypatch.setattr(
+        start.subprocess,
+        "run",
+        lambda command, check=False, cwd=None: SimpleNamespace(
+            returncode=start.EXIT_DOWNLOADS_FAILED
+        ),
+    )
+    monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_started", lambda kind: None)
+    monkeypatch.setattr(start.RUN_STATE_STORE, "mark_run_finished", lambda: None)
+    monkeypatch.setattr(start, "_send_alert", lambda alert: alerts.append(alert.title))
+
+    start.run_full_queue_pass(RunKind.SCHEDULED)
+
+    assert alerts == []
 
 
 def test_a_successful_run_is_not_reported(monkeypatch) -> None:

@@ -167,8 +167,14 @@ def _get_path(
 
 def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
     """Load ``config.ini`` and apply environment overrides and defaults."""
-    parser = configparser.ConfigParser()
-    parser.read(config_path)
+    # Interpolation off: a literal "%" in a value is data, not a reference.
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        parser.read(config_path)
+    except configparser.Error as exc:
+        # A duplicated key or broken section header must reach the operator as
+        # the same one-line startup error as any other bad setting.
+        raise ConfigError(f"{config_path.name} could not be parsed: {exc}") from exc
     section = parser["podcast"] if "podcast" in parser else {}
 
     urls_file = _get_path(section, "urls_file", "urls.txt", project_root)

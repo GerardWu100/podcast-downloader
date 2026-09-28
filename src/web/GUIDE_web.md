@@ -82,6 +82,7 @@ pages stay consistent.
 
 ## Journal
 
+- 2026-09-27: Review fixes. Sign-in counts an attempt as a failure before the slow password hash, inside the locked ban check, so parallel guesses cannot exceed the ban threshold. CSRF tokens are compared as bytes, so a non-ASCII token is a 403 instead of a 500. Middleware bounds every POST body by its declared length (256 KB for forms, the cookie limit plus framing for `/upload-cookies`) before FastAPI parses it. The cookie upload handler is synchronous so its file writes run off the event loop. Pending login tokens are capped at 1000. The log panel escapes quotes, and activity events are forced onto one line.
 - 2026-09-02: Each saved source gained a targeted Run now control. Direct videos bypass the age gate, while channels and playlists keep it; deleting a row now leaves its normalized URL in the activity log.
 - 2026-09-01: Added `GET /api/health` for an external monitor.
 - 2026-09-01: The activity panel was rewritten to be read rather than scrolled: entries are grouped under day headings, each run is bracketed by its start and finish line, badges name the event, URLs became links, counts sit beside the picker, and a "Problems only" filter hides what worked. The browser code moved out of the page f-string into `ACTIVITY_LOG_SCRIPT`, because escaping every brace of a regular expression twice is how the old version stayed small.

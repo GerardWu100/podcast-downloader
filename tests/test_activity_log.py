@@ -259,3 +259,15 @@ def test_read_tail_reads_a_small_log_completely(tmp_path: Path) -> None:
     tail = ActivityLogStore(log_file).read_tail(line_count=100)
 
     assert tail == "first entry\nsecond entry"
+
+
+def test_activity_event_with_a_newline_stays_one_line(tmp_path: Path) -> None:
+    """A title carrying a newline must not forge a second timestamped event."""
+    activity_file = tmp_path / "activity.log"
+    store = ActivityLogStore(activity_file)
+
+    store.write_event("Downloaded: episode\n[2000-01-01 00:00:00] forged")
+
+    lines = activity_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    assert lines[0].endswith("Downloaded: episode [2000-01-01 00:00:00] forged")

@@ -281,7 +281,7 @@ disturbing your own session.
 
 Completed MP3 files receive an embedded MP3 `date` tag set to the Toronto/Eastern completion time. Audiobookshelf shows it as the episode date. The same pass stores the source URL in the MP3 `comment` tag.
 
-YouTube URLs are stored in canonical watch form, including live URLs. Other URLs are stored as provided. The metadata rewrite uses two hidden temporary files, neither named `*.mp3`, then atomically renames the finished file over the original. A directory scan therefore sees exactly one `.mp3` at one stable path, so Audiobookshelf never indexes a temporary or duplicate file. The rename does replace the file’s inode. That trade protects the original: it is never opened for writing, so a mid-pass failure leaves the untagged MP3 intact instead of truncating it.
+YouTube URLs are stored in canonical watch form, including live URLs. Other URLs are stored as provided. The metadata rewrite writes a hidden temporary file, not named `*.mp3`, then atomically renames it over the original. A directory scan therefore sees exactly one `.mp3` at one stable path, so Audiobookshelf never indexes a temporary or duplicate file. The rename does replace the file’s inode. That trade protects the original: it is never opened for writing, so a mid-pass failure leaves the untagged MP3 intact instead of truncating it.
 
 The downloader also uses `--no-mtime` in the `yt-dlp` command. It does not separately reset the filesystem timestamp for Audiobookshelf.
 
@@ -301,11 +301,11 @@ Channel folder names come from the source URL after filesystem-safe cleanup. Pla
 
 ## Retention cleanup
 
-During scheduled full-queue runs, the downloader scans MP3 files under the configured download directory before checking channel candidates recorded in the archive. Only files in current YouTube channel folders are eligible. This rule never deletes playlist or single-video files.
+At the start of each run, the downloader scans the MP3 files directly inside current YouTube channel folders. Only files in current YouTube channel folders are eligible. This rule never deletes playlist or single-video files.
 
 Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files older than `retention_days` (30 days by default). It ignores the YouTube release date and filesystem modification time.
 
-If the date metadata is missing or unreadable, or the file has no source URL in its comment tag, the downloader logs the problem and leaves the file alone. When it deletes a channel MP3, it removes that video URL from `downloaded_urls.txt`.
+If the date metadata is missing or unreadable, or the file has no source URL in its comment tag, the downloader logs the problem and leaves the file alone. When it deletes a channel MP3, the video URL stays in `downloaded_urls.txt`, so the same episode is not downloaded again.
 
 ## Operational files
 

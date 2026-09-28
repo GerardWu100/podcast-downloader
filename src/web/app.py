@@ -27,12 +27,24 @@ from . import api_routes, routes
 _logger = logging.getLogger("web.app")
 
 
-def api_body_size_refusal(request: Request) -> JSONResponse | None:
-    """Return an early refusal for an unsafe ``POST /api/add-url`` body.
+# Largest body any browser form on the site needs. The biggest field is the
+# notification URL list, a few kilobytes at most.
+MAX_FORM_REQUEST_BODY_BYTES = 256 * 1024
+# Multipart framing (boundaries, part headers, the CSRF field) around an
+# uploaded cookie file.
+MULTIPART_OVERHEAD_BYTES = 64 * 1024
+COOKIE_UPLOAD_PATH = "/upload-cookies"
+API_ADD_URL_PATH = "/api/add-url"
 
-    FastAPI reads and validates a JSON body before it enters the route handler.
-    This check therefore runs in middleware, before authentication or parsing,
-    and requires the transport to declare a small size.
+
+def post_body_size_refusal(request: Request) -> JSONResponse | None:
+    """Return an early refusal for a ``POST`` body larger than its route needs.
+
+    FastAPI reads and parses a whole JSON or form body, including uploaded
+    files, before the route handler runs its login check. This check therefore
+    runs in middleware, before authentication or parsing, using the declared
+    ``Content-Length``. The API route also requires that header, because its
+    clients are programs that always send it.
 
     Parameters
     ----------
@@ -45,11 +57,21 @@ def api_body_size_refusal(request: Request) -> JSONResponse | None:
         A ``411``, ``400``, or ``413`` response when the body cannot be safely
         bounded; otherwise ``None`` so normal routing can continue.
     """
-    if request.method != "POST" or request.url.path != "/api/add-url":
+    if request.method != "POST":
         return None
+
+    path = request.url.path
+    if path == API_ADD_URL_PATH:
+        body_limit = api_routes.MAX_API_REQUEST_BODY_BYTES
+    elif path == COOKIE_UPLOAD_PATH:
+        body_limit = routes.MAX_COOKIE_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES
+    else:
+        body_limit = MAX_FORM_REQUEST_BODY_BYTES
 
     raw_content_length = request.headers.get("content-length")
     if raw_content_length is None:
+        if path != API_ADD_URL_PATH:
+            return None
         return JSONResponse(
             {"detail": "Content-Length is required."},
             status_code=411,
@@ -66,7 +88,7 @@ def api_body_size_refusal(request: Request) -> JSONResponse | None:
             {"detail": "Content-Length must be a non-negative integer."},
             status_code=400,
         )
-    if content_length > api_routes.MAX_API_REQUEST_BODY_BYTES:
+    if content_length > body_limit:
         return JSONResponse(
             {"detail": "Request body is too large."},
             status_code=413,
@@ -157,12 +179,12 @@ def create_app(
     )
 
     @app.middleware("http")
-    async def limit_api_request_body(
+    async def limit_post_request_body(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        """Bound API JSON before FastAPI buffers it or hashes credentials."""
-        refusal = api_body_size_refusal(request)
+        """Bound POST bodies before FastAPI buffers them or checks the login."""
+        refusal = post_body_size_refusal(request)
         if refusal is not None:
             return refusal
         return await call_next(request)

@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 
 import uvicorn
+from src.cli import EXIT_DOWNLOADS_FAILED
 from src.config import ConfigError, load_config
 from src.credentials import sync_ui_credentials
 from src.human_time import format_clock_time
@@ -29,7 +30,6 @@ from src.schedule import (
     next_scheduled_run,
     previous_scheduled_run,
     scheduled_run_is_overdue,
-    seconds_until_next_scheduled_run,
 )
 from src.state.run_state_store import (
     RunKind,
@@ -237,18 +237,21 @@ def _wait_for_post_update_delay() -> None:
 def _wait_for_next_scheduled_run() -> None:
     """Sleep until the next scheduled run, answering browser requests meanwhile.
 
-    The wait length is recomputed from the wall clock on every pass, so a
-    request handled in the middle of it does not shorten or postpone the next
-    scheduled run.
+    The target instant is fixed before the first wait. Recomputing it after a
+    browser request would skip a whole run whenever that request was still
+    downloading when the scheduled hour passed, because the "next" run would
+    then be the following run day. A late target is run as soon as the request
+    finishes instead.
     """
+    target_run = _next_run_time()
     while True:
-        remaining_seconds = seconds_until_next_scheduled_run(
-            local_now(), run_hour=RUN_HOUR, interval_days=RUN_INTERVAL_DAYS
-        )
+        remaining_seconds = target_run.timestamp() - local_now().timestamp()
         if remaining_seconds <= 0:
             return
+        # A timeout loops back to re-check the clock rather than trusting the
+        # sleep length, which can run short or long.
         if not download_trigger.wait(timeout=remaining_seconds):
-            return
+            continue
         download_trigger.clear()
         _handle_pending_ui_requests()
         _announce_next_run()
@@ -285,7 +288,12 @@ def run_full_queue_pass(kind: RunKind) -> None:
 
     # The downloader reports its own problems, but only once it is running. A
     # process that stops before that has nothing to report with.
-    if result.returncode != 0:
+    if result.returncode == EXIT_DOWNLOADS_FAILED:
+        # The run finished and already sent one alert per failed download.
+        print(
+            "[scheduler] The download run finished with failed downloads.", flush=True
+        )
+    elif result.returncode != 0:
         print(
             f"[scheduler] The download run exited with status {result.returncode}.",
             flush=True,

@@ -50,18 +50,6 @@ class LockedDownloadedUrlArchive:
         self._urls.add(normalized)
         return True
 
-    def remove(self, url: str) -> bool:
-        """Remove one normalized URL from the archive transaction."""
-        from ..media.youtube import normalize_youtube_url
-
-        normalized = normalize_youtube_url(url.strip())
-        if normalized not in self._urls:
-            return False
-
-        self._urls.remove(normalized)
-        self.archive_lines.rewrite_lines(sorted(self._urls))
-        return True
-
 
 class ArchiveStore:
     """Read and update expanded-URL history under file locks."""
@@ -122,13 +110,4 @@ class ArchiveStore:
                 return archive.append_success(url)
         except Exception as exc:  # pragma: no cover - logging error path
             self.logger.error("Could not save downloaded URL: %s", exc)
-            return False
-
-    def remove(self, url: str) -> bool:
-        """Remove one normalized URL from the archive under an exclusive lock."""
-        try:
-            with self.locked_transaction() as archive:
-                return archive.remove(url)
-        except Exception as exc:  # pragma: no cover - logging error path
-            self.logger.error("Could not remove downloaded URL: %s", exc)
             return False

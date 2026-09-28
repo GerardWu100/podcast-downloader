@@ -116,17 +116,19 @@ active folder prevents another process's file from creating a false success.
 The downloader passes `--no-mtime`, so source timestamps do not become file
 timestamps. After a successful download, an `ffmpeg` copy pass preserves the
 audio and writes the local completion time to the `date` tag and source URL to
-the `comment` tag. YouTube URLs are normalized first. The result is copied back
-without replacing the original inode, which helps Audiobookshelf keep tracking
-the file.
+the `comment` tag. YouTube URLs are normalized first. The tagged copy then
+replaces the original with an atomic rename, so the path stays the same but the
+inode changes.
 
 Retention uses the embedded local completion date, not the release date or file
 modification time. It applies only to current YouTube channel folders. Files
 without a readable date or source URL stay in place because they cannot be
 identified safely.
 
-When a channel MP3 is deleted, its concrete video URL is also removed from
-`downloaded_urls.txt`, keeping the file and archive in sync.
+When a channel MP3 is deleted, its video URL stays in `downloaded_urls.txt`.
+Channel expansion returns a channel's newest videos however old they are, so
+removing the entry would download a quiet channel's latest episode again every
+retention period.
 
 ## YouTube cookies
 

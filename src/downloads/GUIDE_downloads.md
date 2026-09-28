@@ -48,11 +48,12 @@ $$
 
 - `service.py`: `PodcastDownloadService`, source routing, publication, recovery, retention, and state coordination.
 - `ytdlp_client.py`: `YtDlpClient`, `YtDlpResult`, `AudioSnapshot`, and external download policy.
-- `audio_metadata.py`: `AudioMetadataWriter`, which uses `ffmpeg` to preserve streams while writing project-managed tags. It stages the tagged audio in two hidden temporary files, neither named `*.mp3`, then swaps the finished file onto the original path with an atomic rename. The original MP3 is never opened for writing, so a failure part-way through leaves the untagged file intact.
+- `audio_metadata.py`: `AudioMetadataWriter`, which uses `ffmpeg` to preserve streams while writing project-managed tags. It writes the tagged audio to one hidden temporary file, not named `*.mp3`, then swaps it onto the original path with an atomic rename. The original MP3 is never opened for writing, so a failure part-way through leaves the untagged file intact.
 - `__init__.py`: package marker.
 
 ## Journal
 
+- 2026-09-27: Review fixes. Retention keeps the archive entry of a deleted MP3, because expansion lists a quiet channel's newest videos however old they are and the episode used to come back every `retention_days`. Metadata recovery requires the leftover MP3 to carry this video's `[id]`. Each source's folder name is resolved once per run. Archived targets are skipped before the loop, and `delay_seconds` pauses only between real downloads. Retention globs only channel folders. The metadata writer renames ffmpeg's output directly instead of copying it first. A run with failed downloads exits with status 3 so the scheduler does not also send its "could not finish a run" alert.
 - 2026-09-03: Upcoming YouTube premieres and livestreams became silent deferrals that remain queued for a later run.
 - 2026-09-02: Added a targeted saved-source run so the web UI can bypass the age gate for one direct video without weakening channel or playlist filtering.
 - 2026-07-26: Audio subprocess execution, cookie retries, and snapshots moved into the injectable, typed `YtDlpClient`; the service now consumes its result directly.

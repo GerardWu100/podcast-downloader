@@ -21,8 +21,9 @@ handed to yt-dlp, not to this code.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 
@@ -33,6 +34,12 @@ COOKIE_FIELD_COUNT = 7
 EXPIRY_FIELD_INDEX = 4
 NAME_FIELD_INDEX = 5
 SESSION_COOKIE_EXPIRY = 0
+# Latest expiry this module reports. A file can hold "inf" or a huge number in
+# the expiry column, which datetime cannot represent; clamping keeps such a
+# file from crashing the settings page and the after-run cookie check.
+LATEST_REPORTED_COOKIE_EXPIRY = int(
+    datetime(9999, 1, 1, tzinfo=timezone.utc).timestamp()
+)
 # A cookie file is not a document; anything this large is not one of ours.
 # The web upload refuses the same size, so a file the page accepted can always
 # be read back by the code that describes it.
@@ -126,9 +133,18 @@ def _parse_cookie_line(line: str) -> tuple[str, int] | None:
 
     try:
         # Some exporters write a fractional timestamp, so parse through float.
-        expiry_seconds = int(float(fields[EXPIRY_FIELD_INDEX]))
+        raw_expiry_seconds = float(fields[EXPIRY_FIELD_INDEX])
     except ValueError:
         return None
+    if math.isnan(raw_expiry_seconds):
+        return None
+    # Anything at or below zero already means a session cookie.
+    expiry_seconds = int(
+        max(
+            SESSION_COOKIE_EXPIRY,
+            min(raw_expiry_seconds, LATEST_REPORTED_COOKIE_EXPIRY),
+        )
+    )
 
     return fields[NAME_FIELD_INDEX].strip(), expiry_seconds
 

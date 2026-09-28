@@ -232,6 +232,12 @@ class PodcastDownloadService:
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
         )
 
+        # One service instance serves one CLI run. Remembering each source's
+        # folder keeps retention, expansion, and publishing on the same folder
+        # even if a later lookup of the same name fails, and avoids repeating
+        # the network call behind channel-ID and playlist names.
+        self._source_folder_name_by_url: dict[str, str] = {}
+
         self._setup_logging()
         self.ytdlp_client = ytdlp_client or YtDlpClient(
             cookies_file=self.cookies_file,
@@ -263,6 +269,14 @@ class PodcastDownloadService:
         return safe_name or FALLBACK_SINGLE_DOWNLOAD_FOLDER
 
     def _source_folder_name(self, source_url: str) -> str:
+        """Return the direct child folder name for one queue source, once per run."""
+        cached_folder_name = self._source_folder_name_by_url.get(source_url)
+        if cached_folder_name is None:
+            cached_folder_name = self._resolve_source_folder_name(source_url)
+            self._source_folder_name_by_url[source_url] = cached_folder_name
+        return cached_folder_name
+
+    def _resolve_source_folder_name(self, source_url: str) -> str:
         """Derive the direct child folder name used for one queue source."""
         if not is_channel_or_playlist(source_url):
             return FALLBACK_SINGLE_DOWNLOAD_FOLDER
@@ -460,7 +474,11 @@ class PodcastDownloadService:
             return False
 
         first_part = path_parts[0]
-        return first_part.startswith("@") or first_part in {"c", "channel", "user"}
+        if first_part.startswith("@"):
+            return True
+        # "/channel/" with no ID is not a channel. It resolves to the singles
+        # folder, which retention must never touch.
+        return first_part in {"c", "channel", "user"} and len(path_parts) >= 2
 
     def _retention_channel_output_dirs(self, urls: list[str]) -> set[Path]:
         """Return output folders eligible for retention cleanup."""
@@ -723,12 +741,16 @@ class PodcastDownloadService:
             return []
 
         deleted_files: list[Path] = []
+        # Only direct children of channel folders are eligible, so list those
+        # folders instead of walking the whole library.
+        candidate_audio_files = sorted(
+            audio_file
+            for retention_dir in normalized_retention_dirs
+            if retention_dir.is_dir()
+            for audio_file in retention_dir.glob("*.mp3")
+        )
 
-        for audio_file in sorted(self.downloads_dir.rglob("*.mp3")):
-            audio_parent = audio_file.parent.resolve()
-            if audio_parent not in normalized_retention_dirs:
-                continue
-
+        for audio_file in candidate_audio_files:
             metadata_value = self._read_audio_download_date_metadata(audio_file)
             if metadata_value is None:
                 self.logger.info(
@@ -776,8 +798,10 @@ class PodcastDownloadService:
                 )
                 continue
 
+            # The archive entry stays. Expansion keeps returning a channel's
+            # newest videos however old they are, so removing it would download
+            # a quiet channel's latest episode again every retention period.
             deleted_files.append(audio_file)
-            self.archive_store.remove(source_url)
             self.logger.info("Deleted expired MP3: %s", audio_file)
             self._record_activity(f"Deleted expired MP3: {audio_file.name}")
 
@@ -858,6 +882,7 @@ class PodcastDownloadService:
 
     def _find_recoverable_existing_audio(
         self,
+        video_url: str,
         before_snapshot: AudioSnapshot,
         after_snapshot: AudioSnapshot,
     ) -> list[Path]:
@@ -866,7 +891,10 @@ class PodcastDownloadService:
         If a prior run created the MP3 but failed while stamping metadata,
         ``yt-dlp`` can later report success without changing the file. With no
         reliable filename in stdout across all extractors, the conservative
-        recovery case is exactly one MP3 in the output directory.
+        recovery case is exactly one MP3 in the output directory. For YouTube
+        that MP3 must also carry this video's ``[id]`` from the output template,
+        so a file left behind by a different video is never published as this
+        one.
         """
         if before_snapshot.files != after_snapshot.files:
             return []
@@ -874,6 +902,11 @@ class PodcastDownloadService:
         existing_audio_files = sorted(after_snapshot.files)
         if len(existing_audio_files) != 1:
             return []
+
+        youtube_video_id = parse_qs(urlparse(video_url).query).get("v", [""])[0]
+        if is_youtube_url(video_url) and youtube_video_id:
+            if f"[{youtube_video_id}]" not in existing_audio_files[0].name:
+                return []
 
         return existing_audio_files
 
@@ -994,6 +1027,7 @@ class PodcastDownloadService:
         audio_files_to_stamp = execution.changed_audio_files
         if not audio_files_to_stamp:
             audio_files_to_stamp = self._find_recoverable_existing_audio(
+                video_url,
                 execution.before_snapshot,
                 execution.after_snapshot,
             )
@@ -1112,6 +1146,65 @@ class PodcastDownloadService:
             )
         ]
 
+    def _download_targets(
+        self, download_targets: list[DownloadTarget]
+    ) -> tuple[int, int]:
+        """Download targets in order and count the outcomes.
+
+        Archived items are skipped before any work, and ``delay_seconds`` is
+        paused only between real download attempts, so a channel whose recent
+        videos are all archived costs neither a lock round trip per item nor a
+        sleep. ``_download_video`` still re-checks the archive under its claim
+        lock, which stays the authority when two processes overlap.
+
+        Parameters
+        ----------
+        download_targets:
+            Concrete videos in the order they should be attempted.
+
+        Returns
+        -------
+        tuple[int, int]
+            ``(successful, failed)``. Archived items count as successful;
+            deferred premieres count as neither.
+        """
+        archived_urls = (
+            self.archive_store.load()
+            if any(target.use_archive for target in download_targets)
+            else set()
+        )
+        total = len(download_targets)
+        successful = 0
+        failed = 0
+        attempted_any_download = False
+        for index, target in enumerate(download_targets, 1):
+            if (
+                target.use_archive
+                and normalize_youtube_url(target.video_url) in archived_urls
+            ):
+                self.logger.info("Already downloaded: %s", target.video_url)
+                successful += 1
+                continue
+
+            # Pace consecutive yt-dlp runs; nothing to pace before the first.
+            if attempted_any_download and self.delay_seconds > 0:
+                time.sleep(self.delay_seconds)
+            attempted_any_download = True
+
+            _, success = self._download_video(
+                target.video_url,
+                index=index,
+                total=total,
+                use_archive=target.use_archive,
+                final_output_dir=target.output_dir,
+            )
+            if success is True:
+                successful += 1
+            elif success is False:
+                failed += 1
+
+        return successful, failed
+
     def download_all(self) -> tuple[int, int]:
         """Process each valid queue entry once.
 
@@ -1135,8 +1228,7 @@ class PodcastDownloadService:
         self.downloads_dir.mkdir(parents=True, exist_ok=True)
         self.intermediate_dir.mkdir(parents=True, exist_ok=True)
         retention_dirs = self._retention_channel_output_dirs(urls)
-        # Remove expired channel files before checking history. Otherwise this
-        # run could skip an archived item and make it eligible only afterward.
+        # Free space from expired channel files before new downloads arrive.
         self._run_retention_cleanup(retention_dirs)
 
         download_targets: list[DownloadTarget] = []
@@ -1164,24 +1256,7 @@ class PodcastDownloadService:
                 download_targets.append(target)
 
         total = len(download_targets)
-        successful = 0
-        failed = 0
-
-        for index, target in enumerate(download_targets, 1):
-            _, success = self._download_video(
-                target.video_url,
-                index,
-                total,
-                target.use_archive,
-                target.output_dir,
-            )
-            if success is True:
-                successful += 1
-            elif success is False:
-                failed += 1
-
-            if index < total and self.delay_seconds > 0:
-                time.sleep(self.delay_seconds)
+        successful, failed = self._download_targets(download_targets)
 
         self._record_activity(f"Run finished: {successful} successful, {failed} failed")
         self._notify_if_run_needs_attention(
@@ -1230,24 +1305,14 @@ class PodcastDownloadService:
             self._run_retention_cleanup(retention_dirs)
             return 0, 0
 
-        total = len(video_urls)
-        successful = 0
-        failed = 0
-        for index, video_url in enumerate(video_urls, 1):
-            _, success = self._download_video(
-                video_url,
-                index=index,
-                total=total,
-                use_archive=True,
-                final_output_dir=output_dir,
-            )
-            if success is True:
-                successful += 1
-            elif success is False:
-                failed += 1
-
-            if index < total and self.delay_seconds > 0:
-                time.sleep(self.delay_seconds)
+        successful, failed = self._download_targets(
+            [
+                DownloadTarget(
+                    video_url=video_url, output_dir=output_dir, use_archive=True
+                )
+                for video_url in video_urls
+            ]
+        )
 
         self._record_activity(
             f"Playlist run finished: {successful} successful, {failed} failed"
@@ -1289,30 +1354,17 @@ class PodcastDownloadService:
         if is_youtube_playlist(normalized_url):
             # Playlist expansion keeps source order. Apply the video-age gate
             # here so this manual run cannot pull a just-published episode.
+            # Archived entries skip the gate: each check is a metadata request,
+            # and _download_targets skips them anyway.
+            archived_urls = self.archive_store.load()
             download_targets = [
                 target
                 for target in download_targets
-                if not self._youtube_video_is_too_new(target.video_url)
+                if normalize_youtube_url(target.video_url) in archived_urls
+                or not self._youtube_video_is_too_new(target.video_url)
             ]
 
-        successful = 0
-        failed = 0
-        total = len(download_targets)
-        for index, target in enumerate(download_targets, 1):
-            _, success = self._download_video(
-                target.video_url,
-                index=index,
-                total=total,
-                use_archive=target.use_archive,
-                final_output_dir=target.output_dir,
-            )
-            if success is True:
-                successful += 1
-            elif success is False:
-                failed += 1
-
-            if index < total and self.delay_seconds > 0:
-                time.sleep(self.delay_seconds)
+        successful, failed = self._download_targets(download_targets)
 
         self._record_activity(
             f"Source run finished: {successful} successful, {failed} failed"

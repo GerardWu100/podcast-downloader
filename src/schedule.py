@@ -200,34 +200,13 @@ def scheduled_run_is_overdue(
     previous_run = previous_scheduled_run(
         reference, run_hour=run_hour, interval_days=interval_days
     )
-    if (reference - previous_run).total_seconds() <= grace_seconds:
+    # Timestamps give real elapsed seconds. Subtracting two datetimes that
+    # share one ZoneInfo gives wall-clock time, which is an hour off across a
+    # daylight-saving change.
+    if reference.timestamp() - previous_run.timestamp() <= grace_seconds:
         # The run that was due is still inside its allowance, so whatever the
         # history says, nothing is late yet.
         return False
     if last_finished_at is None:
         return True
     return last_finished_at < previous_run
-
-
-def seconds_until_next_scheduled_run(
-    now: datetime,
-    *,
-    run_hour: int,
-    interval_days: int,
-) -> float:
-    """Return how many seconds remain before the next scheduled run.
-
-    Parameters
-    ----------
-    now:
-        Reference instant, timezone-aware.
-    run_hour:
-        Local hour a run starts, 0 to 23.
-    interval_days:
-        Days between run days, at least 1.
-    """
-    reference = now.astimezone(LOG_TIME_ZONE)
-    next_run = next_scheduled_run(
-        reference, run_hour=run_hour, interval_days=interval_days
-    )
-    return (next_run - reference).total_seconds()

@@ -76,6 +76,10 @@ _Dependency = TypeVar("_Dependency")
 router = APIRouter()
 
 LOGIN_CSRF_TTL_SECONDS = 10 * 60
+# Most unused login-form tokens kept in memory. Each GET /login stores one, so
+# without a cap anyone could grow this map without limit; past the cap the
+# oldest token is dropped and that form simply asks to sign in again.
+MAX_PENDING_LOGIN_CSRF_TOKENS = 1000
 SESSION_COOKIE = "podcast_session"
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 SESSIONS: dict[str, dict[str, float | str]] = {}
@@ -313,7 +317,18 @@ def _store_login_csrf_token(
     csrf_session_id = secrets.token_urlsafe(16)
     csrf_token = secrets.token_urlsafe(32)
     with _CSRF_STATE_LOCK:
-        _csrf_tokens(request)[csrf_session_id] = {
+        csrf_tokens = _csrf_tokens(request)
+        pending_login_tokens = sorted(
+            (float(token_data.get("created_at", 0)), session_id)
+            for session_id, token_data in csrf_tokens.items()
+            if str(token_data.get("kind", "")) == "login"
+        )
+        overflow_count = len(pending_login_tokens) - MAX_PENDING_LOGIN_CSRF_TOKENS + 1
+        for _created_at, oldest_session_id in pending_login_tokens[
+            : max(0, overflow_count)
+        ]:
+            csrf_tokens.pop(oldest_session_id, None)
+        csrf_tokens[csrf_session_id] = {
             "token": csrf_token,
             "kind": "login",
             "created_at": time.time(),
@@ -421,7 +436,9 @@ def _verify_csrf_token(request: Request, csrf_token: str) -> bool:
         expected = str(token_data.get("token", ""))
     if not expected:
         return False
-    return secrets.compare_digest(csrf_token, expected)
+    # Bytes, not str: compare_digest raises TypeError on non-ASCII text,
+    # which would turn a forged token into a 500 instead of a 403.
+    return secrets.compare_digest(csrf_token.encode(), expected.encode())
 
 
 def _set_session_cookie(
@@ -674,7 +691,7 @@ def login_action(
     if (
         not expected_csrf
         or token_age_seconds > LOGIN_CSRF_TTL_SECONDS
-        or not secrets.compare_digest(csrf_token, expected_csrf)
+        or not secrets.compare_digest(csrf_token.encode(), expected_csrf.encode())
     ):
         return RedirectResponse(url="/login?msg=csrf", status_code=303)
 
@@ -983,7 +1000,7 @@ def settings(request: Request, msg: str = "") -> HTMLResponse:
 
 
 @router.post("/upload-cookies")
-async def upload_cookies_form(
+def upload_cookies_form(
     request: Request,
     csrf_token: str = Form(...),
     cookie_file: UploadFile = File(...),
@@ -996,10 +1013,11 @@ async def upload_cookies_form(
     if not _verify_csrf_token(request, csrf_token):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
-    # Read one byte past the limit rather than the whole upload. Reading it all
-    # first would pull a multi-gigabyte body into memory before the size check
-    # could reject it, so an oversized file is refused here instead.
-    raw_cookie_file = await cookie_file.read(MAX_COOKIE_UPLOAD_BYTES + 1)
+    # A plain def runs in the thread pool, so the session and file writes
+    # below do not stall the event loop. The middleware already refused a
+    # declared body far past the limit; reading one byte past it here still
+    # catches a body sent without a declared length.
+    raw_cookie_file = cookie_file.file.read(MAX_COOKIE_UPLOAD_BYTES + 1)
     if len(raw_cookie_file) > MAX_COOKIE_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="Cookie file is too large")
     normalized_cookie_text = _normalize_uploaded_cookie_text(raw_cookie_file)

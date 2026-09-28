@@ -335,6 +335,18 @@ def test_login_action_rejects_invalid_csrf_token(tmp_path: Path, monkeypatch) ->
     assert response.status_code == 303
     assert response.headers["location"] == "/login?msg=csrf"
 
+    # A non-ASCII token must be refused the same way, not crash with a 500.
+    csrf_session, _csrf_token = api._store_login_csrf_token()
+    non_ascii_response = api.login_action(
+        FakeRequest(),
+        username="unused-user",
+        password="unused-password",
+        csrf_token="é",
+        csrf_session=csrf_session,
+    )
+
+    assert non_ascii_response.headers["location"] == "/login?msg=csrf"
+
 
 def test_timing_safe_password_comparison() -> None:
     """Password hash verification should reject near misses and accept exact matches."""

@@ -69,9 +69,9 @@ def format_time_ago(moment: datetime, now: datetime) -> str:
     now:
         Reference instant, timezone-aware.
     """
-    duration = _format_duration(
-        (now.astimezone(LOG_TIME_ZONE) - moment).total_seconds()
-    )
+    # Timestamps count real seconds even when a daylight-saving change falls
+    # between the two instants.
+    duration = _format_duration(now.timestamp() - moment.timestamp())
     if not duration:
         return JUST_NOW_LABEL
     return f"{duration} ago"
@@ -87,9 +87,9 @@ def format_time_until(moment: datetime, now: datetime) -> str:
     now:
         Reference instant, timezone-aware.
     """
-    duration = _format_duration(
-        (moment - now.astimezone(LOG_TIME_ZONE)).total_seconds()
-    )
+    # Timestamps count real seconds even when a daylight-saving change falls
+    # between the two instants.
+    duration = _format_duration(moment.timestamp() - now.timestamp())
     if not duration:
         return NOW_LABEL
     return f"in {duration}"
