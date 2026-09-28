@@ -53,6 +53,7 @@ $$
 
 ## Journal
 
+- 2026-09-27: Folder names that needed a lookup are saved in `source_folders.json` on first success and reused, so a lookup blocked on a later run cannot move a podcast to an ID-named folder. The tag-before-publish rule replaced the old inode-preservation invariant in `AGENTS.md`: tagging happens in `download_work`, so Audiobookshelf only ever sees the finished file.
 - 2026-09-27: Review fixes. Retention keeps the archive entry of a deleted MP3, because expansion lists a quiet channel's newest videos however old they are and the episode used to come back every `retention_days`. Metadata recovery requires the leftover MP3 to carry this video's `[id]`. Each source's folder name is resolved once per run. Archived targets are skipped before the loop, and `delay_seconds` pauses only between real downloads. Retention globs only channel folders. The metadata writer renames ffmpeg's output directly instead of copying it first. A run with failed downloads exits with status 3 so the scheduler does not also send its "could not finish a run" alert.
 - 2026-09-03: Upcoming YouTube premieres and livestreams became silent deferrals that remain queued for a later run.
 - 2026-09-02: Added a targeted saved-source run so the web UI can bypass the age gate for one direct video without weakening channel or playlist filtering.

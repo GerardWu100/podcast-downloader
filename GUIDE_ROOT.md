@@ -54,6 +54,7 @@ Runtime state lives in plain files:
 | `activity.log` | `ActivityLogStore` | Short messages for the web interface |
 | `download.log` | Python logging | Detailed diagnostics |
 | `run_state.json` | `RunStateStore` | When the queue last ran, and whether one is running |
+| `source_folders.json` | `SourceFolderStore` | Library folder names that needed a lookup, so a failed lookup cannot move a podcast |
 
 State stores use advisory file locks so concurrent processes do not overwrite
 one another. Authentication files are written to a temporary sibling first and

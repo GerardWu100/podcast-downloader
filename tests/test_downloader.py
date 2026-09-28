@@ -2805,3 +2805,57 @@ def test_source_folder_name_is_resolved_once_per_run(tmp_path, monkeypatch) -> N
 
     assert first == second == tmp_path / "downloads" / "Readable-Name"
     assert lookups == [channel_url]
+
+
+def test_resolved_folder_name_survives_a_later_failed_lookup(
+    tmp_path, monkeypatch
+) -> None:
+    """A lookup blocked on a later run must not move a podcast to an ID folder."""
+    lookup_results = ["Readable Playlist", None]
+
+    def fake_playlist_folder_name(*_args: object) -> str | None:
+        return lookup_results.pop(0)
+
+    monkeypatch.setattr(
+        downloads_service_module,
+        "get_youtube_playlist_folder_name",
+        fake_playlist_folder_name,
+    )
+    playlist_url = "https://www.youtube.com/playlist?list=PLabc123"
+
+    def new_run() -> PodcastDownloadService:
+        return PodcastDownloadService(
+            urls_file=tmp_path / "urls.txt",
+            downloads_dir=tmp_path / "downloads",
+            log_file=tmp_path / "download.log",
+        )
+
+    first_run_dir = new_run()._download_output_dir_for_source(playlist_url)
+    later_run_dir = new_run()._download_output_dir_for_source(playlist_url)
+
+    assert (
+        first_run_dir == later_run_dir == tmp_path / "downloads" / "Readable-Playlist"
+    )
+    # The second run used the saved name and never needed the lookup.
+    assert lookup_results == [None]
+
+
+def test_id_fallback_folder_is_not_saved(tmp_path, monkeypatch) -> None:
+    """A failed first lookup must leave the next run free to find the name."""
+    lookup_results = [None, "Readable Playlist"]
+    monkeypatch.setattr(
+        downloads_service_module,
+        "get_youtube_playlist_folder_name",
+        lambda *_args: lookup_results.pop(0),
+    )
+    playlist_url = "https://www.youtube.com/playlist?list=PLabc123"
+
+    def new_run() -> PodcastDownloadService:
+        return PodcastDownloadService(
+            urls_file=tmp_path / "urls.txt",
+            downloads_dir=tmp_path / "downloads",
+            log_file=tmp_path / "download.log",
+        )
+
+    assert new_run()._source_folder_name(playlist_url) == "PLabc123"
+    assert new_run()._source_folder_name(playlist_url) == "Readable-Playlist"

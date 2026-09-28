@@ -96,7 +96,7 @@ Audiobookshelf needs more than audio bytes. After extraction, the service writes
 
 That local completion timestamp is also the retention clock. It avoids confusing the video's publication date with the date the file entered the local library.
 
-The rewrite has a subtle constraint. `ffmpeg` needs a temporary output, but replacing the final path with that temporary file can change the file's inode. An inode is the filesystem identity behind a path, and media-library watchers may interpret a replacement as one item disappearing and another appearing. The writer uses [FFmpeg streamcopy](https://ffmpeg.org/ffmpeg.html#Streamcopy) with `-codec copy`, creates a hidden non-MP3 temporary file, copies the rewritten bytes back into the original MP3, and removes the temporary file. The original path and inode survive; the audio stream is not re-encoded during this metadata pass.
+The rewrite has a subtle constraint. `ffmpeg` cannot edit a file in place, so it writes a tagged copy. Copying those bytes back over the original would keep the file's inode, the filesystem identity behind a path, but a failure halfway through would leave a truncated MP3. The writer instead uses [FFmpeg streamcopy](https://ffmpeg.org/ffmpeg.html#Streamcopy) with `-codec copy` to write a hidden non-MP3 temporary file, then renames it over the original in one atomic step: anything reading the path sees either the untagged file or the tagged one, never a partial file. The inode changes, and that is harmless here because all of this happens in a scratch folder. Audiobookshelf only sees the finished, tagged file once it moves into the library. The audio stream is not re-encoded during this metadata pass.
 
 Retention is deliberately fail-safe. It applies only to current YouTube channel folders, not playlists or one-off downloads. A file is eligible only when both its embedded completion date and source URL can be read. If either tag is missing or malformed, the service keeps the MP3 because it cannot safely update the archive after deletion.
 
@@ -150,7 +150,7 @@ The offline regression suite covers 208 tests. They use temporary directories an
 |---|---|
 | Artifact detection | New and overwritten MP3 files in the active work folder count; unrelated folders and return code zero without an MP3 do not |
 | Safe publication | Finished MP3 moves from scratch space; temporary artifacts are removed |
-| Metadata | Date and source URL are written; the final MP3 inode is preserved |
+| Metadata | Date and source URL are written before the MP3 reaches the library |
 | Concurrency | Locked archive readers and writers serialize; two workers download one expanded URL once |
 | Retention | Only eligible channel files are removed; missing metadata keeps files in place |
 | Source policy | SponsorBlock is YouTube-only; direct URLs, channels, playlists, Shorts, age gates, cookies, and media-ID filenames follow distinct rules |

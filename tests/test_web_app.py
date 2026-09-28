@@ -207,11 +207,7 @@ def test_routes_use_collaborators_injected_by_create_app(tmp_path: Path) -> None
     session_id = "injected-app-session"
     csrf_token = "injected-app-csrf"
     app.state.sessions[session_id] = {"created_at": time.time()}
-    app.state.csrf_tokens[session_id] = {
-        "token": csrf_token,
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    app.state.sessions[session_id]["csrf_token"] = csrf_token
     request = SimpleNamespace(
         app=app,
         headers={},
@@ -382,11 +378,7 @@ def _signed_in_request(app, session_id: str, csrf_token: str) -> SimpleNamespace
         Token registered for that session.
     """
     app.state.sessions[session_id] = {"created_at": time.time()}
-    app.state.csrf_tokens[session_id] = {
-        "token": csrf_token,
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    app.state.sessions[session_id]["csrf_token"] = csrf_token
     return SimpleNamespace(
         app=app,
         headers={},
@@ -474,3 +466,124 @@ def test_run_button_is_refused_while_a_run_is_already_going(tmp_path: Path) -> N
 
     assert response.headers["location"] == "/?msg=run_already_running"
     assert trigger.full_queue_runs == 0
+
+
+def test_session_csrf_token_survives_a_restart(tmp_path: Path) -> None:
+    """A page opened before a restart must still submit its forms afterwards."""
+    auth_store = AuthStore(
+        session_file=tmp_path / ".ui_sessions.json",
+        login_state_file=tmp_path / ".login_state.json",
+    )
+    session_id = "session-before-restart"
+    first_app = create_app(auth_store=auth_store)
+    first_app.state.sessions[session_id] = {"created_at": time.time()}
+    first_request = SimpleNamespace(
+        app=first_app, cookies={routes.SESSION_COOKIE: session_id}
+    )
+    token_shown_before_restart = routes._get_csrf_token(session_id, first_request)
+
+    restarted_app = create_app(auth_store=auth_store)
+    request_after_restart = SimpleNamespace(
+        app=restarted_app, cookies={routes.SESSION_COOKIE: session_id}
+    )
+
+    assert routes._verify_csrf_token(request_after_restart, token_shown_before_restart)
+    assert not routes._verify_csrf_token(request_after_restart, "forged-token")
+
+
+def _post_chunked_body(
+    app,
+    path: str,
+    content_type: str,
+    total_bytes: int,
+    chunk_bytes: int = 65536,
+    body_prefix: bytes = b"",
+) -> tuple[int, int]:
+    """Send a POST with no Content-Length through the ASGI app.
+
+    Returns
+    -------
+    tuple[int, int]
+        The response status and how many body bytes the app pulled before
+        answering, which shows whether an oversized body was read in full.
+    """
+    import asyncio
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"content-type", content_type.encode()),
+            (b"transfer-encoding", b"chunked"),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+    }
+    pulled = {"bytes": 0}
+    sent_messages: list[dict] = []
+
+    async def receive() -> dict:
+        prefix = body_prefix if pulled["bytes"] == 0 else b""
+        remaining = total_bytes - pulled["bytes"]
+        size = min(chunk_bytes, remaining)
+        pulled["bytes"] += size
+        return {
+            "type": "http.request",
+            "body": prefix + b"a" * size,
+            "more_body": pulled["bytes"] < total_bytes,
+        }
+
+    async def send(message: dict) -> None:
+        sent_messages.append(message)
+
+    asyncio.run(app(scope, receive, send))
+    status = next(
+        message["status"]
+        for message in sent_messages
+        if message["type"] == "http.response.start"
+    )
+    return status, pulled["bytes"]
+
+
+def test_undeclared_oversized_body_is_refused_while_streaming(tmp_path: Path) -> None:
+    """A chunked body with no Content-Length must stop at the route's limit."""
+    from src.web.app import MAX_FORM_REQUEST_BODY_BYTES
+
+    app = create_app(
+        auth_store=AuthStore(
+            session_file=tmp_path / ".ui_sessions.json",
+            login_state_file=tmp_path / ".login_state.json",
+        )
+    )
+    oversized = 20 * 1024 * 1024
+
+    login_status, login_pulled = _post_chunked_body(
+        app, "/login", "application/x-www-form-urlencoded", oversized
+    )
+    upload_status, upload_pulled = _post_chunked_body(
+        app,
+        "/upload-cookies",
+        "multipart/form-data; boundary=x",
+        oversized,
+        body_prefix=(
+            b"--x\r\nContent-Disposition: form-data; "
+            b'name="cookie_file"; filename="cookies.txt"\r\n\r\n'
+        ),
+    )
+    small_status, _small_pulled = _post_chunked_body(
+        app, "/login", "application/x-www-form-urlencoded", 100
+    )
+
+    assert login_status == 413
+    assert login_pulled < MAX_FORM_REQUEST_BODY_BYTES + 65536 * 2
+    assert upload_status == 413
+    assert upload_pulled < oversized
+    assert small_status != 413

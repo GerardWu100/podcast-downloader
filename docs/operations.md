@@ -297,7 +297,7 @@ downloads/
 └── singles/
 ```
 
-Channel folder names come from the source URL after filesystem-safe cleanup. Playlist folders prefer the title reported by `yt-dlp`; if that lookup fails, they use the `list=` identifier. Individual videos from YouTube or other supported sites go in `singles/`.
+Channel folder names come from the source URL after filesystem-safe cleanup. Playlist folders prefer the title reported by `yt-dlp`; if that lookup fails, they use the `list=` identifier. A name that needed a lookup (playlist titles and `/channel/UC...` names) is saved in `source_folders.json` the first time it resolves, and later runs reuse it without asking again. Individual videos from YouTube or other supported sites go in `singles/`.
 
 ## Retention cleanup
 
@@ -313,6 +313,7 @@ If the date metadata is missing or unreadable, or the file has no source URL in 
 |---|---|
 | `urls.txt` | Pending queue of user-supplied URLs |
 | `downloaded_urls.txt` | Archive of expanded channel and playlist items |
+| `source_folders.json` | Folder name chosen for each channel-ID or playlist source, kept so a failed lookup or renamed playlist cannot split a podcast across folders |
 | `download.log` | Main runtime log; rotates at 5 MB and keeps `download.log.1` through `download.log.3` |
 | `activity.log` | Short browser activity feed, created on the first activity event |
 | `notifications.json` | Apprise error-notification settings written by the web UI; owner-only because the endpoint usually embeds a key |

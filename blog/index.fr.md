@@ -96,7 +96,7 @@ Audiobookshelf a besoin de davantage que des octets audio. Après l'extraction, 
 
 Cette heure locale sert également d'horloge de rétention. Elle évite de confondre la date de publication de la vidéo avec la date d'entrée du fichier dans la bibliothèque locale.
 
-La réécriture comporte une contrainte discrète, mais importante. `ffmpeg` a besoin d'une sortie temporaire. Remplacer ensuite le chemin final par ce fichier temporaire peut changer l'inode du fichier. Un inode est l'identité qu'utilise le système de fichiers derrière un chemin ; un observateur de bibliothèque peut donc interpréter ce remplacement comme la disparition d'un élément suivie de l'arrivée d'un autre. Le writer utilise le [streamcopy de FFmpeg](https://ffmpeg.org/ffmpeg.html#Streamcopy) avec `-codec copy`, crée un fichier temporaire caché sans extension `.mp3`, recopie les octets réécrits dans le MP3 d'origine, puis supprime le temporaire. Le chemin et l'inode d'origine survivent, et cette passe de métadonnées ne réencode pas le flux audio.
+La réécriture comporte une contrainte discrète, mais importante. `ffmpeg` ne peut pas modifier un fichier sur place ; il écrit donc une copie étiquetée. Recopier ces octets sur l'original conserverait l'inode du fichier, c'est-à-dire l'identité qu'utilise le système de fichiers derrière un chemin, mais une panne en cours de route laisserait un MP3 tronqué. Le writer utilise plutôt le [streamcopy de FFmpeg](https://ffmpeg.org/ffmpeg.html#Streamcopy) avec `-codec copy` pour écrire un fichier temporaire caché sans extension `.mp3`, puis le renomme par-dessus l'original en une seule opération atomique : tout lecteur du chemin voit soit le fichier non étiqueté, soit le fichier étiqueté, jamais un fichier partiel. L'inode change, ce qui est sans conséquence ici, car tout se passe dans un dossier de travail. Audiobookshelf ne voit le fichier, terminé et étiqueté, qu'une fois qu'il arrive dans la bibliothèque. Cette passe de métadonnées ne réencode pas le flux audio.
 
 La rétention choisit de ne pas supprimer en cas de doute. Elle ne vise que les dossiers de chaînes YouTube encore suivies, jamais les playlists ni les téléchargements ponctuels. Un fichier n'est admissible que si sa date de fin et son URL source intégrées sont toutes deux lisibles. Si un tag manque ou est mal formé, le service garde le MP3, car il ne pourrait pas mettre l'archive à jour de façon sûre après la suppression.
 
@@ -150,7 +150,7 @@ La suite de régression hors ligne couvre 208 tests. Ils utilisent des répertoi
 |---|---|
 | Détection des artefacts | Un MP3 nouveau ou remplacé dans le dossier actif compte ; les autres dossiers et un code de sortie nul sans MP3 ne comptent pas |
 | Publication sûre | Le MP3 terminé passe de l’espace de travail à la bibliothèque ; les artefacts temporaires sont supprimés |
-| Métadonnées | La date et l’URL source sont écrites ; l’inode du MP3 final est préservé |
+| Métadonnées | La date et l’URL source sont écrites avant que le MP3 n’arrive dans la bibliothèque |
 | Concurrence | Les lecteurs et writers de l’archive se sérialisent ; deux workers ne téléchargent qu’une fois une même URL développée |
 | Rétention | Seuls les fichiers de chaîne admissibles sont supprimés ; l’absence de métadonnées conserve le fichier |
 | Politique de source | SponsorBlock reste propre à YouTube ; URL directes, chaînes, playlists, Shorts, limites d’âge, cookies et noms avec identifiant suivent des règles distinctes |

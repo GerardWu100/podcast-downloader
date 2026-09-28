@@ -45,6 +45,7 @@ from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore
 from ..state.file_locks import locked_text_file
 from ..state.queue_store import QueueStore
+from ..state.source_folder_store import SOURCE_FOLDERS_FILE_NAME, SourceFolderStore
 from .audio_metadata import AudioMetadataWriter
 from .ytdlp_client import (
     AudioSnapshot,
@@ -237,6 +238,11 @@ class PodcastDownloadService:
         # even if a later lookup of the same name fails, and avoids repeating
         # the network call behind channel-ID and playlist names.
         self._source_folder_name_by_url: dict[str, str] = {}
+        # Names that needed a lookup are also saved to disk, so a lookup that
+        # fails on a later run cannot move a podcast to an ID-named folder.
+        self.source_folder_store = SourceFolderStore(
+            self.downloaded_urls_file.with_name(SOURCE_FOLDERS_FILE_NAME)
+        )
 
         self._setup_logging()
         self.ytdlp_client = ytdlp_client or YtDlpClient(
@@ -285,6 +291,9 @@ class PodcastDownloadService:
         query_values = parse_qs(parsed.query)
         playlist_id = query_values.get("list", [""])[0]
         if playlist_id:
+            saved_folder_name = self.source_folder_store.folder_for(source_url)
+            if saved_folder_name:
+                return saved_folder_name
             playlist_name = get_youtube_playlist_folder_name(
                 source_url,
                 self.logger,
@@ -292,7 +301,11 @@ class PodcastDownloadService:
                 self.always_use_cookies,
             )
             if playlist_name:
-                return self._sanitize_download_folder_name(playlist_name)
+                folder_name = self._sanitize_download_folder_name(playlist_name)
+                self.source_folder_store.remember(source_url, folder_name)
+                return folder_name
+            # Not saved, so a later run whose lookup works can still pick the
+            # readable name.
             return self._sanitize_download_folder_name(playlist_id)
 
         path_parts = [part for part in parsed.path.split("/") if part]
@@ -307,6 +320,9 @@ class PodcastDownloadService:
             folder_name = self._sanitize_download_folder_name(hostname)
 
         if looks_like_youtube_channel_id(folder_name):
+            saved_folder_name = self.source_folder_store.folder_for(source_url)
+            if saved_folder_name:
+                return saved_folder_name
             resolved_name = get_youtube_channel_folder_name(
                 source_url,
                 self.logger,
@@ -315,6 +331,7 @@ class PodcastDownloadService:
             )
             if resolved_name:
                 folder_name = self._sanitize_download_folder_name(resolved_name)
+                self.source_folder_store.remember(source_url, folder_name)
 
         return folder_name
 

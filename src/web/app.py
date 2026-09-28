@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
-
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from ..config import PodcastConfig
 from ..credentials import CREDENTIALS_FILENAME
@@ -37,6 +37,15 @@ COOKIE_UPLOAD_PATH = "/upload-cookies"
 API_ADD_URL_PATH = "/api/add-url"
 
 
+def post_body_limit_bytes(path: str) -> int:
+    """Return the largest ``POST`` body, in bytes, that a route may receive."""
+    if path == API_ADD_URL_PATH:
+        return api_routes.MAX_API_REQUEST_BODY_BYTES
+    if path == COOKIE_UPLOAD_PATH:
+        return routes.MAX_COOKIE_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES
+    return MAX_FORM_REQUEST_BODY_BYTES
+
+
 def post_body_size_refusal(request: Request) -> JSONResponse | None:
     """Return an early refusal for a ``POST`` body larger than its route needs.
 
@@ -44,7 +53,8 @@ def post_body_size_refusal(request: Request) -> JSONResponse | None:
     files, before the route handler runs its login check. This check therefore
     runs in middleware, before authentication or parsing, using the declared
     ``Content-Length``. The API route also requires that header, because its
-    clients are programs that always send it.
+    clients are programs that always send it. A body sent without the header
+    is bounded while it streams, by ``PostBodyLimitMiddleware``.
 
     Parameters
     ----------
@@ -61,12 +71,7 @@ def post_body_size_refusal(request: Request) -> JSONResponse | None:
         return None
 
     path = request.url.path
-    if path == API_ADD_URL_PATH:
-        body_limit = api_routes.MAX_API_REQUEST_BODY_BYTES
-    elif path == COOKIE_UPLOAD_PATH:
-        body_limit = routes.MAX_COOKIE_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES
-    else:
-        body_limit = MAX_FORM_REQUEST_BODY_BYTES
+    body_limit = post_body_limit_bytes(path)
 
     raw_content_length = request.headers.get("content-length")
     if raw_content_length is None:
@@ -94,6 +99,52 @@ def post_body_size_refusal(request: Request) -> JSONResponse | None:
             status_code=413,
         )
     return None
+
+
+class PostBodyLimitMiddleware:
+    """Refuse ``POST`` bodies larger than their route needs, declared or not.
+
+    The declared ``Content-Length`` is checked first, so an honest oversized
+    request is refused before any of it is read. A chunked body has no declared
+    length, so the bytes are also counted as the application reads them. Once
+    the count passes the limit, reading raises a 413 ``HTTPException``, which
+    FastAPI passes through its body parser unchanged, so the upload stops there
+    instead of being spooled to disk in full.
+
+    Parameters
+    ----------
+    app:
+        The ASGI application to wrap.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "POST":
+            await self.app(scope, receive, send)
+            return
+
+        refusal = post_body_size_refusal(Request(scope))
+        if refusal is not None:
+            await refusal(scope, receive, send)
+            return
+
+        body_limit = post_body_limit_bytes(scope["path"])
+        received_bytes = 0
+
+        async def receive_within_limit() -> Message:
+            nonlocal received_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                received_bytes += len(message.get("body", b""))
+                if received_bytes > body_limit:
+                    raise StarletteHTTPException(
+                        status_code=413, detail="Request body is too large."
+                    )
+            return message
+
+        await self.app(scope, receive_within_limit, send)
 
 
 def create_app(
@@ -178,16 +229,8 @@ def create_app(
         openapi_url=None,
     )
 
-    @app.middleware("http")
-    async def limit_post_request_body(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        """Bound POST bodies before FastAPI buffers them or checks the login."""
-        refusal = post_body_size_refusal(request)
-        if refusal is not None:
-            return refusal
-        return await call_next(request)
+    # Bound POST bodies before FastAPI buffers them or checks the login.
+    app.add_middleware(PostBodyLimitMiddleware)
 
     app.state.config = resolved_config
     app.state.queue_store = queue_store

@@ -429,7 +429,7 @@ def test_load_config_rejects_invalid_numeric_values(
 def test_cleanup_expired_login_csrf_tokens_removes_only_stale_login_tokens(
     monkeypatch,
 ) -> None:
-    """Anonymous login CSRF tokens should expire without affecting active session CSRF state."""
+    """Anonymous login CSRF tokens should expire after their time limit."""
     now = 1_000.0
     monkeypatch.setattr(api_module.time, "time", lambda: now)
     api_module.CSRF_TOKENS.clear()
@@ -443,17 +443,11 @@ def test_cleanup_expired_login_csrf_tokens_removes_only_stale_login_tokens(
         "kind": "login",
         "created_at": now,
     }
-    api_module.CSRF_TOKENS["session-token"] = {
-        "token": "c",
-        "kind": "session",
-        "created_at": now - api_module.LOGIN_CSRF_TTL_SECONDS - 1,
-    }
 
     api_module._cleanup_expired_login_csrf_tokens()
 
     assert "stale-login" not in api_module.CSRF_TOKENS
     assert "fresh-login" in api_module.CSRF_TOKENS
-    assert "session-token" in api_module.CSRF_TOKENS
 
 
 def test_security_headers_allow_nonced_ui_script() -> None:
@@ -636,11 +630,7 @@ def test_upload_cookies_overwrites_existing_cookie_file(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     uploaded_text = (
         "# Netscape HTTP Cookie File\r\n.youtube.com\tTRUE\t/\tTRUE\t0\tTEST\tfresh\r\n"
     )
@@ -682,11 +672,7 @@ def test_upload_cookies_refuses_oversized_file_without_buffering_it(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     oversized_upload = _FakeUploadFile(
         "cookies.txt",
         b"# Netscape HTTP Cookie File\n"
@@ -733,11 +719,7 @@ def test_upload_cookies_rejects_invalid_cookie_header(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     request = _FakeRequest(
         client_host="127.0.0.1",
         cookies={api_module.SESSION_COOKIE: session_id},
@@ -771,11 +753,7 @@ def test_upload_cookies_requires_valid_csrf_token(tmp_path, monkeypatch) -> None
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     request = _FakeRequest(
         client_host="127.0.0.1",
         cookies={api_module.SESSION_COOKIE: session_id},
@@ -822,11 +800,7 @@ def test_add_url_with_bypass_enqueues_single_immediate_video(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -883,11 +857,7 @@ def test_add_playlist_with_bypass_enqueues_full_playlist_immediate_run(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
     pop_full_playlist_download_requests()
 
@@ -938,11 +908,7 @@ def test_add_channel_with_checkbox_does_not_enqueue_immediate_run(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
     pop_full_playlist_download_requests()
 
@@ -992,11 +958,7 @@ def test_add_direct_url_without_bypass_enqueues_single_immediate_video(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1050,11 +1012,7 @@ def test_add_non_youtube_direct_url_enqueues_single_immediate_video(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1103,11 +1061,7 @@ def test_add_non_youtube_direct_url_with_checkbox_does_not_write_bypass_file(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1156,11 +1110,7 @@ def test_add_channel_url_does_not_trigger_immediate_batch(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1208,11 +1158,7 @@ def test_add_url_with_bypass_clears_pending_batch_trigger(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1258,11 +1204,7 @@ def test_add_url_without_bypass_enqueues_single_payload_only(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1308,11 +1250,7 @@ def test_add_url_accepts_non_youtube_video_url(
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
     pop_single_url_download_requests()
 
     request = _FakeRequest(
@@ -1382,11 +1320,7 @@ def test_logout_invalidates_session() -> None:
     """POST /logout should remove the session and redirect to login."""
     session_id = "test-logout-session"
     api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "logout-csrf",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "logout-csrf"
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1402,11 +1336,7 @@ def test_logout_rejects_invalid_csrf_token() -> None:
     """POST /logout with a wrong CSRF token must return 403."""
     session_id = "test-logout-csrf-session"
     api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "real-csrf",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "real-csrf"
 
     request = _FakeRequest(
         client_host="127.0.0.1",
@@ -1465,11 +1395,7 @@ def test_remove_url_form_deletes_url_and_redirects(tmp_path, monkeypatch) -> Non
         "ip": "127.0.0.1",
         "created_at": time.time(),
     }
-    api_module.CSRF_TOKENS[session_id] = {
-        "token": "csrf-token",
-        "kind": "session",
-        "created_at": time.time(),
-    }
+    api_module.SESSIONS[session_id]["csrf_token"] = "csrf-token"
 
     request = _FakeRequest(
         client_host="127.0.0.1",

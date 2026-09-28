@@ -32,6 +32,8 @@ www.youtube.com_cookies.txt
 notifications.json
 run_state.json
 run_state.json.lock
+source_folders.json
+source_folders.json.lock
 .env
 .env.*
 !.env.example

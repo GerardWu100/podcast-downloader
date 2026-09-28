@@ -81,9 +81,11 @@ LOGIN_CSRF_TTL_SECONDS = 10 * 60
 # oldest token is dropped and that form simply asks to sign in again.
 MAX_PENDING_LOGIN_CSRF_TOKENS = 1000
 SESSION_COOKIE = "podcast_session"
+# Session-record key holding that session's form CSRF token.
+SESSION_CSRF_TOKEN_KEY = "csrf_token"
 SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 SESSIONS: dict[str, dict[str, float | str]] = {}
-CSRF_TOKENS: dict[str, dict[str, float | str]] = {}  # session_id -> token metadata
+CSRF_TOKENS: dict[str, dict[str, float | str]] = {}  # login-form id -> token metadata
 _SESSION_STATE_LOCK = threading.Lock()
 _CSRF_STATE_LOCK = threading.RLock()
 
@@ -256,7 +258,11 @@ def _sessions(request: Request | None = None) -> dict[str, dict[str, float | str
 
 
 def _csrf_tokens(request: Request | None = None) -> dict[str, dict[str, float | str]]:
-    """Return the CSRF-token map owned by this application instance."""
+    """Return this application's pending login-form CSRF tokens.
+
+    Signed-in sessions keep their token in the session record instead, so it
+    survives a restart; see ``_get_csrf_token``.
+    """
     if request is None:
         return CSRF_TOKENS
     return _app_state_value(request, "csrf_tokens", CSRF_TOKENS)
@@ -272,10 +278,9 @@ def _security_headers(script_nonce: str | None = None) -> dict[str, str]:
 
 
 def _cleanup_expired_sessions(request: Request | None = None) -> None:
-    """Drop expired sessions and their CSRF tokens from memory and disk."""
+    """Drop expired sessions, and the CSRF tokens inside them, from memory and disk."""
     with _SESSION_STATE_LOCK:
         sessions = _sessions(request)
-        csrf_tokens = _csrf_tokens(request)
         expired = [
             sid
             for sid, s in sessions.items()
@@ -286,8 +291,6 @@ def _cleanup_expired_sessions(request: Request | None = None) -> None:
 
         for sid in expired:
             sessions.pop(sid, None)
-            with _CSRF_STATE_LOCK:
-                csrf_tokens.pop(sid, None)
         _save_session_state(sessions, request)
 
 
@@ -356,8 +359,6 @@ def _invalidate_session(
         with _SESSION_STATE_LOCK:
             sessions = _sessions(request)
             sessions.pop(session_id, None)
-            with _CSRF_STATE_LOCK:
-                _csrf_tokens(request).pop(session_id, None)
             _save_session_state(sessions, request)
 
 
@@ -413,27 +414,32 @@ def _has_valid_session(request: Request) -> bool:
 
 
 def _get_csrf_token(session_id: str, request: Request | None = None) -> str:
-    """Return the CSRF token for a session, creating one if needed."""
-    with _CSRF_STATE_LOCK:
-        csrf_tokens = _csrf_tokens(request)
-        token_data = csrf_tokens.get(session_id)
-        token = str(token_data.get("token", "")) if token_data else ""
+    """Return the CSRF token for a session, creating and saving one if needed.
+
+    The token is stored in the session record, which ``.ui_sessions.json``
+    keeps across restarts. A page opened before a restart can therefore still
+    submit its forms afterwards instead of failing with a 403.
+    """
+    with _SESSION_STATE_LOCK:
+        sessions = _sessions(request)
+        session = sessions.get(session_id)
+        if session is None:
+            return ""
+        token = str(session.get(SESSION_CSRF_TOKEN_KEY, ""))
         if not token:
+            # Sessions saved before tokens were persisted get one on first use.
             token = secrets.token_urlsafe(32)
-            csrf_tokens[session_id] = {
-                "token": token,
-                "kind": "session",
-                "created_at": time.time(),
-            }
+            session[SESSION_CSRF_TOKEN_KEY] = token
+            _save_session_state(sessions, request)
         return token
 
 
 def _verify_csrf_token(request: Request, csrf_token: str) -> bool:
     """Check that the submitted CSRF token matches the stored session token."""
     session_id = request.cookies.get(SESSION_COOKIE)
-    with _CSRF_STATE_LOCK:
-        token_data = _csrf_tokens(request).get(session_id, {})
-        expected = str(token_data.get("token", ""))
+    with _SESSION_STATE_LOCK:
+        session = _sessions(request).get(session_id) or {}
+        expected = str(session.get(SESSION_CSRF_TOKEN_KEY, ""))
     if not expected:
         return False
     # Bytes, not str: compare_digest raises TypeError on non-ASCII text,
@@ -713,7 +719,10 @@ def login_action(
     session_id = secrets.token_urlsafe(32)
     with _SESSION_STATE_LOCK:
         sessions = _sessions(request)
-        sessions[session_id] = {"created_at": time.time()}
+        sessions[session_id] = {
+            "created_at": time.time(),
+            SESSION_CSRF_TOKEN_KEY: secrets.token_urlsafe(32),
+        }
         _save_session_state(sessions, request)
     response = RedirectResponse(url="/", status_code=302)
     _set_session_cookie(response, request, session_id)

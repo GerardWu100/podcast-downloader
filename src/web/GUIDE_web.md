@@ -82,6 +82,7 @@ pages stay consistent.
 
 ## Journal
 
+- 2026-09-27: Session CSRF tokens moved into the session record in `.ui_sessions.json`, so open pages keep working across a restart; the in-memory `CSRF_TOKENS` map now holds only login-form tokens. `PostBodyLimitMiddleware` (pure ASGI) also counts streamed bytes, so a chunked body with no `Content-Length` is cut off with 413 at the same per-route limit instead of being spooled in full.
 - 2026-09-27: Review fixes. Sign-in counts an attempt as a failure before the slow password hash, inside the locked ban check, so parallel guesses cannot exceed the ban threshold. CSRF tokens are compared as bytes, so a non-ASCII token is a 403 instead of a 500. Middleware bounds every POST body by its declared length (256 KB for forms, the cookie limit plus framing for `/upload-cookies`) before FastAPI parses it. The cookie upload handler is synchronous so its file writes run off the event loop. Pending login tokens are capped at 1000. The log panel escapes quotes, and activity events are forced onto one line.
 - 2026-09-02: Each saved source gained a targeted Run now control. Direct videos bypass the age gate, while channels and playlists keep it; deleting a row now leaves its normalized URL in the activity log.
 - 2026-09-01: Added `GET /api/health` for an external monitor.

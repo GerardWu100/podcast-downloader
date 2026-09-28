@@ -60,7 +60,7 @@ directory private.
 
 - Sessions last 30 days.
 - Sessions are restored from `.ui_sessions.json` after a FastAPI restart and remain valid until they expire.
-- The session file stores only the session ID and creation timestamp; it is not tied to the login IP.
+- The session file stores the session ID, its creation timestamp, and its form CSRF token; it is not tied to the login IP.
 - `/` is the queue itself. Opening it without a valid session cookie redirects to `/login`; opening `/login` with one redirects back to `/`, so a signed-in reader never sees the password form again.
 
 ## Protection against unwanted form submissions
@@ -69,9 +69,13 @@ The app uses two Cross-Site Request Forgery (CSRF) protections. CSRF is an
 attack in which another site tricks a signed-in browser into submitting a form.
 
 - The login form gets a one-time token that expires after 10 minutes.
-- Authenticated state-changing forms, including queue edits, starting a run, logout, and cookie upload, get a per-session CSRF token.
+- Authenticated state-changing forms, including queue edits, starting a run, logout, and cookie upload, get a per-session CSRF token. It is saved with the session in `.ui_sessions.json`, so a page opened before a restart still submits after it.
 
-Both checks use `secrets.compare_digest` to reduce timing leaks.
+Both checks use `secrets.compare_digest` on bytes to reduce timing leaks; a malformed token is refused, never a server error.
+
+## Request size limits
+
+FastAPI reads a whole form or upload before a route checks the login, so middleware bounds every `POST` body first: 4 KB for `/api/add-url`, the cookie-file limit plus 64 KB of multipart framing for `/upload-cookies`, and 256 KB for every other form. A declared `Content-Length` over the limit is refused with `413` before any of the body is read. A body sent without one is counted as it streams and cut off with `413` at the same limit, so it cannot be spooled to disk in full.
 
 ## Browser hardening
 

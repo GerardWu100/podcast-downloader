@@ -126,7 +126,13 @@ class AuthStore:
                 math.isfinite(created_at)
                 and 0 <= session_age_seconds <= max_age_seconds
             ):
-                valid_sessions[session_id] = {"created_at": created_at}
+                valid_session: dict = {"created_at": created_at}
+                # The form CSRF token lives with its session so open pages keep
+                # working across a restart.
+                csrf_token = session.get("csrf_token")
+                if isinstance(csrf_token, str) and csrf_token:
+                    valid_session["csrf_token"] = csrf_token
+                valid_sessions[session_id] = valid_session
         return valid_sessions
 
     def save_sessions(self, sessions: JsonState) -> None:

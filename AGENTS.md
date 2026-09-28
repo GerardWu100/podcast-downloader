@@ -44,8 +44,10 @@ detection of YouTube 403/PO-token breakage) rather than gain new features.
 - Success is defined by the filesystem, never by a subprocess exit code: an
   MP3 must appear or change in the active source folder.
 - The MP3 `date` and `comment` tags are the retention database. Nothing may
-  rewrite MP3 metadata without preserving both tags and the inode-preserving
-  copy behavior, or retention and Audiobookshelf tracking break.
+  rewrite MP3 metadata without preserving both tags, or retention breaks.
+  Tagging must finish in the scratch folder, replacing the untagged file with
+  one atomic rename, before the MP3 moves into the library, so Audiobookshelf
+  never indexes an untagged or partial file.
 - One host, one instance. State files use advisory locks that assume a local
   filesystem; never run replicas or mount the data directory over a network
   filesystem.
