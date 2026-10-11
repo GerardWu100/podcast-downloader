@@ -79,7 +79,11 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
 - `docker-compose.example.yml` and `.github/workflows/publish-image.yml`: the
   published GHCR image and the clone-free deployment that pulls it.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
+- `.github/workflows/tests.yml`: the offline suite on every push and pull
+  request; `publish-image.yml` calls it and publishes only when it passes.
 - `scripts/publish_wiki.py`: copies `docs/` to the GitHub wiki. Run it by hand after changing `docs/`.
+- `scripts/seed_demo_data.py`: fills a data folder with sample sources and
+  activity for README screenshots.
 - `scripts/sponsorblock_smoke_check.py`: optional live check. It stays outside
   `tests/` so the offline suite does not collect it.
 
@@ -127,4 +131,6 @@ uv run python -m pytest -q
 - 2026-10-11: Settings moved from `config.ini` to `config.toml`, read with `tomllib`. The INI loader silently fell back to the default on a mistyped `true`/`false`, and ignored misspelled keys; the TOML loader rejects a wrong type or an unknown key at startup. Existing deployments start from the shipped defaults and must copy any changed values across by hand.
 - 2026-10-11: The README became the user guide (install with Compose or `docker run`, use, settings, troubleshooting) and the developer material moved to `docs/`, published as the GitHub wiki. The image now sets `PODCAST_DATA_DIR`, `PODCAST_DOWNLOAD_DIR`, and `PODCAST_INTERMEDIATE_DIR` itself, so a `docker run` needs only the three mounts.
 - 2026-10-11: Release 2.0.0. One version for server, image, and extension, read from `pyproject.toml`; tag `vX.Y.Z` publishes semver image tags. The agent skill became a single curl-based `SKILL.md` (the Python helper is gone) backed by new `/api/queue`, `/api/activity`, and `/api/run` routes. The extension's login fields became optional, and it got timeouts, clearer errors, and a success notification.
+- 2026-10-11: Behind a proxy the client address is now the last `X-Forwarded-For` entry. The first entry and `CF-Connecting-IP` can be sent by the visitor, so trusting them let a guesser dodge the login ban. Through Cloudflare Tunnel the last entry equals `CF-Connecting-IP`, so the tunnel case is unchanged. A `trusted_proxy` mode setting was considered and declined: renaming the setting would stop every existing deployment at startup.
+- 2026-10-11: Tests now gate image publishing in GitHub Actions.
 - 2026-10-11: Removed `update.sh`. Deployments use the published image (`docker compose pull && docker compose up -d`); a checkout rebuilds with `git pull && docker compose up --build -d`.

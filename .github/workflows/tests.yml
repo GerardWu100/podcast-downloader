@@ -1,0 +1,23 @@
+# Run the offline test suite. Every push and pull request runs it, and the
+# image workflow calls it first, so a commit whose tests fail never becomes a
+# published image.
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      # Python version comes from .python-version; the lockfile pins the rest.
+      - run: uv sync --locked
+      - run: uv run pytest -q

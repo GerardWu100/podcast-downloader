@@ -66,7 +66,23 @@ uv run python scripts/sponsorblock_smoke_check.py  # live SponsorBlock check
 ```
 
 The suite needs no network. The smoke check calls the real SponsorBlock API,
-so it stays outside `tests/`.
+so it stays outside `tests/`. GitHub Actions runs the suite
+(`.github/workflows/tests.yml`) on every push and pull request, and the image
+workflow runs it first, so a failing commit is never published.
+
+## Screenshots
+
+The README screenshots come from the app running on sample data, never on a
+real queue:
+
+```bash
+uv run python scripts/seed_demo_data.py /tmp/podcast-demo
+PODCAST_DATA_DIR=/tmp/podcast-demo uv run uvicorn src.api:app --port 8765
+```
+
+Then capture `http://127.0.0.1:8765/` and `/settings` in dark mode at twice
+the pixel density (1100 px wide for the desktop shots, 390 px for the phone
+shot) and save them over `docs/images/`.
 
 ## Project layout
 
