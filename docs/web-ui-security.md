@@ -127,13 +127,29 @@ The checked-in `config.toml` sets:
 trust_x_forwarded_for = true
 ```
 
-Use this only when the app is behind a reverse proxy you control, such as
-Cloudflare Tunnel, and that proxy rewrites client-IP headers correctly.
+**Keep it `true` behind Cloudflare Tunnel; sign-in needs it.** The tunnel
+ends at `cloudflared`, which talks to the app over plain HTTP from one local
+address. Without this setting the app cannot see the real visitor or the
+real scheme:
 
-When that setting is on, the app also honors `X-Forwarded-Proto` and Cloudflare's `CF-Visitor` scheme hint so the session cookie can be marked `Secure` behind HTTPS.
+| | `true` (behind the tunnel) | `false` (behind the tunnel) |
+|---|---|---|
+| Visitor address used by the ban ledger | Each visitor's own address, from `CF-Connecting-IP` | `cloudflared`'s address, shared by every visitor |
+| Five wrong passwords from a stranger or a bot | Bans only that stranger | Bans everyone, including you, for 15 minutes |
+| Scheme the app sees | HTTPS, from `CF-Visitor` or `X-Forwarded-Proto` | HTTP |
+| Session cookie | Marked `Secure`, so the browser sends it only over HTTPS | Not marked `Secure` |
+
+The client address comes from, in order: `CF-Connecting-IP`, then the first
+entry of `X-Forwarded-For`, then the connecting socket.
+
+Use it only behind a proxy that sets those headers itself. Cloudflare
+overwrites `CF-Connecting-IP`, so a visitor cannot fake it. Most other proxies
+(Caddy, nginx, Traefik) append to `X-Forwarded-For` instead and pass
+`CF-Connecting-IP` through unchanged, so a visitor can send a fake address and
+dodge the ban. Behind such a proxy, make it overwrite both headers.
 
 If you expose the app directly, set it to `false`. Otherwise clients can fake
-`X-Forwarded-For` and interfere with the ban logic.
+`X-Forwarded-For` and dodge the ban.
 
 ## Residual limits
 

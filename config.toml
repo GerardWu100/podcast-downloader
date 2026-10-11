@@ -90,8 +90,11 @@ ytdlp_verbose = false
 # false: try without cookies first; retry once with them if the attempt fails.
 always_use_cookies = true
 
-# Trust client IP headers from a reverse proxy (X-Forwarded-For,
-# CF-Connecting-IP); true or false.
-# Set true only behind a proxy you control, such as Cloudflare Tunnel.
+# Trust client IP and HTTPS headers from a reverse proxy (CF-Connecting-IP,
+# X-Forwarded-For, X-Forwarded-Proto, CF-Visitor); true or false.
+# Keep true behind Cloudflare Tunnel: sign-in needs it. Otherwise every
+# visitor shares cloudflared's address, so five wrong passwords from anyone
+# lock everyone out for 15 minutes, and the session cookie is not marked
+# Secure because the app sees plain HTTP.
 # Set false for direct exposure; clients could otherwise spoof their IP.
 trust_x_forwarded_for = true

@@ -141,6 +141,12 @@ proxy such as Caddy or Cloudflare Tunnel) and turn the login on:
 2. Set `UI_USERNAME` and `UI_PASSWORD`.
 3. Restart the container.
 
+Behind Cloudflare Tunnel, leave `trust_x_forwarded_for = true` in
+`config.toml` (the default). It lets the app see each visitor's real address
+and the HTTPS scheme, so one stranger's wrong guesses do not lock you out. If
+you expose the port directly with no proxy, set it to `false`
+([why](docs/web-ui-security.md#proxy-trust)).
+
 ## Browser extension
 
 Add the video you are watching with one click, without copying the URL.

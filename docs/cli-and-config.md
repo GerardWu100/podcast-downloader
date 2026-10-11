@@ -91,7 +91,7 @@ one `name = value` line per setting, with no section header. Whole numbers and
 | `always_use_cookies` | Try cookies first when `true`, last when `false` | `true` |
 | `youtube_player_client` | YouTube player API passed to `yt-dlp`; `""` lets it choose | `web_embedded` |
 | `ytdlp_verbose` | Add `-v` to every `yt-dlp` attempt | `false` |
-| `trust_x_forwarded_for` | Trust client-IP headers from your reverse proxy | `true` |
+| `trust_x_forwarded_for` | Trust client-IP and HTTPS headers from your reverse proxy. Keep `true` behind Cloudflare Tunnel, or every visitor shares one ban record and the session cookie is not marked `Secure`; set `false` when exposed directly ([details](web-ui-security.md#proxy-trust)) | `true` |
 
 ## Environment variables
 
