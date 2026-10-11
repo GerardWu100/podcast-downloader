@@ -9,8 +9,9 @@ The extension adds the current page or a link on it to the download queue.
 Click the toolbar icon, press `Alt+Shift+D`, or use the right-click menu on
 YouTube and Rumble. There is no need to change tabs or copy and paste URLs.
 
-It uses the same username and password as the web interface. No server changes
-are required.
+It needs only the server's address. When the server has a login, it uses the
+same username and password as the web interface. No server changes are
+required.
 
 ## 1. Install it
 
@@ -101,8 +102,9 @@ Enter:
 
 | Field | Value |
 |---|---|
-| Server address | The address you use for the web interface, such as `https://podcast.example.com` |
-| Username and password | The same credentials you use on the web page |
+| Server address | The address you use for the web interface, such as `192.168.1.20:6847` or `https://podcast.example.com` |
+| Username and password | Only when the server has a login: the same ones you use on the web page. Leave both blank otherwise. |
+| Show a notification when a page is added | On by default. Off leaves only the badge and the button's tooltip. |
 
 There is nothing else to set. The extension sends only the URL to
 `/api/add-url`, so the server applies the same queue rules as the web page:
@@ -112,14 +114,22 @@ There is nothing else to set. The extension sends only the URL to
 - A YouTube video newer than `min_channel_video_age_hours` waits for
   SponsorBlock data.
 
-Select **Save**, allow the requested permission, then select **Test
-connection**. The test calls `GET /api/ping`. **Connected** means setup is
-complete. If you change the address later, saving removes access to the old
-server.
+Select **Save and test** and allow the permission the browser asks for. The
+extension stores the address as a clean origin, then calls `GET /api/ping`. It
+reports the server's version and whether a login is in use, for example
+**Connected to Podcast Downloader 2.0.0; no login needed.** If you change the
+address later, saving removes access to the old server.
 
-If you enter a hostname without `http://` or `https://`, the extension assumes
-`https`. For a local server without a certificate, enter `http://` explicitly.
-With plain HTTP, anyone between you and the server can read your password.
+An address typed without `http://` or `https://` gets `http` when it is on this
+machine or the home network (`localhost`, `192.168.x.x`, `10.x.x.x`,
+`172.16-31.x.x`, `.local`, `.lan`) and `https` otherwise. With plain HTTP,
+anyone between you and the server can read your password, so use HTTPS for a
+server reached over the internet.
+
+The settings page also shows the keyboard shortcut the browser actually
+assigned. A browser drops the suggested `Alt+Shift+D` without a word when
+another add-on already uses it; **Change shortcut** opens the browser's
+shortcut settings.
 
 ## 3. Use it
 
@@ -144,8 +154,18 @@ extension. Run the build script again before reloading it in Firefox. The
 server accepts any HTTP or HTTPS link that `yt-dlp` supports; this list only
 controls where the menu appears.
 
-The toolbar badge shows `OK` for a new item, `=` for an item already queued or
-downloaded, and `!` for an error. Errors also trigger a desktop notification.
+The toolbar badge shows `...` while sending, `OK` for a new item, `=` for an
+item already queued or downloaded, and `!` for an error. Hovering over the
+button shows the last result in words. Errors always trigger a desktop
+notification, and successes do too unless you turned that off. A success says
+whether the download started now (a single video) or waits for the next run
+(a channel, or a video still inside its waiting period).
+
+A right-click on a YouTube player embedded in another site adds that video,
+not the page around it. Requests give up after 15 seconds and say so.
+
+Firefox for Android has no right-click menu, keyboard shortcuts, or desktop
+notifications. There, the toolbar button and its badge still work.
 
 Channel and playlist URLs work, but a channel always waits for the next
 scheduled pass. One click does not start an entire back catalogue.
@@ -197,22 +217,26 @@ box.
 
 ## API reference
 
-A phone shortcut, `curl`, or scheduled job can call the same routes:
+A phone shortcut, `curl`, an AI agent, or a scheduled job can call the same
+routes. With login off, leave out `-u`; with it on, every route needs the
+account in an `Authorization: Basic` header.
 
 ```bash
-USERNAME=<your web interface username>
-PASSWORD=<your web interface password>
-BASE=https://podcast.example.com
+BASE=http://192.168.1.20:6847
 
-curl -u "$USERNAME:$PASSWORD" "$BASE/api/ping"
-
-curl -u "$USERNAME:$PASSWORD" "$BASE/api/health"
+curl "$BASE/api/ping"                      # app name, version, login_required
+curl "$BASE/api/health"                    # 200 on schedule, 503 when runs stopped
+curl "$BASE/api/queue"                     # {"sources": [url, ...]}
+curl "$BASE/api/activity?lines=50"         # {"lines": [...]}, oldest first, 1-500 lines
+curl -X POST "$BASE/api/run"               # 202 started, 409 already running
 
 curl -X POST "$BASE/api/add-url" \
-  -u "$USERNAME:$PASSWORD" \
   -H "Content-Type: application/json" \
   -d '{"url": "https://www.youtube.com/watch?v=...", "skip_age_check": false}'
 ```
+
+The [agent skill](https://github.com/GerardWu100/podcast-downloader/blob/master/.agents/skills/podcast-downloader/SKILL.md)
+documents these routes for AI agents, including how to read activity lines.
 
 `GET /api/health` reports whether scheduled runs are still happening, and is
 meant for an uptime monitor rather than a person. It answers `200` while the
@@ -230,8 +254,9 @@ only proves the web server is answering. See [operations.md](operations.md).
 | `immediate` | Whether the downloader started immediately |
 
 The response status is `200` for `added`, `duplicate`, and `downloaded`; `400`
-for `invalid`; `401` for a wrong username or password; `429` while the address
-is banned; and `503` when the server has no accounts configured.
+for `invalid`; `401` for a missing or wrong username or password while login
+is on; `429` while the address is banned; and `503` when `.env` sets accounts
+but none is valid, so login is locked.
 
 Equivalent YouTube links such as `youtu.be/...` and `watch?v=...` are normalized
 to one URL. Submitting both returns `duplicate`, not a second queue entry.
@@ -240,10 +265,13 @@ to one URL. Submitting both returns `duplicate`, not a second queue entry.
 
 | Message | Check |
 |---|---|
-| `Sign-in rejected` | The username or password does not match an account in `.env`. |
+| `Sign-in rejected` | The server has login on, and the username or password is missing or does not match an account in its `.env`. |
 | `Too many failed attempts` | Five failures occurred within ten minutes. Wait fifteen minutes, then fix the password in Options. |
-| `Server has no accounts` | The server's `.env` sets an account, but none is valid, so login is locked. Fix `UI_USERNAME` and `UI_PASSWORD` and restart. |
-| `Could not reach the server` | Check the address and server status, then select **Save** again in Options to grant permission. |
+| `Server login is locked` | The server's `.env` sets an account, but none is valid. Fix `UI_USERNAME` and `UI_PASSWORD` and restart. |
+| `Could not reach the server` | The server is down, or the address is wrong. |
+| `No permission for ...` | The browser's permission for the server was removed. Select **Save and test** in Options. |
+| `Server did not answer` | The server took more than 15 seconds. Check that it is running and not overloaded. |
+| `Not Podcast Downloader` | Something else answered, such as a different app on that port or a proxy login page. Check the address. |
 | `Not a supported media URL` | The page is not a media URL, such as a settings or `chrome://` page. |
 
 Firefox installation problems:

@@ -144,11 +144,11 @@ def test_login_page_redirects_remembered_session_to_the_queue() -> None:
     api_module.SESSIONS.pop(session_id, None)
 
 
-def test_doc_page_covers_use_agent_commands_and_cookie_setup() -> None:
+def test_doc_page_covers_use_agent_skill_and_cookie_setup() -> None:
     """The doc page serves two readers: a person driving the UI and an agent.
 
-    An agent that cannot find the commands here falls back to guessing flags,
-    so the command section matters as much as the browser instructions.
+    An agent is pointed at the skill that documents the API, so a person can
+    hand the whole job to one.
     """
     response = api_module.help_page()
     body = response.body.decode("utf-8")
@@ -156,9 +156,8 @@ def test_doc_page_covers_use_agent_commands_and_cookie_setup() -> None:
     assert response.status_code == 200
     assert "Using the queue" in body
     assert "What happens to a download" in body
-    assert "Commands for agents" in body
-    assert "--add-url" in body
-    assert "--download-full-playlist" in body
+    assert "Use it from an AI agent" in body
+    assert "podcast-downloader/SKILL.md" in body
     assert "Adding YouTube access cookies" in body
     assert "github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies" in body
     assert "Content-Security-Policy" in response.headers

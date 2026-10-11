@@ -1,62 +1,84 @@
 /**
- * Settings page: server address and the same sign-in you use on the web page.
+ * Settings page: server address, an optional sign-in, and success notifications.
  *
- * Saving also asks Chrome for permission to talk to that one server. The
- * manifest requests no host permissions up front, so the extension can only
- * reach the address you type here.
+ * Save asks the browser for permission to talk to that one server (the
+ * manifest requests no host permissions up front), stores the address as a
+ * clean origin, and then tests the connection, so a wrong address or password
+ * shows up here instead of later as a failed submission.
  */
 
 import {
-  basicAuthHeader,
-  buildEndpoint,
+  callApi,
+  isPodcastDownloader,
+  normalizeServerUrl,
   originPattern,
   readSettings,
   writeSettings,
 } from "./settings.js";
 
+const form = document.getElementById("settings-form");
 const serverUrlInput = document.getElementById("server-url");
 const usernameInput = document.getElementById("username");
 const passwordInput = document.getElementById("password");
+const notifyInput = document.getElementById("notify-on-success");
 const statusLine = document.getElementById("status");
+const shortcutText = document.getElementById("shortcut-text");
+const shortcutButton = document.getElementById("shortcut-settings");
 
-document.getElementById("save").addEventListener("click", save);
-document.getElementById("test").addEventListener("click", testConnection);
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  save();
+});
+shortcutButton.addEventListener("click", openShortcutSettings);
 
 const settings = await readSettings();
 serverUrlInput.value = settings.serverUrl;
 usernameInput.value = settings.username;
 passwordInput.value = settings.password;
+notifyInput.checked = settings.notifyOnSuccess;
+showShortcut();
 
 // Clicking the toolbar icon before anything is saved opens this page, so say
 // what to do rather than leaving a blank form and no explanation.
-if (!settings.serverUrl || !settings.username || !settings.password) {
-  show("Enter your server address and sign-in, then choose Save.", true);
+if (!settings.serverUrl) {
+  show("Enter the address you open the web page at, then select Save and test.", true);
   serverUrlInput.focus();
 }
 
 async function save() {
+  let origin;
   let pattern;
   try {
-    pattern = originPattern(serverUrlInput.value);
+    origin = normalizeServerUrl(serverUrlInput.value);
+    pattern = originPattern(origin);
   } catch (error) {
     show(error.message, false);
     return;
   }
+  const username = usernameInput.value.trim();
+  const password = passwordInput.value;
+  if (Boolean(username) !== Boolean(password)) {
+    show("Fill in both username and password, or leave both blank if the server has no login.", false);
+    return;
+  }
 
-  // Browsers only show this prompt in response to a click, which is why the
-  // permission is requested here rather than on the first download attempt.
+  // Firefox only shows this prompt while the click still counts as the user's
+  // action, so it must be the first thing awaited after the click.
   const granted = await chrome.permissions.request({ origins: [pattern] });
   if (!granted) {
-    show(`The browser did not grant access to ${pattern}. Nothing was saved.`, false);
+    show(`The browser did not grant access to ${origin}. Nothing was saved.`, false);
     return;
   }
 
   const previousSettings = await readSettings();
-  await writeSettings({
-    serverUrl: serverUrlInput.value.trim(),
-    username: usernameInput.value.trim(),
-    password: passwordInput.value,
-  });
+  const newSettings = {
+    serverUrl: origin,
+    username,
+    password,
+    notifyOnSuccess: notifyInput.checked,
+  };
+  await writeSettings(newSettings);
+  serverUrlInput.value = origin;
 
   // Changing servers must not leave access to every previously configured
   // origin behind. Remove only after the new settings are safely stored, so a
@@ -71,52 +93,53 @@ async function save() {
       // An invalid old value grants no useful origin and should not block Save.
     }
   }
-  show("Saved.", true);
+
+  show(`Saved. Testing ${origin}…`, true);
+  await testConnection(newSettings);
 }
 
-async function testConnection() {
-  let endpoint;
-  try {
-    endpoint = buildEndpoint(serverUrlInput.value, "/api/ping");
-  } catch (error) {
-    show(error.message, false);
+async function testConnection(savedSettings) {
+  const result = await callApi(savedSettings, "/api/ping");
+  if (result.problem) {
+    show(`Saved, but the test failed. ${result.problem}`, false);
     return;
   }
+  if (!isPodcastDownloader(result.body)) {
+    show(`Saved, but ${savedSettings.serverUrl} is not Podcast Downloader. Check the address.`, false);
+    return;
+  }
+  const version = result.body.version ? ` ${result.body.version}` : "";
+  const login = result.body.login_required
+    ? `signed in as ${savedSettings.username}`
+    : savedSettings.username
+      ? "login is off on the server, so the username and password are not needed"
+      : "no login needed";
+  show(`Connected to Podcast Downloader${version}; ${login}.`, true);
+}
 
-  const username = usernameInput.value.trim();
-  const password = passwordInput.value;
-  if (!username || !password) {
-    show("Enter your username and password first.", false);
+async function showShortcut() {
+  if (!chrome.commands) {
+    shortcutText.textContent = "This browser has no keyboard shortcuts for add-ons.";
+    shortcutButton.hidden = true;
     return;
   }
+  const commands = await chrome.commands.getAll();
+  const addCommand = commands.find((command) => command.name === "add-current-tab");
+  // The browser drops the suggested shortcut silently when it clashes with
+  // another one, so show what was actually assigned.
+  shortcutText.textContent = addCommand?.shortcut
+    ? `${addCommand.shortcut} adds the current page.`
+    : "No shortcut is assigned, usually because another add-on already uses Alt+Shift+D.";
+}
 
-  let response;
-  try {
-    response = await fetch(endpoint, {
-      headers: { Authorization: basicAuthHeader(username, password) },
-    });
-  } catch {
-    show(`Could not reach ${endpoint}. Press Save first to grant access, then try again.`, false);
-    return;
+function openShortcutSettings() {
+  // Firefox 137+ opens its shortcut page directly; Chrome's lives at a
+  // chrome:// address that only the tabs API may open.
+  if (chrome.commands?.openShortcutSettings) {
+    chrome.commands.openShortcutSettings();
+  } else {
+    chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
   }
-
-  if (response.status === 401) {
-    show("The server did not accept that username and password.", false);
-    return;
-  }
-  if (response.status === 429) {
-    show("Too many failed attempts from this machine. Wait a few minutes and try again.", false);
-    return;
-  }
-  if (response.status === 503) {
-    show("The server has no accounts configured. Set UI_USERNAME and UI_PASSWORD in its .env and restart it.", false);
-    return;
-  }
-  if (!response.ok) {
-    show(`The server replied ${response.status}.`, false);
-    return;
-  }
-  show("Connected.", true);
 }
 
 function show(message, succeeded) {

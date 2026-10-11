@@ -12,11 +12,12 @@ User setup is in [`docs/browser-extension.md`](../docs/browser-extension.md).
 
 ```text
 toolbar click / Alt+Shift+D / context menu
-  -> background.js reads settings and calls /api/add-url
-  -> src/web/api_routes.py checks the username and password (account_auth.py)
+  -> background.js reads settings and calls /api/add-url through settings.js callApi()
+  -> src/web/api_routes.py checks the account when login is on (account_auth.py)
   -> src/web/queue_actions.py applies the normal queue rules
   -> urls.txt is updated; immediate direct downloads wake the scheduler
-  -> the result updates the badge and, on failure, a notification
+  -> the result updates the badge and tooltip, plus a notification
+     (always on failure; on success unless turned off)
 ```
 
 The web form uses the same queue actions, so both entry points share URL
@@ -32,12 +33,20 @@ validation, normalization, duplicate handling, and immediate-download rules.
   runs it as a non-persistent background page. It re-reads settings for every
   submission because the browser may stop it at any time.
   `MENU_SITE_PATTERNS` controls where right-click items appear.
-- `settings.js`: reads and writes `chrome.storage.local` and converts the
-  server address into a URL and permission pattern. The worker and options page
-  use the same conversion.
+- `settings.js`: reads and writes `chrome.storage.local`, turns a typed
+  address into a clean origin (http for home-network hosts, https otherwise),
+  and owns `callApi()`. That one function checks the origin permission, adds
+  Basic auth only when a username is saved, refuses redirects, times out after
+  15 seconds, rejects non-JSON replies (a proxy login page or another app), and
+  turns every failure into a readable "Title: explanation" string. The worker
+  and options page both use it, so they report failures the same way.
 - `options.html`, `options.css`, and `options.js`: settings page for the server
-  address, username, and password. Saving asks the browser for server
-  permission after the user selects **Save**.
+  address, the optional username and password, and success notifications.
+  **Save and test** asks for the server permission first (Firefox requires it
+  to be the first thing awaited after the click), stores the normalized
+  origin, then pings the server and reports its version and login mode. The
+  page also shows the shortcut the browser actually assigned, because a
+  clashing suggested shortcut is dropped silently.
 - `manifest.firefox.json`: Firefox's manifest. Firefox has no extension
   service worker, so it runs `background.js` as an event page. It also needs a
   stable add-on ID, reads `options_ui` rather than `options_page`, and declares
@@ -123,3 +132,4 @@ confirm that the entry appears in `urls.txt`.
   and install-consent flow matches actual behavior.
 - 2026-08-27: Replaced broad release-file discovery with an allowlist and made
   server changes remove the extension's old origin permission.
+- 2026-10-11 (2.0.0): Review fixes. Login fields are optional for servers with login off. Embedded players send the frame's URL. Requests time out after 15 seconds. 422 lists, HTML pages, and redirects give readable errors. A success notification and per-tab tooltip say what happened. Badge timers are per tab. Firefox for Android APIs (menus, commands, notifications) are guarded.

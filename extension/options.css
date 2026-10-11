@@ -86,3 +86,48 @@ button:hover {
     color: #ff8d85;
   }
 }
+
+h2 {
+  font-size: 1.1rem;
+  margin: 2em 0 0.4em;
+}
+
+fieldset {
+  border: 1px solid #d5dae0;
+  border-radius: 8px;
+  margin: 1.4em 0 0;
+  padding: 0.2em 1em 1em;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 0.3em;
+}
+
+.optional {
+  font-weight: normal;
+  color: #5b6570;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  font-weight: normal;
+  margin-top: 1.2em;
+}
+
+.shortcut {
+  border-top: 1px solid #d5dae0;
+  margin-top: 2em;
+}
+
+@media (prefers-color-scheme: dark) {
+  fieldset,
+  .shortcut {
+    border-color: #3b424b;
+  }
+  .optional {
+    color: #9aa4ae;
+  }
+}

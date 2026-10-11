@@ -13,12 +13,13 @@ Root files handle deployment and operator settings. Application code is in
 [`src/`](src/), offline tests are in [`tests/`](tests/), and user and operator
 documentation is in [`docs/`](docs/).
 
-The portable agent instructions and remote API client live in
-[`.agents/skills/podcast-downloader-cli/`](.agents/skills/podcast-downloader-cli/SKILL.md).
-The helper reads an explicitly selected `.env` with python-dotenv, using
-`PODCAST_SERVER_URL` and one UI account pair. It does not load server runtime
-state or change schedules. Its dependency is supplied with `uv run --with
-python-dotenv`; it is not part of the deployed application.
+The agent skill lives in
+[`.agents/skills/podcast-downloader/`](.agents/skills/podcast-downloader/SKILL.md):
+one `SKILL.md` that tells Hermes, OpenClaw, Claude Code, Codex, or another
+skill-aware agent how to install itself and how to call the JSON API with
+`curl`. It is a single file because Hermes installs a skill from its
+`SKILL.md` URL alone. The agent keeps the server address and any login in
+`~/.config/podcast-downloader/`, never in the skill.
 
 ```text
 podcast-downloader/
@@ -125,3 +126,4 @@ uv run python -m pytest -q
 - 2026-10-11: Login became optional and is off by default (`.env.example` leaves it blank); an account set wrongly locks the page instead of opening it. The published-image compose no longer needs a `.env` or a pre-made network, so setup is one file. Retention moved onto the settings page, and the activity panel's dropdowns became tabs and count filters.
 - 2026-10-11: Settings moved from `config.ini` to `config.toml`, read with `tomllib`. The INI loader silently fell back to the default on a mistyped `true`/`false`, and ignored misspelled keys; the TOML loader rejects a wrong type or an unknown key at startup. Existing deployments start from the shipped defaults and must copy any changed values across by hand.
 - 2026-10-11: The README became the user guide (install with Compose or `docker run`, use, settings, troubleshooting) and the developer material moved to `docs/`, published as the GitHub wiki. The image now sets `PODCAST_DATA_DIR`, `PODCAST_DOWNLOAD_DIR`, and `PODCAST_INTERMEDIATE_DIR` itself, so a `docker run` needs only the three mounts.
+- 2026-10-11: Release 2.0.0. One version for server, image, and extension, read from `pyproject.toml`; tag `vX.Y.Z` publishes semver image tags. The agent skill became a single curl-based `SKILL.md` (the Python helper is gone) backed by new `/api/queue`, `/api/activity`, and `/api/run` routes. The extension's login fields became optional, and it got timeouts, clearer errors, and a success notification.

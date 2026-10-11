@@ -2,9 +2,13 @@
 # so a server can run the app from `docker-compose.example.yml` without
 # cloning this repository or building anything.
 #
-# Tags pushed on each run:
-#   latest        the newest build from master
-#   sha-<commit>  one per commit, so a deployment can pin or roll back
+# Tags pushed:
+#   latest            every build from master
+#   sha-<commit>      every build, so any commit can be pinned
+#   2.0.0, 2.0, 2     a release: pushing git tag v2.0.0 builds these three, so
+#                     a deployment can pin an exact release (2.0.0), take only
+#                     fixes (2.0), or take everything short of a breaking
+#                     change (2)
 #
 # The image is built for amd64 (most PCs and cloud servers) and arm64
 # (Raspberry Pi, Apple-silicon hosts, ARM cloud servers). Docker on the server
@@ -14,6 +18,9 @@ name: Publish Docker image
 on:
   push:
     branches: [master]
+    # Release tags. GitHub ignores the paths filter below for tag pushes, so a
+    # release always builds.
+    tags: ["v*.*.*"]
     # Only files that change the image. Docs, tests, and the browser
     # extension never enter it, so pushing them should not rebuild.
     paths:
@@ -57,8 +64,11 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - uses: docker/build-push-action@v7
         with:

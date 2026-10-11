@@ -46,12 +46,14 @@ from ..config import PodcastConfig
 from ..credentials import load_ui_accounts, login_is_required
 from ..log_timezone import local_now
 from ..schedule import next_scheduled_run, scheduled_run_is_overdue
+from ..state.activity_store import NO_ACTIVITY_MESSAGE, ActivityLogStore
 from ..state.archive_store import ArchiveStore
 from ..state.auth_store import AuthStore
 from ..state.bypass_store import BypassStore
 from ..state.queue_store import QueueStore
 from ..state.run_state_store import RunStateStore
 from ..trigger import DownloadTrigger
+from ..version import APP_VERSION
 from .account_auth import CredentialCheck, check_credentials
 from .auth import client_ip
 from .queue_actions import AddUrlOutcome, add_url_to_queue
@@ -68,6 +70,9 @@ MAX_URL_LENGTH = 2048
 # declared body length lets middleware reject unauthenticated oversized uploads
 # before FastAPI reads and validates them in memory.
 MAX_API_REQUEST_BODY_BYTES = 4096
+# How many activity lines /api/activity returns by default, and at most.
+DEFAULT_ACTIVITY_LINES = 50
+MAX_ACTIVITY_LINES = 500
 
 # What each refusal means to the caller. The messages avoid saying whether the
 # account name exists, which is the same reason the login page says only
@@ -75,7 +80,8 @@ MAX_API_REQUEST_BODY_BYTES = 4096
 REFUSAL_STATUS: dict[CredentialCheck, tuple[int, str]] = {
     CredentialCheck.NO_ACCOUNTS_CONFIGURED: (
         503,
-        "No accounts are configured. Set UI_USERNAME and UI_PASSWORD in .env "
+        "Login is locked: .env sets an account, but none is valid (for "
+        "example a name without a password). Fix UI_USERNAME and UI_PASSWORD "
         "and restart.",
     ),
     CredentialCheck.BANNED: (
@@ -208,7 +214,17 @@ def ping(request: Request) -> JSONResponse:
     instead of silently failing later on a real submission.
     """
     _require_account(request)
-    return JSONResponse({"ok": True, "app": "podcast-downloader"})
+    credentials_file = _dependency(request.app.state, "credentials_file", Path)
+    return JSONResponse(
+        {
+            "ok": True,
+            "app": "podcast-downloader",
+            "version": APP_VERSION,
+            # Lets a client say "connected, login off" instead of implying the
+            # password it sent was checked.
+            "login_required": login_is_required(credentials_file),
+        }
+    )
 
 
 @router.get("/health")
@@ -314,6 +330,81 @@ def add_url(request: Request, payload: AddUrlRequest) -> JSONResponse:
             "immediate": result.scheduler_woken,
         },
         status_code=status_code,
+    )
+
+
+@router.get("/queue")
+def list_queue(request: Request) -> JSONResponse:
+    """List the saved sources, the same list the queue page shows.
+
+    Returns
+    -------
+    JSONResponse
+        ``{"sources": [url, ...]}`` in queue order.
+    """
+    _require_account(request)
+    queue_store = _dependency(request.app.state, "queue_store", QueueStore)
+    return JSONResponse({"sources": queue_store.read_urls()})
+
+
+@router.get("/activity")
+def recent_activity(request: Request, lines: int = DEFAULT_ACTIVITY_LINES) -> JSONResponse:
+    """Return the newest lines of the activity log, oldest first.
+
+    Each line reads ``[YYYY-MM-DD HH:MM] Event: detail``, for example
+    ``[2026-10-11 06:03] Downloaded: Show - Episode [id].mp3``. This is how a
+    client answers "what downloaded today?" or "did the last run fail?".
+
+    Parameters
+    ----------
+    request:
+        Current request.
+    lines:
+        How many lines to return, from 1 to ``MAX_ACTIVITY_LINES``.
+
+    Returns
+    -------
+    JSONResponse
+        ``{"lines": [str, ...]}``; empty before the first run.
+    """
+    _require_account(request)
+    if not 1 <= lines <= MAX_ACTIVITY_LINES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"lines must be between 1 and {MAX_ACTIVITY_LINES}.",
+        )
+    tail = _dependency(request.app.state, "activity_store", ActivityLogStore).read_tail(
+        lines
+    )
+    if tail == NO_ACTIVITY_MESSAGE:
+        return JSONResponse({"lines": []})
+    return JSONResponse({"lines": [line for line in tail.splitlines() if line]})
+
+
+@router.post("/run")
+def run_queue_now(request: Request) -> JSONResponse:
+    """Start a whole-queue run now, like **Run queue now** on the web page.
+
+    The schedule does not move. A run already in progress is not doubled,
+    because two runs over one queue would fight over the same state files.
+
+    Returns
+    -------
+    JSONResponse
+        202 ``{"started": true}``, or 409 ``{"started": false}`` while a run is
+        already going.
+    """
+    _require_account(request)
+    state = request.app.state
+    if _dependency(state, "run_state_store", RunStateStore).load().is_running:
+        return JSONResponse(
+            {"started": False, "message": "A run is already in progress."},
+            status_code=409,
+        )
+    _dependency(state, "download_trigger", DownloadTrigger).queue_full_queue_run()
+    return JSONResponse(
+        {"started": True, "message": "Run started. Check /api/activity for progress."},
+        status_code=202,
     )
 
 

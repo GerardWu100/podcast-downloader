@@ -22,6 +22,11 @@ EMPTY_LOG_MESSAGES_JSON = json.dumps([NO_ACTIVITY_MESSAGE, NO_DOWNLOAD_LOG_MESSA
 # running the server.
 PROJECT_REPOSITORY_URL = "https://github.com/GerardWu100/podcast-downloader"
 EXTENSION_RELEASES_URL = f"{PROJECT_REPOSITORY_URL}/releases/latest"
+# The agent skill as one file, which Hermes and others install from a URL.
+AGENT_SKILL_URL = (
+    "https://raw.githubusercontent.com/GerardWu100/podcast-downloader/master/"
+    ".agents/skills/podcast-downloader/SKILL.md"
+)
 
 # Every page shares this inline SVG favicon. Keeping it as a data URI avoids a
 # static-file route and prevents browsers from requesting a missing
@@ -879,7 +884,7 @@ def render_help_page(
       </ul>
 
       <h2>Browser extension</h2>
-      <p>Adds the page you are watching to this queue without opening the site. It uses the same username and password you signed in with, and nothing needs changing on the server. Install it on the computer you browse with, which may not be the one running this server.</p>
+      <p>Adds the page you are watching to this queue without opening the site. It needs only this server's address, plus the username and password you use here if this server has a login. Nothing needs changing on the server. Install it on the computer you browse with, which may not be the one running this server.</p>
 
       <h3>Install in Firefox</h3>
       <ol>
@@ -896,39 +901,20 @@ def render_help_page(
       </ol>
 
       <h3>Set it up</h3>
-      <p>Click the toolbar icon. Before anything is saved it opens the settings page, where you enter this server's address and the same username and password you use here. Choose Save, allow the permission the browser asks for, then use Test connection. Connected means it is ready.</p>
+      <p>Click the toolbar icon. Before anything is saved it opens the settings page. Enter this server's address, and the username and password only if this server has a login. Choose Save and test, and allow the permission the browser asks for. Connected means it is ready.</p>
 
       <h3>Use it</h3>
       <ul>
         <li>Click the toolbar icon, or press <code>Alt+Shift+D</code>, to add the page you are on. This works on any site.</li>
         <li>Right-click a YouTube or Rumble page, or a link to one, and choose the podcast item.</li>
-        <li>The icon shows <code>OK</code> for something added, <code>=</code> for something already queued or downloaded, and <code>!</code> for a failure, with a notification saying why.</li>
+        <li>The icon shows <code>OK</code> for something added, <code>=</code> for something already queued or downloaded, and <code>!</code> for a failure. A notification says what happened, and hovering over the icon repeats it.</li>
       </ul>
       <p>The extension sends the URL and nothing else, so an item added this way follows the same rules as one pasted into the box above.</p>
 
-      <h2>Commands for agents</h2>
-      <p>Run these from the project directory. Everything the browser interface does is also a command, so an agent needs no browser session.</p>
-      <h3>Queue a URL and exit</h3>
-      <pre><code>uv run python main.py --add-url "https://www.youtube.com/watch?v=VIDEO_ID"
-uv run python main.py --add-url "URL_ONE" --add-url "URL_TWO"
-uv run python main.py --add-url-stdin &lt; new_urls.txt</code></pre>
-      <p>Add <code>--skip-age-check</code> to mark a direct YouTube video for an age-gate bypass on its next run.</p>
-      <h3>Download now</h3>
-      <pre><code>uv run python main.py --download-single-url "https://videos.example.com/watch/episode-1"
-uv run python main.py --download-full-playlist "https://www.youtube.com/playlist?list=LIST_ID"</code></pre>
-      <h3>Work through the queue</h3>
-      <pre><code>uv run python main.py
-uv run python main.py -n 10
-uv run python main.py -f custom_urls.txt -o ./custom_downloads</code></pre>
-      <p><code>-n</code> sets how many recent videos to check per channel or playlist, <code>-f</code> the queue file, and <code>-o</code> the download folder.</p>
-
-      <h3>Rules for an agent</h3>
-      <ul>
-        <li>Direct downloads take a file lock, so two commands started at once wait for each other rather than corrupting the scratch folder. They do not fail.</li>
-        <li>A URL already in <code>downloaded_urls.txt</code> is not downloaded again. Adding it a second time is harmless and does nothing.</li>
-        <li>A download can take minutes. Allow a generous timeout instead of retrying, or the retry will simply queue behind the first attempt.</li>
-        <li>Failures are reported through the notification service configured in Settings, not on standard output.</li>
-      </ul>
+      <h2>Use it from an AI agent</h2>
+      <p>Agents such as Hermes, OpenClaw, Claude Code, or Codex can add videos, say what downloaded, and start runs through this server's API. Send your agent this message:</p>
+      <pre><code>Install the Podcast Downloader skill from {AGENT_SKILL_URL} and connect it to this server.</code></pre>
+      <p>The agent asks for this page's address, and for a username and password only if this server has a login. Removing sources, cookies, and settings stay on this page.</p>
 
       <h2>Adding YouTube access cookies</h2>
       <p>Do this when downloads start failing with a sign-in or age-restriction error.</p>

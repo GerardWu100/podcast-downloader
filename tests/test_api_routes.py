@@ -13,6 +13,7 @@ import pytest
 from fastapi import HTTPException
 from src.credentials import CREDENTIALS_FILENAME
 from src.passwords import hash_password
+from src.state.activity_store import ActivityLogStore
 from src.state.archive_store import ArchiveStore
 from src.state.auth_store import AuthStore
 from src.state.bypass_store import BypassStore
@@ -132,6 +133,7 @@ def _build_request(
         archive_store=ArchiveStore(tmp_path / "downloaded_urls.txt", logger),
         bypass_store=BypassStore(tmp_path / "bypass_age_check_urls.txt", logger),
         run_state_store=RunStateStore(run_state_file_for(tmp_path)),
+        activity_store=ActivityLogStore(tmp_path / "activity.log"),
         download_trigger=_RecordingDownloadTrigger(),
     )
     return SimpleNamespace(
@@ -152,6 +154,8 @@ def test_ping_accepts_a_correct_username_and_password(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert _body(response)["ok"] is True
+    assert _body(response)["login_required"] is True
+    assert _body(response)["version"]
 
 
 @pytest.mark.parametrize(
@@ -608,3 +612,49 @@ def test_parallel_wrong_guesses_cannot_exceed_the_ban_threshold(
 
     assert len(hashed_attempts) == account_auth_module.MAX_FAILED_ATTEMPTS
     assert outcomes.count(CredentialCheck.BANNED) == 20 - len(hashed_attempts) + 1
+
+
+def test_queue_lists_the_saved_sources(tmp_path: Path) -> None:
+    """An agent reads the same source list the queue page shows."""
+    request = _build_request(tmp_path)
+    request.app.state.queue_store.append_urls([YOUTUBE_VIDEO_URL])
+
+    body = _body(api_routes.list_queue(request))
+
+    assert body == {"sources": [YOUTUBE_VIDEO_URL]}
+
+
+def test_activity_returns_the_newest_lines_oldest_first(tmp_path: Path) -> None:
+    """Agents answer "what downloaded?" from these lines."""
+    request = _build_request(tmp_path)
+    assert _body(api_routes.recent_activity(request, lines=5)) == {"lines": []}
+
+    store = request.app.state.activity_store
+    for event in ("Run started: 1 source", "Downloaded: Show - Episode [id].mp3"):
+        store.write_event(event)
+    lines = _body(api_routes.recent_activity(request, lines=1))["lines"]
+
+    assert len(lines) == 1
+    assert lines[0].endswith("Downloaded: Show - Episode [id].mp3")
+
+
+def test_activity_rejects_an_out_of_range_line_count(tmp_path: Path) -> None:
+    """A huge request must not read the whole log."""
+    with pytest.raises(HTTPException) as raised:
+        api_routes.recent_activity(_build_request(tmp_path), lines=100_000)
+
+    assert raised.value.status_code == 400
+
+
+def test_run_starts_one_queue_run_and_refuses_a_second(tmp_path: Path) -> None:
+    """Two runs over one queue would fight over the same state files."""
+    request = _build_request(tmp_path)
+
+    started = api_routes.run_queue_now(request)
+    assert started.status_code == 202
+    assert request.app.state.download_trigger.full_queue_runs == 1
+
+    request.app.state.run_state_store.mark_run_started(RunKind.SCHEDULED)
+    refused = api_routes.run_queue_now(request)
+    assert refused.status_code == 409
+    assert request.app.state.download_trigger.full_queue_runs == 1

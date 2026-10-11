@@ -83,6 +83,11 @@ Then open **`http://<server address>:6847`**. There is no login by default.
 Your settings, queue, and MP3s live in the folders, not in the container, so
 updating never loses them. Nothing updates on its own.
 
+**Pin a version** if you would rather update on your own schedule: replace
+`latest` with `2` (every 2.x release), `2.0` (fixes only), or `2.0.0` (exactly
+that release). Each [release](https://github.com/GerardWu100/podcast-downloader/releases)
+lists what changed.
+
 ## Use it
 
 1. **Add a source.** Paste a channel, playlist, or video URL and select **Add**.
@@ -143,12 +148,32 @@ Add the video you are watching with one click, without copying the URL.
 | Firefox 140+ | Download `podcast-downloader-firefox-<version>.xpi` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest), drag it onto Firefox, and select **Add** |
 | Chrome, Edge, Brave | Unzip `podcast-downloader-chrome-<version>.zip` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest). Open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked**, and choose the folder |
 
-Click the toolbar icon and enter the page address, such as
-`http://192.168.1.20:6847`, and your login. With the login off, any name and
-password work. Select **Save**, then **Test connection**. After that:
+Click the toolbar icon, enter the page address, such as
+`192.168.1.20:6847`, and select **Save and test**. Fill in a username and
+password only if you turned the login on. After that:
 
 - Click the icon or press `Alt+Shift+D` to add the current page.
-- Right-click a YouTube or Rumble link to add it.
+- Right-click a YouTube or Rumble video, or a link to one, to add it.
+
+A notification says whether the episode is downloading now or waits for the
+next run.
+
+## Use it from an AI agent
+
+Hermes, OpenClaw, Claude Code, Codex, and other agents that use skills can run
+it for you: "add this video to my podcasts", "what downloaded today?", "is the
+downloader working?". Send your agent this message:
+
+```text
+Install the Podcast Downloader skill from
+https://raw.githubusercontent.com/GerardWu100/podcast-downloader/master/.agents/skills/podcast-downloader/SKILL.md
+and connect it to my server.
+```
+
+The agent installs the [skill](.agents/skills/podcast-downloader/SKILL.md),
+asks for the page address, and asks for a username and password only if you
+turned the login on. It works through the server's small JSON API: add a URL,
+list the sources, read recent activity, start a run, and check health.
 
 ## Troubleshooting
 
