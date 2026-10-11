@@ -275,6 +275,7 @@ def main() -> int:
         youtube_player_client=config.youtube_player_client,
         ytdlp_verbose=config.ytdlp_verbose,
         cookie_expiry_warning_days=config.cookie_expiry_warning_days,
+        max_download_attempts=config.max_download_attempts,
         notifier=AppriseNotifier(
             NotificationStore(notification_settings_file_for(data_dir)).load(),
             logging.getLogger("notifications"),

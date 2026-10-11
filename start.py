@@ -22,10 +22,15 @@ import uvicorn
 from src.cli import EXIT_DOWNLOADS_FAILED
 from src.config import ConfigError, load_config
 from src.credentials import sync_ui_credentials
-from src.human_time import format_clock_time
+from src.human_time import SECONDS_PER_DAY, format_clock_time
 from src.log_timezone import local_now
 from src.notifications.apprise_client import notifier_for_data_dir
-from src.run_report import RunAlert, build_failed_run_alert, build_missed_run_alert
+from src.run_report import (
+    RunAlert,
+    build_failed_run_alert,
+    build_missed_run_alert,
+    build_stuck_scheduler_alert,
+)
 from src.schedule import (
     next_scheduled_run,
     previous_scheduled_run,
@@ -59,10 +64,34 @@ except ConfigError as exc:
 RUN_HOUR = CONFIG.scheduled_run_hour
 RUN_INTERVAL_DAYS = CONFIG.scheduled_run_interval_days
 
+# How often the watchdog checks that the scheduler still keeps its schedule.
+WATCHDOG_CHECK_INTERVAL_SECONDS = 5 * 60
+# Docker's restart policy acts on a process that exits, never on one that
+# hangs or on an "unhealthy" healthcheck, so the watchdog exits with this code
+# to turn a hang into a restart.
+WATCHDOG_EXIT_CODE = 1
+
+# Wall-clock start of the downloader subprocess the scheduler thread is
+# waiting on, or None while it waits for the next run. The watchdog thread
+# reads it to tell a long download from a hung one.
+_cli_started_at: datetime | None = None
+
 
 def _cli_command() -> list[str]:
     """Return the CLI command with the Python executable used by this process."""
     return [sys.executable, "-m", "src.cli"]
+
+
+def _run_cli(extra_args: list[str]) -> subprocess.CompletedProcess[bytes]:
+    """Run one downloader subprocess and let the watchdog see how long it takes."""
+    global _cli_started_at
+    _cli_started_at = local_now()
+    try:
+        return subprocess.run(
+            [*_cli_command(), *extra_args], check=False, cwd=str(PROJECT_ROOT)
+        )
+    finally:
+        _cli_started_at = None
 
 
 def _next_run_time() -> datetime:
@@ -282,7 +311,7 @@ def run_full_queue_pass(kind: RunKind) -> None:
     """
     RUN_STATE_STORE.mark_run_started(kind)
     try:
-        result = subprocess.run(_cli_command(), check=False, cwd=str(PROJECT_ROOT))
+        result = _run_cli([])
     finally:
         RUN_STATE_STORE.mark_run_finished()
 
@@ -361,39 +390,100 @@ def _run_immediate_downloads(
                 f"[scheduler] Playlist added via UI — starting full immediate run: {url}",
                 flush=True,
             )
-            subprocess.run(
-                [*_cli_command(), "--download-full-playlist", url],
-                check=False,
-                cwd=str(PROJECT_ROOT),
-            )
+            _run_cli(["--download-full-playlist", url])
     if targeted_source_requests:
         for url in targeted_source_requests:
             print(
                 f"[scheduler] Source run requested via UI: {url}",
                 flush=True,
             )
-            subprocess.run(
-                [*_cli_command(), "--download-source-now", url],
-                check=False,
-                cwd=str(PROJECT_ROOT),
-            )
+            _run_cli(["--download-source-now", url])
     if single_url_requests:
         for url in single_url_requests:
             print(
                 f"[scheduler] URL added via UI — starting single immediate run: {url}",
                 flush=True,
             )
-            subprocess.run(
-                [*_cli_command(), "--download-single-url", url],
-                check=False,
-                cwd=str(PROJECT_ROOT),
-            )
+            _run_cli(["--download-single-url", url])
     if full_queue_run_requested:
         print(
             "[scheduler] Run requested from the web page — running the queue now",
             flush=True,
         )
         run_full_queue_pass(RunKind.MANUAL)
+
+
+def scheduler_stuck_reason(
+    run_state: RunState,
+    *,
+    now: datetime,
+    cli_started_at: datetime | None,
+    process_started_at: datetime,
+) -> str | None:
+    """Return why the scheduler looks hung, or ``None`` while it is healthy.
+
+    Two hangs are caught. A downloader subprocess that is still going after a
+    whole schedule interval (two days by default) is stuck, because the next
+    run is already due. A scheduler that is idle but let a scheduled run pass
+    more than the overdue allowance (three hours) without starting it is stuck
+    too, for example inside a ``yt-dlp`` update that never returns. Runs missed
+    while the process was down are left to the startup catch-up.
+
+    Parameters
+    ----------
+    run_state:
+        The saved record of the last whole-queue run.
+    now:
+        Reference instant, timezone-aware.
+    cli_started_at:
+        When the current downloader subprocess started, or ``None`` if the
+        scheduler is not waiting on one.
+    process_started_at:
+        When this process started.
+    """
+    if cli_started_at is not None:
+        busy_seconds = now.timestamp() - cli_started_at.timestamp()
+        if busy_seconds > RUN_INTERVAL_DAYS * SECONDS_PER_DAY:
+            return (
+                f"a download started {format_clock_time(cli_started_at)} is still going"
+            )
+        return None
+
+    previous_run = previous_scheduled_run(
+        now, run_hour=RUN_HOUR, interval_days=RUN_INTERVAL_DAYS
+    )
+    if previous_run <= process_started_at:
+        return None
+    overdue = scheduled_run_is_overdue(
+        run_state.finished_at,
+        now=now,
+        run_hour=RUN_HOUR,
+        interval_days=RUN_INTERVAL_DAYS,
+    )
+    if overdue:
+        return f"the run scheduled for {format_clock_time(previous_run)} never started"
+    return None
+
+
+def run_watchdog(process_started_at: datetime) -> None:
+    """Exit the process when the scheduler hangs, so Docker restarts it.
+
+    The startup catch-up then makes up the missed run, so a hang costs hours
+    instead of lasting until someone notices.
+    """
+    while True:
+        time.sleep(WATCHDOG_CHECK_INTERVAL_SECONDS)
+        problem = scheduler_stuck_reason(
+            RUN_STATE_STORE.load(),
+            now=local_now(),
+            cli_started_at=_cli_started_at,
+            process_started_at=process_started_at,
+        )
+        if problem is None:
+            continue
+        print(f"[watchdog] Scheduler stuck: {problem}. Exiting to restart.", flush=True)
+        _send_alert(build_stuck_scheduler_alert(problem))
+        os._exit(WATCHDOG_EXIT_CODE)
 
 
 def run_scheduler_in_background() -> None:
@@ -415,4 +505,8 @@ if __name__ == "__main__":
     # Keep the web server as PID 1 so Docker can restart the container if needed.
     scheduler_thread = threading.Thread(target=run_scheduler_in_background, daemon=True)
     scheduler_thread.start()
+    watchdog_thread = threading.Thread(
+        target=run_watchdog, args=(local_now(),), daemon=True
+    )
+    watchdog_thread.start()
     start_web()

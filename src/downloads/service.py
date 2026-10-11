@@ -18,6 +18,7 @@ from ..config import (
     DEFAULT_CHANNEL_VIDEO_COUNT,
     DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
     DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+    DEFAULT_MAX_DOWNLOAD_ATTEMPTS,
     DEFAULT_YOUTUBE_PLAYER_CLIENT,
     DEFAULT_YTDLP_VERBOSE,
 )
@@ -43,6 +44,10 @@ from ..run_report import RunFacts, build_run_alert
 from ..state.activity_store import ActivityLogStore, activity_log_file_for
 from ..state.archive_store import ArchiveStore
 from ..state.bypass_store import BypassStore
+from ..state.failed_download_store import (
+    FAILED_DOWNLOADS_FILE_NAME,
+    FailedDownloadStore,
+)
 from ..state.file_locks import locked_text_file
 from ..state.queue_store import QueueStore
 from ..state.source_folder_store import SOURCE_FOLDERS_FILE_NAME, SourceFolderStore
@@ -141,6 +146,7 @@ class PodcastDownloadService:
         youtube_player_client: str = DEFAULT_YOUTUBE_PLAYER_CLIENT,
         ytdlp_verbose: bool = DEFAULT_YTDLP_VERBOSE,
         cookie_expiry_warning_days: int = DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
+        max_download_attempts: int = DEFAULT_MAX_DOWNLOAD_ATTEMPTS,
         notifier: AppriseNotifier | None = None,
         ytdlp_client: YtDlpClient | None = None,
     ) -> None:
@@ -191,6 +197,9 @@ class PodcastDownloadService:
             How many days before the YouTube sign-in expires to start warning
             after a run. Zero turns the warning off; an expired file is always
             reported.
+        max_download_attempts:
+            Failed attempts after which a video is dropped. Only failures that
+            blame the video count; blocks and network errors do not.
         notifier:
             Optional Apprise sender. Each failure is pushed to it so problems
             surface without anyone opening the web UI. ``None`` disables
@@ -215,6 +224,7 @@ class PodcastDownloadService:
         self.youtube_player_client = youtube_player_client
         self.ytdlp_verbose = ytdlp_verbose
         self.cookie_expiry_warning_days = cookie_expiry_warning_days
+        self.max_download_attempts = max(1, max_download_attempts)
         self.notifier = notifier
         self.bypass_age_check_file = bypass_age_check_file or (
             urls_file.parent / "bypass_age_check_urls.txt"
@@ -228,6 +238,9 @@ class PodcastDownloadService:
         self.bypass_store = BypassStore(
             self.bypass_age_check_file,
             logging.getLogger("bypass"),
+        )
+        self.failed_download_store = FailedDownloadStore(
+            self.downloaded_urls_file.with_name(FAILED_DOWNLOADS_FILE_NAME)
         )
         self.audio_metadata_writer = AudioMetadataWriter(
             run_command=lambda command, **kwargs: subprocess.run(command, **kwargs),
@@ -962,6 +975,7 @@ class PodcastDownloadService:
                     total,
                     target_final_output_dir,
                     target_work_dir,
+                    use_archive=True,
                 )
                 if success:
                     self.archive_store.append(normalized_url)
@@ -978,6 +992,7 @@ class PodcastDownloadService:
                 total,
                 target_final_output_dir,
                 target_work_dir,
+                use_archive=False,
             )
 
     def _download_video_unlocked(
@@ -987,11 +1002,15 @@ class PodcastDownloadService:
         total: int,
         final_output_dir: Path,
         work_dir: Path,
+        *,
+        use_archive: bool,
     ) -> tuple[str, bool | None]:
         """Run the external download after history checks are settled.
 
         A ``None`` result is a neutral deferral: the page exists, but YouTube
-        has not released its audio stream yet.
+        has not released its audio stream yet. ``use_archive`` tells a channel
+        or playlist video from a direct queue entry, which decides how a video
+        is dropped after repeated failures.
         """
         self.logger.info("[%s/%s] Downloading: %s", index, total, video_url)
 
@@ -1037,7 +1056,10 @@ class PodcastDownloadService:
                 return video_url, None
             self.logger.error("Failed: %s", video_url)
             self.logger.error("yt-dlp report:\n%s", execution.diagnostic_report())
-            self._record_failure(video_url, execution.activity_reason())
+            reason = execution.activity_reason()
+            if execution.failure_blames_the_video():
+                reason = self._count_failed_attempt(video_url, use_archive, reason)
+            self._record_failure(video_url, reason)
             self._finalize_intermediate_cleanup(work_dir)
             return video_url, False
 
@@ -1088,11 +1110,50 @@ class PodcastDownloadService:
 
         self.queue_store.remove_url(video_url)
         self.bypass_store.remove(video_url)
+        self.failed_download_store.clear(video_url)
 
         downloaded_name = published_audio_files[-1].name
         self.logger.info("Downloaded: %s", downloaded_name)
         self._record_activity(f"Downloaded: {downloaded_name}")
         return video_url, True
+
+    def _count_failed_attempt(
+        self, video_url: str, use_archive: bool, reason: str
+    ) -> str:
+        """Count one failure that blames the video, and drop it at the limit.
+
+        A direct URL leaves the queue and its count is forgotten, so adding it
+        again later gets a fresh set of attempts. A channel or playlist video
+        keeps its count, because the next listing would offer it again; the
+        count is what makes ``_download_targets`` skip it.
+
+        Returns
+        -------
+        str
+            The failure reason with the attempt number or the drop in front,
+            so the activity feed and the alert say what happens next.
+        """
+        attempts = self.failed_download_store.record_failure(video_url)
+        if attempts < self.max_download_attempts:
+            return f"attempt {attempts} of {self.max_download_attempts}: {reason}"
+
+        if use_archive:
+            self.logger.warning(
+                "Dropped after %s failed attempts; later runs skip it: %s",
+                attempts,
+                video_url,
+            )
+            return f"dropped after {attempts} failed attempts: {reason}"
+
+        self.queue_store.remove_url(video_url)
+        self.bypass_store.remove(video_url)
+        self.failed_download_store.clear(video_url)
+        self.logger.warning(
+            "Removed from the queue after %s failed attempts: %s",
+            attempts,
+            video_url,
+        )
+        return f"removed from the queue after {attempts} failed attempts: {reason}"
 
     def _youtube_video_is_too_new(
         self,
@@ -1183,11 +1244,19 @@ class PodcastDownloadService:
         -------
         tuple[int, int]
             ``(successful, failed)``. Archived items count as successful;
-            deferred premieres count as neither.
+            deferred premieres and dropped videos count as neither.
         """
-        archived_urls = (
-            self.archive_store.load()
-            if any(target.use_archive for target in download_targets)
+        uses_archive = any(target.use_archive for target in download_targets)
+        archived_urls = self.archive_store.load() if uses_archive else set()
+        # Channel and playlist videos that failed too often stay listed by
+        # YouTube; their saved count is the only thing that stops a retry.
+        dropped_urls = (
+            {
+                video_url
+                for video_url, attempts in self.failed_download_store.load().items()
+                if attempts >= self.max_download_attempts
+            }
+            if uses_archive
             else set()
         )
         total = len(download_targets)
@@ -1201,6 +1270,15 @@ class PodcastDownloadService:
             ):
                 self.logger.info("Already downloaded: %s", target.video_url)
                 successful += 1
+                continue
+            if (
+                target.use_archive
+                and normalize_youtube_url(target.video_url) in dropped_urls
+            ):
+                self.logger.info(
+                    "Skipping a video dropped after repeated failures: %s",
+                    target.video_url,
+                )
                 continue
 
             # Pace consecutive yt-dlp runs; nothing to pace before the first.

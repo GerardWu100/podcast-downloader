@@ -78,6 +78,7 @@ section.
 | `delay_seconds` | Pause between downloads; at least `0` | `60` |
 | `retention_days` | Days to keep YouTube channel MP3s; at least `1` | `30` |
 | `download_timeout_seconds` | Time limit for one attempt; at least `60` | `3600` |
+| `max_download_attempts` | Failed attempts that blame the video before it is dropped; at least `1`. Block and network failures do not count | `2` |
 | `scheduled_run_hour` | Local hour an automatic run starts, `0` to `23` | `6` |
 | `scheduled_run_interval_days` | Calendar days between automatic runs; at least `1` | `2` |
 | `cookie_expiry_warning_days` | Days before the sign-in expires to start warning; `0` turns it off | `14` |

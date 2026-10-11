@@ -446,3 +446,65 @@ def test_a_missing_ytdlp_does_not_take_the_container_down(monkeypatch) -> None:
 
     assert start.update_ytdlp() is False
     assert start._installed_ytdlp_version() == "not installed"
+
+
+def _scheduled_time(now: datetime) -> datetime:
+    """Return the newest scheduled run instant at or before ``now``."""
+    return start.previous_scheduled_run(
+        now, run_hour=start.RUN_HOUR, interval_days=start.RUN_INTERVAL_DAYS
+    )
+
+
+def test_watchdog_flags_a_download_running_longer_than_one_interval() -> None:
+    now = datetime(2026, 9, 3, 9, 0, tzinfo=LOG_TIME_ZONE)
+    started = now - timedelta(days=start.RUN_INTERVAL_DAYS, minutes=1)
+
+    problem = start.scheduler_stuck_reason(
+        RunState(is_running=True, started_at=started),
+        now=now,
+        cli_started_at=started,
+        process_started_at=started - timedelta(days=1),
+    )
+
+    assert problem is not None and "still going" in problem
+
+
+def test_watchdog_accepts_a_long_but_bounded_download() -> None:
+    now = datetime(2026, 9, 3, 9, 0, tzinfo=LOG_TIME_ZONE)
+
+    problem = start.scheduler_stuck_reason(
+        RunState(),
+        now=now,
+        cli_started_at=now - timedelta(hours=12),
+        process_started_at=now - timedelta(days=5),
+    )
+
+    assert problem is None
+
+
+def test_watchdog_flags_a_scheduled_run_that_never_started() -> None:
+    scheduled = _scheduled_time(datetime(2026, 9, 10, 12, 0, tzinfo=LOG_TIME_ZONE))
+    now = scheduled + timedelta(hours=4)
+
+    problem = start.scheduler_stuck_reason(
+        RunState(finished_at=scheduled - timedelta(days=start.RUN_INTERVAL_DAYS)),
+        now=now,
+        cli_started_at=None,
+        process_started_at=scheduled - timedelta(days=1),
+    )
+
+    assert problem is not None and "never started" in problem
+
+
+def test_watchdog_leaves_runs_missed_while_down_to_the_catch_up() -> None:
+    scheduled = _scheduled_time(datetime(2026, 9, 10, 12, 0, tzinfo=LOG_TIME_ZONE))
+    now = scheduled + timedelta(hours=4)
+
+    problem = start.scheduler_stuck_reason(
+        RunState(finished_at=scheduled - timedelta(days=start.RUN_INTERVAL_DAYS)),
+        now=now,
+        cli_started_at=None,
+        process_started_at=now - timedelta(minutes=10),
+    )
+
+    assert problem is None

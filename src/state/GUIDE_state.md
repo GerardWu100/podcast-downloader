@@ -13,6 +13,7 @@
 | `NotificationStore` | `notifications.json` | Replaced atomically and kept owner-only; a missing or damaged file reads as defaults |
 | `AuthStore` | `.ui_sessions.json`, `.login_state.json` | JSON updates are locked, atomically replaced, and mode `600` |
 | `RunStateStore` | `run_state.json` | Only whole-queue passes are recorded; the scheduler clears a leftover "running" flag when it starts |
+| `FailedDownloadStore` | `failed_downloads.json` | Counts only failures that blame the video; a success or a direct-URL drop removes the entry, a channel-video drop keeps it |
 | `SourceFolderStore` | `source_folders.json` | Saves only names that came from a successful lookup; an ID fallback is never saved, so a later run can still find the readable name |
 
 `locked_text_file()` uses `fcntl`, the Unix file-locking interface. A shared lock lets readers run together; an exclusive lock makes changes one at a time. `AuthStore` locks a stable sibling lock file because the JSON data file itself is replaced atomically.
@@ -26,6 +27,7 @@ Every one-entry-per-line store uses `locked_line_file()`, which yields a `Locked
 - `archive_store.py`: archive reads, appends, and long transactions. Entries
   are never removed, so retention cannot make a deleted episode download again.
 - `bypass_store.py`: one-shot age-bypass state.
+- `failed_download_store.py`: per-video failure counts behind the drop rule.
 - `activity_store.py`: activity path derivation, timestamped writes, locked tail
   reads, and diagnostic-log empty messages.
 - `auth_store.py`: remembered sessions, login failures, expiry filtering,

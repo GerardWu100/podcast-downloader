@@ -28,8 +28,8 @@ detection of YouTube 403/PO-token breakage) rather than gain new features.
 - Download correctness and failure visibility.
 - Keeping up with YouTube countermeasures (player clients, PO tokens,
   cookies) with the least possible manual intervention.
-- Small listening-quality improvements that ride the existing pipeline, such
-  as chapter markers.
+- Small listening-quality improvements that ride the existing pipeline.
+  Chapter markers already ride along through `--add-metadata`.
 
 ## Out of scope
 
@@ -52,4 +52,6 @@ detection of YouTube 403/PO-token breakage) rather than gain new features.
   filesystem; never run replicas or mount the data directory over a network
   filesystem.
 - Queue and archive state changes only after verification, tagging, and
-  publication all succeed, in that order.
+  publication all succeed, in that order. The one exception is the drop rule:
+  after `max_download_attempts` failures that blame the video itself, a direct
+  URL leaves the queue. Block and network failures never count toward it.

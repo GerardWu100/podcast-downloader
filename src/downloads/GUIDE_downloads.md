@@ -28,6 +28,16 @@ service leaves the URL queued, does not increment either result count, and
 sends no failure activity or notification. Other unavailable-video messages
 remain failures because they may require operator attention.
 
+A failure counts toward the drop rule only when `failure_blames_the_video()`
+is true, meaning the last `ERROR:` line matches none of
+`BLOCKED_OR_TRANSIENT_ERROR_MARKERS` (403, 429, bot check, extractor and
+network errors). At `max_download_attempts`, `_count_failed_attempt()` removes a
+direct URL from the queue and forgets its count; a channel or playlist video
+keeps its count, and `_download_targets()` skips it on later listings.
+
+`--add-metadata` also embeds the video's chapters, shifted by yt-dlp to match
+the SponsorBlock cuts. The ffmpeg tagging pass copies them unchanged.
+
 Two command details are easy to break:
 
 - Keep `--output` as a bare filename template. `yt-dlp` ignores `--paths` and warns about absolute output templates. Put the destination in `--paths home:` and the scratch folder in `--paths temp:`.
@@ -62,3 +72,4 @@ $$
 - 2026-08-10: Download claims moved off the archive file, direct scratch work gained a process lock, and age bypasses became one-use values consumed before their run.
 - 2026-08-24: The metadata pass now publishes through an atomic rename instead of rewriting the original MP3 in place. A failed copy-back used to leave a truncated audio file behind.
 - 2026-08-23: Rumble downloads began using Chrome request impersonation, paired with nightly yt-dlp and `curl-cffi`, after Cloudflare blocked both page and metadata requests from ordinary clients.
+- 2026-10-11: Added the drop rule (`max_download_attempts`, default 2) for failures that blame the video. Confirmed that chapters were already embedded through `--add-metadata` and survive the tagging pass.

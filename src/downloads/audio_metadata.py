@@ -80,6 +80,8 @@ class AudioMetadataWriter:
             "0",
             "-map_metadata",
             "0",
+            # Chapters come from the same input by default, so the markers
+            # yt-dlp embedded survive this pass.
             "-codec",
             "copy",
             "-id3v2_version",

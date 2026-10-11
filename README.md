@@ -18,6 +18,11 @@ segments when available, and run from the command line or a web browser.
 - Manage sources, activity, logs, cookies, and error notifications from the
   password-protected web interface. The activity feed is grouped by day and by
   run, and the settings page says when the YouTube cookies expire.
+- Drop a video after two failed attempts (`max_download_attempts`), so a
+  deleted or private video stops failing on every run. Failures caused by a
+  YouTube block or the network do not count.
+- Restart itself when the scheduler hangs: a watchdog exits the process, and
+  Docker's restart policy starts it again and catches up on the missed run.
 - Report the failures that would otherwise be silent: a run where no channel
   would list, a run that could not start, expiring cookies, and a scheduled run
   that never happened. `GET /api/health` lets an uptime monitor catch a
@@ -131,6 +136,8 @@ Set the main options in `config.ini`:
   3600 seconds.
 - `cookie_expiry_warning_days`: how many days before the YouTube sign-in
   expires to start warning after a run. `0` turns the warning off.
+- `max_download_attempts`: failed attempts after which a video is dropped;
+  the default is 2. Block and network failures do not count.
 - `scheduled_run_hour` and `scheduled_run_interval_days`: when automatic runs
   happen. The defaults, `6` and `2`, mean 06:00 every other day on the local
   clock. The time comes from the calendar, so restarting or redeploying the

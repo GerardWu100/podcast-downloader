@@ -15,6 +15,10 @@ www.youtube.com_cookies.txt
 notifications.json
 run_state.json
 run_state.json.lock
+source_folders.json
+source_folders.json.lock
+failed_downloads.json
+failed_downloads.json.lock
 downloads/
 urls.txt
 downloaded_urls.txt

@@ -34,6 +34,10 @@ DEFAULT_YTDLP_VERBOSE = False
 # after a run. Zero turns the warning off; an expired file is always reported.
 DEFAULT_COOKIE_EXPIRY_WARNING_DAYS = 14
 DEFAULT_SCHEDULED_RUN_HOUR = 6
+# Failed attempts after which a video is dropped: a direct URL leaves the
+# queue, and a channel or playlist video is no longer tried. Failures that
+# point at a YouTube block or a network problem do not count.
+DEFAULT_MAX_DOWNLOAD_ATTEMPTS = 2
 DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS = 2
 FIRST_HOUR_OF_DAY = 0
 LAST_HOUR_OF_DAY = 23
@@ -66,6 +70,7 @@ class PodcastConfig:
     scheduled_run_hour: int = DEFAULT_SCHEDULED_RUN_HOUR
     scheduled_run_interval_days: int = DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS
     cookie_expiry_warning_days: int = DEFAULT_COOKIE_EXPIRY_WARNING_DAYS
+    max_download_attempts: int = DEFAULT_MAX_DOWNLOAD_ATTEMPTS
 
 
 def _require_non_blank(raw_value: str, key: str) -> str:
@@ -320,6 +325,11 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         "cookie_expiry_warning_days",
         0,
     )
+    max_download_attempts = _require_minimum_int(
+        _get_int(section, "max_download_attempts", DEFAULT_MAX_DOWNLOAD_ATTEMPTS),
+        "max_download_attempts",
+        1,
+    )
 
     return PodcastConfig(
         urls_file=urls_file,
@@ -341,4 +351,5 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         scheduled_run_hour=scheduled_run_hour,
         scheduled_run_interval_days=scheduled_run_interval_days,
         cookie_expiry_warning_days=cookie_expiry_warning_days,
+        max_download_attempts=max_download_attempts,
     )

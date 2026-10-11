@@ -35,6 +35,27 @@ UNRELEASED_YOUTUBE_ERROR_MARKERS = (
     "live stream will begin",
     "livestream will begin",
 )
+# Fatal messages that blame YouTube's defences, the network, or a yt-dlp that
+# needs an update, rather than the video itself. Every video fails the same way
+# while one of these lasts, so these failures do not count toward dropping a
+# video; otherwise one blocked week would empty the queue.
+BLOCKED_OR_TRANSIENT_ERROR_MARKERS = (
+    "http error 403",
+    "http error 429",
+    "not a bot",
+    "po token",
+    "requested format is not available",
+    "unable to extract",
+    "unable to download webpage",
+    "unable to download api page",
+    "signature extraction failed",
+    "nsig extraction failed",
+    "timed out",
+    "connection reset",
+    "connection refused",
+    "network is unreachable",
+    "temporary failure in name resolution",
+)
 
 RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -145,6 +166,21 @@ class YtDlpAttempt:
             marker in normalized_error for marker in UNRELEASED_YOUTUBE_ERROR_MARKERS
         )
 
+    def blames_the_video(self) -> bool:
+        """Return whether the failure looks specific to this video.
+
+        Returns
+        -------
+        bool
+            ``False`` for a recognized block, network, or outdated-extractor
+            message, which would fail every video alike. ``True`` otherwise,
+            for example "Video unavailable" or "Private video".
+        """
+        normalized_error = self.error_line().casefold()
+        return not any(
+            marker in normalized_error for marker in BLOCKED_OR_TRANSIENT_ERROR_MARKERS
+        )
+
 
 @dataclass(frozen=True)
 class YtDlpResult:
@@ -186,6 +222,10 @@ class YtDlpResult:
     def is_unreleased_youtube_content(self) -> bool:
         """Return whether the final outcome is known to be not released yet."""
         return self.final.is_unreleased_youtube_content()
+
+    def failure_blames_the_video(self) -> bool:
+        """Return whether the final failure counts toward dropping the video."""
+        return self.final.blames_the_video()
 
 
 class YtDlpClient:
@@ -286,6 +326,8 @@ class YtDlpClient:
             "0",
             "--no-mtime",
             "--embed-thumbnail",
+            # Also embeds the video's chapter markers, which yt-dlp shifts to
+            # match the audio left after --sponsorblock-remove.
             "--add-metadata",
             "--output",
             YTDLP_OUTPUT_FILENAME_TEMPLATE,
