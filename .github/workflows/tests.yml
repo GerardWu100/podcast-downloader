@@ -18,6 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0
+      # The MP3 tag tests run the real ffmpeg and ffprobe, as the image does.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       # Python version comes from .python-version; the lockfile pins the rest.
       - run: uv sync --locked
       - run: uv run pytest -q

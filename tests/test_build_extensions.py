@@ -13,8 +13,8 @@ import zipfile
 from pathlib import Path
 
 import pytest
+import scripts.build_extensions as build_module
 from scripts.build_extensions import (
-    BUILD_ROOT,
     CHROME_MANIFEST,
     FIREFOX_MANIFEST,
     SHARED_FILES,
@@ -26,6 +26,21 @@ from scripts.build_extensions import (
 )
 
 TARGETS_BY_NAME = {target.name: target for target in TARGETS}
+
+
+@pytest.fixture
+def build_root(monkeypatch, tmp_path) -> Path:
+    """Point the archive folder at an empty temporary ``dist/``.
+
+    A fresh checkout has no ``dist/``, and a test must not delete or replace
+    the release archives a developer has built there.
+    """
+    archive_dir = tmp_path / "dist"
+    archive_dir.mkdir()
+    monkeypatch.setattr(build_module, "BUILD_ROOT", archive_dir)
+    return archive_dir
+
+
 FIREFOX_MINIMUM_VERSION = 140
 FIREFOX_REQUIRED_DATA = {
     "authenticationInfo",
@@ -131,11 +146,11 @@ def test_build_removes_files_that_no_longer_exist_in_the_source() -> None:
     assert not leftover.exists()
 
 
-def test_the_archive_is_named_for_its_browser_and_version() -> None:
+def test_the_archive_is_named_for_its_browser_and_version(build_root) -> None:
     """A downloaded file should say which build it is without being opened."""
     target = TARGETS_BY_NAME["chrome"]
     build_target(target, make_zip=True)
-    archive_file = BUILD_ROOT / (f"podcast-downloader-chrome-{manifest_version()}.zip")
+    archive_file = build_root / (f"podcast-downloader-chrome-{manifest_version()}.zip")
 
     assert archive_file.is_file()
     with zipfile.ZipFile(archive_file) as archive:
@@ -148,7 +163,7 @@ def test_the_archive_is_named_for_its_browser_and_version() -> None:
     assert "icons/icon-128.png" in names
 
 
-def test_firefox_ships_no_archive() -> None:
+def test_firefox_ships_no_archive(build_root) -> None:
     """An unsigned Firefox zip is a file people download and cannot install.
 
     Firefox refuses any add-on Mozilla has not signed, reporting it as corrupt.
@@ -156,7 +171,7 @@ def test_firefox_ships_no_archive() -> None:
     so ``--zip`` must not produce it even when asked.
     """
     target = TARGETS_BY_NAME["firefox"]
-    stale_archive = BUILD_ROOT / (
+    stale_archive = build_root / (
         f"podcast-downloader-firefox-{manifest_version()}.zip"
     )
     stale_archive.write_bytes(b"left over from an older build")
@@ -164,10 +179,10 @@ def test_firefox_ships_no_archive() -> None:
     build_target(target, make_zip=True)
 
     assert not stale_archive.exists()
-    assert not list(BUILD_ROOT.glob("podcast-downloader-firefox-*.zip"))
+    assert not list(build_root.glob("podcast-downloader-firefox-*.zip"))
 
 
-def test_building_without_an_archive_keeps_the_chrome_archive() -> None:
+def test_building_without_an_archive_keeps_the_chrome_archive(build_root) -> None:
     """``--sign`` rebuilds both folders, and must not delete the release zip.
 
     Signing runs the ordinary build first with ``make_zip=False``. If that pass
@@ -176,7 +191,7 @@ def test_building_without_an_archive_keeps_the_chrome_archive() -> None:
     """
     chrome_target = TARGETS_BY_NAME["chrome"]
     build_target(chrome_target, make_zip=True)
-    archive_file = BUILD_ROOT / (f"podcast-downloader-chrome-{manifest_version()}.zip")
+    archive_file = build_root / (f"podcast-downloader-chrome-{manifest_version()}.zip")
     assert archive_file.is_file()
 
     build_target(chrome_target, make_zip=False)
@@ -213,11 +228,10 @@ def test_build_refuses_an_allowlisted_symbolic_link(monkeypatch, tmp_path) -> No
         build_module.collect_shared_files()
 
 
-def test_build_removes_old_archives_for_the_same_browser() -> None:
+def test_build_removes_old_archives_for_the_same_browser(build_root) -> None:
     """A release glob must not pick up an archive from an earlier version."""
     target = TARGETS_BY_NAME["chrome"]
-    old_archive = BUILD_ROOT / "podcast-downloader-chrome-0.0.1.zip"
-    old_archive.parent.mkdir(parents=True, exist_ok=True)
+    old_archive = build_root / "podcast-downloader-chrome-0.0.1.zip"
     old_archive.write_bytes(b"stale")
 
     build_target(target, make_zip=True)
