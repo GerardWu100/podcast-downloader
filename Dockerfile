@@ -25,7 +25,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Copy only the runtime application. Explicit sources keep ignored files and
 # local secrets out even if `.dockerignore` is changed incorrectly later.
-COPY main.py start.py config.ini .env.example ./
+COPY main.py start.py config.toml .env.example ./
 COPY src ./src
 
 COPY docker-entrypoint.sh /docker-entrypoint.sh

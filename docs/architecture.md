@@ -199,7 +199,7 @@ they share the `singles` scratch folder.
 ### Local command line
 
 - Run `uv run python main.py`.
-- Read `config.ini` from the project root.
+- Read `config.toml` from the project root.
 - Write to `downloads/` by default.
 - Group files under direct child folders of the output directory.
 

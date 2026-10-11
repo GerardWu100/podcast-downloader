@@ -21,6 +21,7 @@ from fastapi.responses import (
 )
 
 from ..config import (
+    CONFIG_FILENAME,
     MAXIMUM_RETENTION_DAYS,
     MINIMUM_RETENTION_DAYS,
     ConfigError,
@@ -101,7 +102,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # In Docker, PODCAST_DATA_DIR=/data (set in docker-compose.yml). Locally, falls back to PROJECT_ROOT.
 DATA_DIR = Path(os.environ.get("PODCAST_DATA_DIR", str(PROJECT_ROOT)))
 try:
-    CONFIG = load_config(DATA_DIR / "config.ini", DATA_DIR)
+    CONFIG = load_config(DATA_DIR / CONFIG_FILENAME, DATA_DIR)
 except ConfigError as exc:
     raise SystemExit(f"[api] Startup error: {exc}") from exc
 SESSION_STATE_FILE = DATA_DIR / ".ui_sessions.json"
@@ -248,7 +249,7 @@ def _credentials_file() -> Path:
 
 
 def _config_file() -> Path:
-    return DATA_DIR / "config.ini"
+    return DATA_DIR / CONFIG_FILENAME
 
 
 def _login_is_required() -> bool:
@@ -948,7 +949,7 @@ def _cookie_expiry_line(
     status:
         What was read from the cookie file.
     warning_days:
-        How many days before expiry to start warning, from ``config.ini``.
+        How many days before expiry to start warning, from ``config.toml``.
 
     Returns
     -------

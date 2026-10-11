@@ -2,7 +2,7 @@
 
 Scheduled runs follow a wall clock, not a stopwatch. They start at
 ``scheduled_run_hour`` on every ``scheduled_run_interval_days``-th calendar
-day, both read from ``config.ini``, which by default means 06:00 Toronto time
+day, both read from ``config.toml``, which by default means 06:00 Toronto time
 every other day. Restarting the container, redeploying, or pressing Run in the
 browser therefore never moves the schedule. ``src/schedule.py`` owns the rule
 that turns those two settings into run times.
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import uvicorn
 from src.cli import EXIT_DOWNLOADS_FAILED
-from src.config import ConfigError, load_config
+from src.config import CONFIG_FILENAME, ConfigError, load_config
 from src.credentials import sync_ui_credentials
 from src.human_time import format_clock_time
 from src.log_timezone import local_now
@@ -52,7 +52,7 @@ DATA_DIR = Path(os.environ.get("PODCAST_DATA_DIR", str(PROJECT_ROOT)))
 RUN_STATE_STORE = RunStateStore(run_state_file_for(DATA_DIR))
 
 try:
-    CONFIG = load_config(DATA_DIR / "config.ini", DATA_DIR)
+    CONFIG = load_config(DATA_DIR / CONFIG_FILENAME, DATA_DIR)
 except ConfigError as exc:
     raise SystemExit(f"[scheduler] Startup error: {exc}") from exc
 

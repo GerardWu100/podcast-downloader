@@ -34,18 +34,18 @@ else
     INITIAL_ENV_FILE="$SCRIPT_DIR/.env.example"
 fi
 
-if [ -f /app/config.ini ]; then
-    DEFAULT_CONFIG_SOURCE=/app/config.ini
+if [ -f /app/config.toml ]; then
+    DEFAULT_CONFIG_SOURCE=/app/config.toml
 else
-    DEFAULT_CONFIG_SOURCE="$SCRIPT_DIR/config.ini"
+    DEFAULT_CONFIG_SOURCE="$SCRIPT_DIR/config.toml"
 fi
 
 # Seed the mounted data directory from the repo defaults on first boot.
 mkdir -p "$DATA_DIR" "$DOWNLOAD_DIR" "$INTERMEDIATE_DIR"
 
-if [ ! -f "$DATA_DIR/config.ini" ]; then
-    cp "$DEFAULT_CONFIG_SOURCE" "$DATA_DIR/config.ini"
-    echo "[startup] Created $DATA_DIR/config.ini from repo default"
+if [ ! -f "$DATA_DIR/config.toml" ]; then
+    cp "$DEFAULT_CONFIG_SOURCE" "$DATA_DIR/config.toml"
+    echo "[startup] Created $DATA_DIR/config.toml from repo default"
 fi
 
 touch "$DATA_DIR/urls.txt" \

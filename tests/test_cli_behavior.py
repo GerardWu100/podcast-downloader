@@ -178,7 +178,7 @@ def test_cli_module_entrypoint_shows_help() -> None:
 
 @pytest.mark.parametrize("value", ["0", "-1"])
 def test_cli_rejects_non_positive_channel_count(tmp_path: Path, value: str) -> None:
-    """The CLI override must enforce the same minimum as ``config.ini``."""
+    """The CLI override must enforce the same minimum as ``config.toml``."""
     parser = cli_module.build_parser(
         default_urls_file=tmp_path / "urls.txt",
         default_output_dir=tmp_path / "downloads",

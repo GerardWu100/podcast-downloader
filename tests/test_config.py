@@ -20,11 +20,11 @@ def write_config(config_file: Path, body: str) -> None:
     Parameters
     ----------
     config_file:
-        Temporary ``config.ini`` path used by the test.
+        Temporary ``config.toml`` path used by the test.
     body:
-        Lines that belong inside the ``[podcast]`` section.
+        TOML lines, one ``name = value`` setting each.
     """
-    config_file.write_text(f"[podcast]\n{body}\n", encoding="utf-8")
+    config_file.write_text(f"{body}\n", encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -56,7 +56,7 @@ def test_load_config_rejects_out_of_range_numeric_values(
     message: str,
 ) -> None:
     """Numeric config values should fail fast when outside accepted ranges."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, f"{key} = {value}")
 
     with pytest.raises(ConfigError, match=message):
@@ -77,8 +77,8 @@ def test_load_config_rejects_out_of_range_numeric_values(
 )
 def test_load_config_rejects_blank_path_values(tmp_path: Path, key: str) -> None:
     """Configured path strings should not collapse to the project directory."""
-    config_file = tmp_path / "config.ini"
-    write_config(config_file, f"{key} =    ")
+    config_file = tmp_path / "config.toml"
+    write_config(config_file, f'{key} = "   "')
 
     with pytest.raises(ConfigError, match=f"{key} must not be blank"):
         load_config(config_file, tmp_path)
@@ -89,7 +89,7 @@ def test_load_config_rejects_blank_download_directory_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The Docker download-directory override should not be blank."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 1")
     monkeypatch.setenv("PODCAST_DOWNLOAD_DIR", "   ")
 
@@ -102,7 +102,7 @@ def test_load_config_rejects_blank_intermediate_directory_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The Docker intermediate-directory override should not be blank."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 1")
     monkeypatch.setenv("PODCAST_INTERMEDIATE_DIR", "   ")
 
@@ -115,7 +115,7 @@ def test_load_config_rejects_blank_intermediate_directory_env(
 
 def test_load_config_defaults_intermediate_dir_to_download_work(tmp_path: Path) -> None:
     """Local runs should keep scratch files out of the library folder by default."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 1")
 
     config = load_config(config_file, tmp_path)
@@ -125,7 +125,7 @@ def test_load_config_defaults_intermediate_dir_to_download_work(tmp_path: Path) 
 
 def test_load_config_defaults_channel_count_to_two(tmp_path: Path) -> None:
     """The built-in polling depth should match the checked-in operating default."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "")
 
     config = load_config(config_file, tmp_path)
@@ -135,7 +135,7 @@ def test_load_config_defaults_channel_count_to_two(tmp_path: Path) -> None:
 
 def test_load_config_defaults_retention_to_thirty_days(tmp_path: Path) -> None:
     """The built-in retention window should match the checked-in operating default."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 1")
 
     config = load_config(config_file, tmp_path)
@@ -145,7 +145,7 @@ def test_load_config_defaults_retention_to_thirty_days(tmp_path: Path) -> None:
 
 def test_load_config_defaults_always_use_cookies_to_true(tmp_path: Path) -> None:
     """YouTube cookies should default to always-on mode with alternate fallback."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 1")
 
     config = load_config(config_file, tmp_path)
@@ -154,19 +154,19 @@ def test_load_config_defaults_always_use_cookies_to_true(tmp_path: Path) -> None
 
 
 def test_load_config_reads_always_use_cookies(tmp_path: Path) -> None:
-    """The cookie strategy toggle should accept standard yes/no config values."""
-    config_file = tmp_path / "config.ini"
-    write_config(config_file, "channel_count = 1\nalways_use_cookies = yes")
+    """The cookie strategy toggle reads a TOML boolean."""
+    config_file = tmp_path / "config.toml"
+    write_config(config_file, "channel_count = 1\nalways_use_cookies = false")
 
     config = load_config(config_file, tmp_path)
 
-    assert config.always_use_cookies is True
+    assert config.always_use_cookies is False
 
 
 def test_download_timeout_seconds_defaults_to_generous_budget(tmp_path) -> None:
     """A full-length podcast needs far more than a few minutes to finish."""
-    config_file = tmp_path / "config.ini"
-    config_file.write_text("[podcast]\n", encoding="utf-8")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text("", encoding="utf-8")
 
     config = load_config(config_file, tmp_path)
 
@@ -176,9 +176,9 @@ def test_download_timeout_seconds_defaults_to_generous_budget(tmp_path) -> None:
 
 def test_download_timeout_seconds_is_configurable(tmp_path) -> None:
     """Operators on slow links must be able to raise the per-attempt budget."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     config_file.write_text(
-        "[podcast]\ndownload_timeout_seconds = 5400\n",
+        "download_timeout_seconds = 5400\n",
         encoding="utf-8",
     )
 
@@ -189,9 +189,9 @@ def test_download_timeout_seconds_is_configurable(tmp_path) -> None:
 
 def test_download_timeout_seconds_rejects_value_below_minimum(tmp_path) -> None:
     """A budget too short to finish any real download is a config mistake."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     config_file.write_text(
-        "[podcast]\ndownload_timeout_seconds = 5\n",
+        "download_timeout_seconds = 5\n",
         encoding="utf-8",
     )
 
@@ -202,7 +202,7 @@ def test_download_timeout_seconds_rejects_value_below_minimum(tmp_path) -> None:
 @pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
 def test_load_config_rejects_non_finite_delay(tmp_path: Path, value: str) -> None:
     """A delay must be a real finite duration that ``time.sleep`` can accept."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, f"delay_seconds = {value}")
 
     with pytest.raises(ConfigError, match="delay_seconds must be a finite number"):
@@ -214,7 +214,7 @@ def test_relative_environment_paths_resolve_from_data_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Relative Docker overrides must not depend on the terminal directory."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 1")
     monkeypatch.setenv("PODCAST_DOWNLOAD_DIR", "library")
     monkeypatch.setenv("PODCAST_INTERMEDIATE_DIR", "scratch")
@@ -227,8 +227,8 @@ def test_relative_environment_paths_resolve_from_data_directory(
 
 def test_explicit_cookie_path_is_preserved_before_file_exists(tmp_path: Path) -> None:
     """The web upload must be able to create the configured cookie path."""
-    config_file = tmp_path / "config.ini"
-    write_config(config_file, "cookies_file = private/cookies.txt")
+    config_file = tmp_path / "config.toml"
+    write_config(config_file, 'cookies_file = "private/cookies.txt"')
 
     config = load_config(config_file, tmp_path)
 
@@ -239,7 +239,7 @@ def test_schedule_defaults_to_six_in_the_morning_every_other_day(
     tmp_path: Path,
 ) -> None:
     """A config file without the schedule keys keeps the shipped schedule."""
-    config_file = tmp_path / "config.ini"
+    config_file = tmp_path / "config.toml"
     write_config(config_file, "channel_count = 2")
 
     config = load_config(config_file, tmp_path)
@@ -251,8 +251,8 @@ def test_schedule_defaults_to_six_in_the_morning_every_other_day(
 
 
 def test_schedule_can_be_moved_to_another_hour_and_cadence(tmp_path: Path) -> None:
-    """Both schedule settings are read from config.ini."""
-    config_file = tmp_path / "config.ini"
+    """Both schedule settings are read from config.toml."""
+    config_file = tmp_path / "config.toml"
     write_config(
         config_file,
         "scheduled_run_hour = 23\nscheduled_run_interval_days = 7",
@@ -266,20 +266,51 @@ def test_schedule_can_be_moved_to_another_hour_and_cadence(tmp_path: Path) -> No
 
 def test_unparseable_config_raises_config_error(tmp_path: Path) -> None:
     """A duplicated key must reach the operator as a one-line startup error."""
-    config_path = tmp_path / "config.ini"
+    config_path = tmp_path / "config.toml"
     config_path.write_text(
-        "[podcast]\nchannel_count = 2\nchannel_count = 3\n", encoding="utf-8"
+        "channel_count = 2\nchannel_count = 3\n", encoding="utf-8"
     )
 
     with pytest.raises(ConfigError, match="could not be parsed"):
         load_config(config_path, tmp_path)
 
 
-def test_percent_sign_in_config_value_is_literal(tmp_path: Path) -> None:
-    """A "%" in a value is data, not configparser interpolation syntax."""
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        "[podcast]\nyoutube_player_client = web%embedded\n", encoding="utf-8"
-    )
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ('retention_days = "30"', "retention_days must be a whole number"),
+        ("retention_days = 30.5", "retention_days must be a whole number"),
+        ("channel_count = true", "channel_count must be a whole number"),
+        ('delay_seconds = "2"', "delay_seconds must be a number"),
+        ('ytdlp_verbose = "true"', "ytdlp_verbose must be true or false"),
+        ("always_use_cookies = 1", "always_use_cookies must be true or false"),
+        ("urls_file = 5", "urls_file must be quoted text"),
+    ],
+)
+def test_load_config_rejects_a_value_of_the_wrong_type(
+    tmp_path: Path, line: str, message: str
+) -> None:
+    """A wrong type stops startup instead of falling back to the default."""
+    config_file = tmp_path / "config.toml"
+    write_config(config_file, line)
 
-    assert load_config(config_path, tmp_path).youtube_player_client == "web%embedded"
+    with pytest.raises(ConfigError, match=message):
+        load_config(config_file, tmp_path)
+
+
+def test_load_config_rejects_a_misspelled_setting(tmp_path: Path) -> None:
+    """An unknown key is a typo; ignoring it would keep the default in force."""
+    config_file = tmp_path / "config.toml"
+    write_config(config_file, "retention_day = 5")
+
+    with pytest.raises(ConfigError, match="unknown setting.*retention_day"):
+        load_config(config_file, tmp_path)
+
+
+def test_checked_in_config_loads(tmp_path: Path) -> None:
+    """The shipped config.toml must parse and pass every check."""
+    shipped_config = Path(__file__).resolve().parent.parent / "config.toml"
+
+    config = load_config(shipped_config, tmp_path)
+
+    assert config.retention_days == 30

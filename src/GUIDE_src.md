@@ -33,7 +33,7 @@ over their jobs.
 
 - `api.py`: Uvicorn entrypoint exporting `app = create_app()`.
 - `cli.py`: command-line parser and dispatcher.
-- `config.py`: validated `PodcastConfig` loading.
+- `config.py`: loads `config.toml` with `tomllib` into a validated `PodcastConfig`. It rejects unknown keys and wrong types, and edits the `retention_days` line in place for the settings page.
 - `passwords.py`: Password-Based Key Derivation Function 2 (PBKDF2) hashing and verification.
 - `credentials.py`: syncs up to three `.env` account pairs into `.ui_credentials.json`.
 - `trigger.py`: in-process requests that wake the Docker scheduler, including whole-queue, newly added URL, full-playlist, and targeted saved-source requests.

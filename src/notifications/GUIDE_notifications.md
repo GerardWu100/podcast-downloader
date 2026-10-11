@@ -24,7 +24,7 @@ download fails
 
 ## Part 3: Where the settings live
 
-The settings are not in `config.ini`. The web UI writes them, and rewriting a commented configuration file from a form would remove its comments. They live in `notifications.json` in the data directory, which `src/state/notification_store.py` owns. The file is owner-only because the endpoint usually contains a key.
+The settings are not in `config.toml`. The web UI writes them, and rewriting a commented configuration file from a form would remove its comments. They live in `notifications.json` in the data directory, which `src/state/notification_store.py` owns. The file is owner-only because the endpoint usually contains a key.
 
 The web server and downloader are separate processes, so this file is their shared boundary. The web server writes it; the next download run reads it.
 

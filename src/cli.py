@@ -8,7 +8,12 @@ import os
 import sys
 from pathlib import Path
 
-from .config import DEFAULT_CHANNEL_VIDEO_COUNT, ConfigError, load_config
+from .config import (
+    CONFIG_FILENAME,
+    DEFAULT_CHANNEL_VIDEO_COUNT,
+    ConfigError,
+    load_config,
+)
 from .downloads.service import PodcastDownloadService
 from .media.urls import is_supported_media_url
 from .media.youtube import (
@@ -187,7 +192,7 @@ def main() -> int:
     # Docker stores state in /data; local runs use the project root.
     data_dir = Path(os.environ.get("PODCAST_DATA_DIR", str(project_root)))
     try:
-        config = load_config(data_dir / "config.ini", data_dir)
+        config = load_config(data_dir / CONFIG_FILENAME, data_dir)
     except ConfigError as exc:
         print(f"{Colors.RED}Error: {exc}{Colors.NC}")
         return 1

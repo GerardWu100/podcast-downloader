@@ -13,7 +13,7 @@ concrete URL
   -> queue, archive, and bypass stores record the result
 ```
 
-`YtDlpClient` owns the external download command. It sets the timeout, SponsorBlock flags, YouTube player client, and cookie order. It also records MP3 snapshots and identifies changed files. The timeout comes from `download_timeout_seconds` in `config.ini` and defaults to one hour, enough for a long episode and MP3 conversion.
+`YtDlpClient` owns the external download command. It sets the timeout, SponsorBlock flags, YouTube player client, and cookie order. It also records MP3 snapshots and identifies changed files. The timeout comes from `download_timeout_seconds` in `config.toml` and defaults to one hour, enough for a long episode and MP3 conversion.
 
 The client returns a `YtDlpResult` with one `YtDlpAttempt` per subprocess run, plus the before and after snapshots and the changed files. Each attempt keeps its command, exit status, stdout, stderr, cookie mode, and verbose flag. `result.final` is the attempt the service uses.
 

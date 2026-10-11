@@ -51,9 +51,9 @@ EXAMPLE_NOTIFY_URL = "http://apprise-api:8000/notify/your-key"
 
 @dataclass(frozen=True)
 class AppriseSettings:
-    """User-editable notification settings stored outside ``config.ini``.
+    """User-editable notification settings stored outside ``config.toml``.
 
-    These live in a JSON file rather than ``config.ini`` because the web UI
+    These live in a JSON file rather than ``config.toml`` because the web UI
     writes them, and rewriting a commented configuration file from a form
     would destroy its comments.
 

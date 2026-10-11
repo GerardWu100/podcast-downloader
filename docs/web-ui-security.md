@@ -121,9 +121,9 @@ so the response does not reveal which part was wrong.
 
 ## Proxy trust
 
-The checked-in `config.ini` sets:
+The checked-in `config.toml` sets:
 
-```ini
+```toml
 trust_x_forwarded_for = true
 ```
 

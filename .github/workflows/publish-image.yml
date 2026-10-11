@@ -24,7 +24,7 @@ on:
       - uv.lock
       - main.py
       - start.py
-      - config.ini
+      - config.toml
       - .env.example
       - src/**
       - .github/workflows/publish-image.yml

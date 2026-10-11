@@ -50,7 +50,7 @@ The published-image setup creates that network itself when it is missing.
 
 `.github/workflows/publish-image.yml` builds the image on GitHub and pushes it
 to `ghcr.io/gerardwu100/podcast-downloader`. It runs on pushes to `master` that
-touch the image's inputs (`src/`, the entry points, `config.ini`, the
+touch the image's inputs (`src/`, the entry points, `config.toml`, the
 Dockerfile, the entrypoint, or the lock file), and from the Actions tab by
 hand. Each run pushes `latest` and a `sha-<commit>` tag for amd64 and arm64.
 
@@ -63,7 +63,7 @@ described below.
 
 When the container starts, it:
 
-1. Copies the repository `config.ini` into the mounted data directory if it is missing.
+1. Copies the repository `config.toml` into the mounted data directory if it is missing.
 2. Copies the runtime `.env` secret into the mounted data directory if no mounted `.env` exists. Outside Compose, it falls back to `.env.example`. The copied file is owner-only.
 3. Keeps an existing `/data/cookies.txt` and makes it owner-only. Cookie files are never copied into the image; add one to the host data directory or upload it through the web UI.
 4. Creates missing runtime files such as `urls.txt`, `downloaded_urls.txt`, `download.log`, and `.login_state.json`.
@@ -94,7 +94,7 @@ as the configured host identity.
 
 ## Error notifications
 
-Configure notifications in the web UI, not in `config.ini`. See [notifications.md](notifications.md).
+Configure notifications in the web UI, not in `config.toml`. See [notifications.md](notifications.md).
 
 Inside Docker, `localhost` in the notify URL means the downloader container. Use the Apprise container name and put both containers on the same network. The `single` network in `docker-compose.yml` is the natural choice.
 
@@ -108,7 +108,7 @@ the web UI or copy the file directly to the host data directory.
 
 You can update cookies through the web UI instead of copying a file over SSH. Uploads require a signed-in session, must have the Netscape header, convert line endings to LF, and write the file with mode `600`.
 
-Set `cookies_file` in `config.ini` to use another mounted path.
+Set `cookies_file` in `config.toml` to use another mounted path.
 
 `always_use_cookies` defaults to `true`: YouTube calls use `--cookies <file>` first, then retry once without cookies. Set it to `false` to reverse that order. Keep the file private; it contains browser sign-in data.
 
@@ -157,8 +157,8 @@ missing entry appears only on a machine that ran the generator before building.
   never moves the next run.
 - Run days come from the date itself, not from a saved starting point, so two
   machines with the same settings agree on which mornings are run mornings.
-- The two settings live in `config.ini`. Docker copies the repository file to
-  `/data/config.ini` on first boot only, so an existing deployment keeps its own
+- The two settings live in `config.toml`. Docker copies the repository file to
+  `/data/config.toml` on first boot only, so an existing deployment keeps its own
   copy; add the two keys there to change the time.
 - On startup the scheduler checks whether it missed a run: if no full queue run
   has finished since the last scheduled time, it runs once immediately and then
@@ -336,7 +336,7 @@ Channel folder names come from the source URL after filesystem-safe cleanup. Pla
 
 At the start of each run, the downloader scans the MP3 files directly inside current YouTube channel folders. Only files in current YouTube channel folders are eligible. This rule never deletes playlist or single-video files.
 
-Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files older than `retention_days` (30 days by default). Change it on the settings page under **Keep episodes**; that rewrites the one line in `config.ini`, and the next run uses it without a restart. It ignores the YouTube release date and filesystem modification time.
+Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files older than `retention_days` (30 days by default). Change it on the settings page under **Keep episodes**; that rewrites the one line in `config.toml`, and the next run uses it without a restart. It ignores the YouTube release date and filesystem modification time.
 
 If the date metadata is missing or unreadable, or the file has no source URL in its comment tag, the downloader logs the problem and leaves the file alone. When it deletes a channel MP3, the video URL stays in `downloaded_urls.txt`, so the same episode is not downloaded again.
 

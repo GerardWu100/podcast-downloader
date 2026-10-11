@@ -4,7 +4,7 @@ The scheduler used to sleep for a fixed number of hours after each run, so the
 time of day drifted with every restart, deployment, or manual run. This module
 replaces that with a calendar rule: a run starts at the same local hour, on
 every Nth calendar day, no matter when the container was last started. Both
-numbers come from ``config.ini`` (``scheduled_run_hour`` and
+numbers come from ``config.toml`` (``scheduled_run_hour`` and
 ``scheduled_run_interval_days``); the defaults are 06:00 every other day.
 
 Which calendar days are run days comes from the date itself. ``date.toordinal``

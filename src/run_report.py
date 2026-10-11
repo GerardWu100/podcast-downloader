@@ -29,7 +29,7 @@ FAILED_RUN_TITLE = "Podcast downloader could not finish a run"
 # the cookie file are the two things that break a working deployment.
 BLOCKED_LISTING_ADVICE = (
     "Check the cookie file on the Settings page, then youtube_player_client in "
-    "config.ini. A listing that returns nothing is usually YouTube refusing the "
+    "config.toml. A listing that returns nothing is usually YouTube refusing the "
     "request, not a channel that has stopped publishing."
 )
 
@@ -278,7 +278,7 @@ def build_failed_run_alert(exit_code: int, now: datetime) -> RunAlert:
 
     A run that ends this way reports nothing on its own: no download was
     attempted, so no download failed, so no failure was sent. A missing
-    ``yt-dlp`` and an unreadable ``config.ini`` both look like this.
+    ``yt-dlp`` and an unreadable ``config.toml`` both look like this.
 
     Parameters
     ----------
@@ -292,6 +292,6 @@ def build_failed_run_alert(exit_code: int, now: datetime) -> RunAlert:
         f"The run started at {format_clock_time(now)} stopped with exit "
         f"status {exit_code} before downloading anything. Nothing failed, "
         "because nothing was attempted. Check download.log and the container "
-        "output: a missing yt-dlp or a rejected config.ini both end this way.",
+        "output: a missing yt-dlp or a rejected config.toml both end this way.",
         f"the run stopped with exit status {exit_code}",
     )

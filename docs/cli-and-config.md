@@ -63,10 +63,12 @@ URLs. `--download-full-playlist` requires a dedicated YouTube playlist URL.
 `--download-source-now` accepts any supported saved source URL.
 An add command exits with an error if it adds no new valid URL.
 
-## `config.ini`
+## `config.toml`
 
-The checked-in file is in the project root and contains one `[podcast]`
-section.
+The checked-in file is in the project root. It is [TOML](https://toml.io):
+one `name = value` line per setting, with no section header. Whole numbers and
+`true`/`false` are bare; text and paths are in quotes, such as
+`urls_file = "urls.txt"`.
 
 | Key | Purpose | Default |
 |---|---|---|
@@ -87,7 +89,7 @@ section.
 | `bypass_age_check_file` | One-use YouTube waiting-period exceptions | `bypass_age_check_urls.txt` |
 | `cookies_file` | Optional Netscape cookie-jar path | unset |
 | `always_use_cookies` | Try cookies first when `true`, last when `false` | `true` |
-| `youtube_player_client` | YouTube player API passed to `yt-dlp`; blank lets it choose | `web_embedded` |
+| `youtube_player_client` | YouTube player API passed to `yt-dlp`; `""` lets it choose | `web_embedded` |
 | `ytdlp_verbose` | Add `-v` to every `yt-dlp` attempt | `false` |
 | `trust_x_forwarded_for` | Trust client-IP headers from your reverse proxy | `true` |
 
@@ -95,7 +97,7 @@ section.
 
 | Variable | Purpose |
 |---|---|
-| `PODCAST_DATA_DIR` | Move `config.ini`, queue files, `.env`, credentials, and login state |
+| `PODCAST_DATA_DIR` | Move `config.toml`, queue files, `.env`, credentials, and login state |
 | `PODCAST_DOWNLOAD_DIR` | Override the finished MP3 directory |
 | `PODCAST_INTERMEDIATE_DIR` | Override the scratch directory; Compose maps `$HOME/downloads/temporary` to `/temporary` |
 | `YT_DLP_AUTO_UPDATE` | Enable or disable Docker-time `yt-dlp` upgrades |
@@ -187,7 +189,9 @@ and set permission mode `600`.
 
 ## Validation
 
-- Invalid integer and float values fail immediately with a `ConfigError` naming the key.
+- A value of the wrong type fails immediately with a `ConfigError` naming the key: text where a number belongs, a number where `true`/`false` belongs, or `true` written in quotes.
+- An unknown key fails too, so a misspelled setting such as `retention_day` cannot leave the default silently in force.
+- Invalid TOML, such as a duplicated key or text without quotes, fails with the parser's line number.
 - Out-of-range values fail: `channel_count < 1`, `min_channel_video_age_hours < 0`, `delay_seconds < 0`, `retention_days < 1`, and `download_timeout_seconds < 60`.
 - A blank configured path fails instead of silently using the data directory.
 - An out-of-range `scheduled_run_hour` or `scheduled_run_interval_days` stops

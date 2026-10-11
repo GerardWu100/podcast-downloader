@@ -1,13 +1,17 @@
-[podcast]
+# Podcast Downloader settings. Each line is `name = value`.
+# Whole numbers and true/false are written bare; text goes in "quotes".
+# A wrong type or a misspelled name stops startup with an error naming it.
+
 # File containing monitored URLs (relative to this folder unless absolute).
-urls_file = urls.txt
+urls_file = "urls.txt"
 
 # Folder for finished MP3 files (relative to this folder unless absolute).
-output_dir = downloads
+# In Docker, PODCAST_DOWNLOAD_DIR overrides this value.
+output_dir = "downloads"
 
 # Temporary folder used before files are published.
 # In Docker, PODCAST_INTERMEDIATE_DIR overrides this value.
-intermediate_dir = download_work
+intermediate_dir = "download_work"
 
 # Number of recent videos to check for each channel URL. Must be at least 1.
 channel_count = 2
@@ -17,16 +21,15 @@ channel_count = 2
 min_channel_video_age_hours = 24
 
 # Delay in seconds between downloads. This helps avoid YouTube rate limits.
-# Must be at least 0.
-# Recommended for automated runs: 2-5 seconds.
+# Must be at least 0. Recommended for automated runs: 2-5 seconds.
 delay_seconds = 60
 
-# Number of days to keep channel MP3 files, measured from their embedded download date.
-# Must be at least 1.
+# Number of days to keep channel MP3 files, measured from their embedded
+# download date. Must be at least 1. The settings page edits this line.
 retention_days = 30
 
-# Time limit in seconds for one yt-dlp attempt, including conversion, SponsorBlock,
-# and thumbnail work. Must be at least 60.
+# Time limit in seconds for one yt-dlp attempt, including conversion,
+# SponsorBlock, and thumbnail work. Must be at least 60.
 # Increase it if long episodes time out on a slow connection.
 download_timeout_seconds = 3600
 
@@ -53,40 +56,42 @@ scheduled_run_interval_days = 2
 cookie_expiry_warning_days = 14
 
 # Log and state files (relative to this folder unless absolute).
-log_file = download.log
-downloaded_urls_file = downloaded_urls.txt
-bypass_age_check_file = bypass_age_check_urls.txt
+log_file = "download.log"
+downloaded_urls_file = "downloaded_urls.txt"
+bypass_age_check_file = "bypass_age_check_urls.txt"
 
 # Netscape/Mozilla-format cookie file for YouTube downloads.
 # First line: # HTTP Cookie File or # Netscape HTTP Cookie File.
 # Use LF (\n) on Linux/macOS and CRLF (\r\n) on Windows.
 # HTTP 400 from yt-dlp --cookies often means the line endings are wrong.
-# If omitted, an existing cookies.txt in this folder is used.
+# If this line is removed, an existing cookies.txt in this folder is used.
 # In Docker, put cookies.txt in the mounted PODCAST_DATA_DIR folder.
-cookies_file = cookies.txt
+cookies_file = "cookies.txt"
 
 # Which YouTube player API yt-dlp asks for stream URLs.
 # Most clients now return URLs that need a "GVS PO Token" (a proof-of-origin
 # token issued by YouTube's own web player). Fetching those URLs without one
 # fails with HTTP 403 Forbidden partway through the download.
-# Known working values: web_embedded (default).
-# Values that currently return 403 without a token: android_vr, ios, mweb, tv.
-# Leave blank to let yt-dlp choose, which is what causes the 403 today.
-youtube_player_client = web_embedded
+# Known working values: "web_embedded" (default).
+# Values that currently return 403 without a token: "android_vr", "ios",
+# "mweb", "tv".
+# "" lets yt-dlp choose, which is what causes the 403 today.
+youtube_player_client = "web_embedded"
 
-# Run every yt-dlp attempt with -v (yes/no, true/false).
+# Run every yt-dlp attempt with -v (true or false).
 # Retry attempts are always verbose, so a download that actually breaks already
 # logs its full detail without this. Turn it on only to inspect a run that
 # reports success but produces the wrong result.
 # -v prints the cookie file path but never cookie values.
 ytdlp_verbose = false
 
-# YouTube cookie order when a cookie file is configured (yes/no, true/false).
+# YouTube cookie order when a cookie file is configured (true or false).
 # true: use cookies first; retry once without them if the attempt fails.
 # false: try without cookies first; retry once with them if the attempt fails.
 always_use_cookies = true
 
-# Trust client IP headers from a reverse proxy (X-Forwarded-For, CF-Connecting-IP).
+# Trust client IP headers from a reverse proxy (X-Forwarded-For,
+# CF-Connecting-IP); true or false.
 # Set true only behind a proxy you control, such as Cloudflare Tunnel.
 # Set false for direct exposure; clients could otherwise spoof their IP.
 trust_x_forwarded_for = true

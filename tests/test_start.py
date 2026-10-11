@@ -320,8 +320,8 @@ def test_load_config_rejects_invalid_numeric_values(
     value: str,
 ) -> None:
     """Startup config should reject malformed numeric settings loudly."""
-    config_file = tmp_path / "config.ini"
-    config_file.write_text(f"[podcast]\n{key} = {value}\n", encoding="utf-8")
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(f'{key} = "{value}"\n', encoding="utf-8")
 
     with pytest.raises(ValueError, match=key):
         config_module.load_config(config_file, tmp_path)

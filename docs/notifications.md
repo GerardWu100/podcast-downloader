@@ -14,7 +14,7 @@ errors still receives all of them. A run that worked sends nothing at all.
   is the failure that would otherwise be silent: nothing is attempted, so
   nothing fails, so nothing is reported.
 - One alert when the YouTube sign-in cookies have expired, or expire within
-  `cookie_expiry_warning_days` from `config.ini`.
+  `cookie_expiry_warning_days` from `config.toml`.
 - One alert when the downloader process stops before downloading anything, such
   as a missing `yt-dlp`.
 - One alert when the container comes back and finds it missed a scheduled run.
@@ -114,7 +114,7 @@ already knows where to send notifications, leave this field empty.
 - Settings are stored in `notifications.json` in the data directory. The file
   is readable only by its owner because the endpoint usually contains a key.
   This is the same protection used for `cookies.txt` and `.env`.
-- Settings are not stored in `config.ini`. The web interface writes them, and
+- Settings are not stored in `config.toml`. The web interface writes them, and
   saving the form over a commented configuration file would remove its comments.
 - A notification failure does not fail the download. It is logged, and the run
   continues.

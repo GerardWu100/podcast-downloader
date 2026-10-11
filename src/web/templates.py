@@ -1104,7 +1104,7 @@ def render_settings_page(
         Whether accounts exist. Without them there is no Logout button, and a
         note says that anyone who can reach the page can use it.
     retention_days:
-        Current ``retention_days`` from ``config.ini``.
+        Current ``retention_days`` from ``config.toml``.
     safe_cookie_summary:
         Escaped one-line description of the cookie file in use.
     safe_cookie_expiry:

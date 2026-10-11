@@ -69,7 +69,7 @@ def test_the_server_code_is_not_excluded() -> None:
     """A guard against over-excluding: the image still needs the application."""
     entries = dockerignore_entries()
 
-    for required in ("src/", "start.py", "main.py", "config.ini"):
+    for required in ("src/", "start.py", "main.py", "config.toml"):
         assert required not in entries
 
 

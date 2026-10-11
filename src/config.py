@@ -1,11 +1,18 @@
-"""Load runtime paths and settings from ``config.ini`` and environment variables."""
+"""Load runtime paths and settings from ``config.toml`` and environment variables.
+
+``config.toml`` holds flat top-level keys, one per setting, such as
+``retention_days = 30`` or ``urls_file = "urls.txt"``. Each value must have the
+type its setting needs: a whole number, a number, ``true``/``false``, or quoted
+text. A wrong type or an unknown key stops startup with an error that names it,
+so a typo can never fall back to a default without anyone noticing.
+"""
 
 from __future__ import annotations
 
-import configparser
 import math
 import os
 import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,7 +24,7 @@ MINIMUM_RETENTION_DAYS = 1
 # Ceiling for the settings page only; ten years is "keep everything".
 MAXIMUM_RETENTION_DAYS = 3650
 RETENTION_DAYS_KEY = "retention_days"
-CONFIG_SECTION = "podcast"
+CONFIG_FILENAME = "config.toml"
 # Time limit for one yt-dlp attempt, including download, conversion, SponsorBlock,
 # and thumbnail work. Long episodes on a slow connection need a generous limit.
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 3600
@@ -50,12 +57,12 @@ LAST_HOUR_OF_DAY = 23
 
 
 class ConfigError(ValueError):
-    """Raised when ``config.ini`` contains an invalid runtime setting."""
+    """Raised when ``config.toml`` contains an invalid runtime setting."""
 
 
 @dataclass(frozen=True)
 class PodcastConfig:
-    """Concrete paths and settings after config.ini and env overrides are applied."""
+    """Concrete paths and settings after config.toml and env overrides are applied."""
 
     urls_file: Path
     output_dir: Path
@@ -79,6 +86,72 @@ class PodcastConfig:
     max_download_attempts: int = DEFAULT_MAX_DOWNLOAD_ATTEMPTS
 
 
+# Every key config.toml may contain. Anything else is a typo, and a typo that
+# was silently ignored would leave the default in force without a word.
+KNOWN_SETTINGS = frozenset(
+    {
+        "urls_file",
+        "output_dir",
+        "intermediate_dir",
+        "channel_count",
+        "min_channel_video_age_hours",
+        "delay_seconds",
+        "retention_days",
+        "download_timeout_seconds",
+        "max_download_attempts",
+        "scheduled_run_hour",
+        "scheduled_run_interval_days",
+        "cookie_expiry_warning_days",
+        "log_file",
+        "downloaded_urls_file",
+        "bypass_age_check_file",
+        "cookies_file",
+        "youtube_player_client",
+        "ytdlp_verbose",
+        "always_use_cookies",
+        "trust_x_forwarded_for",
+    }
+)
+
+# config.toml as parsed: setting name -> value of its TOML type.
+Settings = dict[str, object]
+
+
+def read_settings(config_path: Path) -> Settings:
+    """Parse ``config.toml`` and reject keys that no setting uses.
+
+    Parameters
+    ----------
+    config_path:
+        Path to ``config.toml``. A missing file gives an empty mapping, so
+        every setting takes its default.
+
+    Returns
+    -------
+    Settings
+        Top-level keys mapped to their parsed values.
+
+    Raises
+    ------
+    ConfigError
+        When the file is not valid TOML or holds an unknown key.
+    """
+    if not config_path.exists():
+        return {}
+    try:
+        with config_path.open("rb") as config_file:
+            settings = tomllib.load(config_file)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"{config_path.name} could not be parsed: {exc}") from exc
+
+    unknown_keys = sorted(set(settings) - KNOWN_SETTINGS)
+    if unknown_keys:
+        raise ConfigError(
+            f"{config_path.name} has unknown setting(s): {', '.join(unknown_keys)}"
+        )
+    return settings
+
+
 def _require_non_blank(raw_value: str, key: str) -> str:
     """Return a stripped config value or raise when it is blank."""
     stripped_value = raw_value.strip()
@@ -95,38 +168,43 @@ def _resolve_path(value: str, project_root: Path) -> Path:
     return path
 
 
-def _get_int(
-    section: configparser.SectionProxy | dict[str, str], key: str, default: int
-) -> int:
-    """Parse an integer config value and raise on bad input."""
-    raw_value = section.get(key, str(default))
-    try:
-        value = int(raw_value)
-    except ValueError:
-        raise ConfigError(f"{key} must be an integer") from None
-
+def _get_int(settings: Settings, key: str, default: int) -> int:
+    """Return a whole-number setting, or raise when it has another type."""
+    value = settings.get(key, default)
+    # bool is a subclass of int in Python, but `true` is not a count.
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{key} must be a whole number, such as {default}")
     return value
+
+
+def _get_float(settings: Settings, key: str, default: float) -> float:
+    """Return a numeric setting; whole numbers are accepted too."""
+    value = settings.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{key} must be a number, such as {default}")
+    return float(value)
+
+
+def _get_bool(settings: Settings, key: str, default: bool) -> bool:
+    """Return a ``true``/``false`` setting, or raise when it has another type."""
+    value = settings.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{key} must be true or false, without quotes")
+    return value
+
+
+def _get_text(settings: Settings, key: str, default: str) -> str:
+    """Return a quoted-text setting, stripped of surrounding spaces."""
+    value = settings.get(key, default)
+    if not isinstance(value, str):
+        raise ConfigError(f'{key} must be quoted text, such as "{default}"')
+    return value.strip()
 
 
 def _require_minimum_int(value: int, key: str, minimum: int) -> int:
     """Validate that an integer setting is not below its accepted minimum."""
     if value < minimum:
         raise ConfigError(f"{key} must be at least {minimum}")
-    return value
-
-
-def _get_float(
-    section: configparser.SectionProxy | dict[str, str],
-    key: str,
-    default: float,
-) -> float:
-    """Parse a float config value and raise on bad input."""
-    raw_value = section.get(key, str(default))
-    try:
-        value = float(raw_value)
-    except ValueError:
-        raise ConfigError(f"{key} must be a number") from None
-
     return value
 
 
@@ -147,231 +225,161 @@ def _require_minimum_float(value: float, key: str, minimum: float) -> float:
     return value
 
 
-def _get_bool(
-    parser: configparser.ConfigParser,
-    section_name: str,
-    key: str,
-    default: bool,
-) -> bool:
-    """Parse a boolean config value and fall back to the default on bad input.
-
-    Takes the full parser (unlike _get_int/_get_float) because configparser's
-    getboolean() handles 'yes/no/on/off/true/false' and requires the parser object.
-    """
-    try:
-        return parser.getboolean(section_name, key, fallback=default)
-    except ValueError:
-        return default
-
-
-def _get_path(
-    section: configparser.SectionProxy | dict[str, str],
-    key: str,
-    default: str,
-    project_root: Path,
-) -> Path:
+def _get_path(settings: Settings, key: str, default: str, project_root: Path) -> Path:
     """Resolve a required path setting after rejecting blank configured values."""
-    raw_value = section.get(key, default)
-    value = _require_non_blank(raw_value, key)
+    value = _require_non_blank(_get_text(settings, key, default), key)
     return _resolve_path(value, project_root)
 
 
+def _env_or_setting_path(
+    env_name: str, settings: Settings, key: str, default: str, project_root: Path
+) -> Path:
+    """Return a directory from the environment if set, else from config.toml.
+
+    Docker can put downloads and scratch files on separate mounts, so the
+    environment wins over the file.
+    """
+    if env_name in os.environ:
+        return _resolve_path(
+            _require_non_blank(os.environ.get(env_name, ""), env_name), project_root
+        )
+    return _get_path(settings, key, default, project_root)
+
+
 def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
-    """Load ``config.ini`` and apply environment overrides and defaults."""
-    # Interpolation off: a literal "%" in a value is data, not a reference.
-    parser = configparser.ConfigParser(interpolation=None)
-    try:
-        parser.read(config_path)
-    except configparser.Error as exc:
-        # A duplicated key or broken section header must reach the operator as
-        # the same one-line startup error as any other bad setting.
-        raise ConfigError(f"{config_path.name} could not be parsed: {exc}") from exc
-    section = parser["podcast"] if "podcast" in parser else {}
+    """Load ``config.toml`` and apply environment overrides and defaults.
 
-    urls_file = _get_path(section, "urls_file", "urls.txt", project_root)
-    # Docker can put downloads on a separate mount, so let the environment win.
-    if "PODCAST_DOWNLOAD_DIR" in os.environ:
-        env_download_dir = os.environ.get("PODCAST_DOWNLOAD_DIR", "")
-        output_dir = _resolve_path(
-            _require_non_blank(env_download_dir, "PODCAST_DOWNLOAD_DIR"),
-            project_root,
-        )
-    else:
-        output_dir = _get_path(section, "output_dir", "downloads", project_root)
+    Parameters
+    ----------
+    config_path:
+        Path to ``config.toml``; a missing file means every default.
+    project_root:
+        Directory that relative paths in the file are resolved against.
 
-    if "PODCAST_INTERMEDIATE_DIR" in os.environ:
-        env_intermediate_dir = os.environ.get("PODCAST_INTERMEDIATE_DIR", "")
-        intermediate_dir = _resolve_path(
-            _require_non_blank(env_intermediate_dir, "PODCAST_INTERMEDIATE_DIR"),
-            project_root,
-        )
-    else:
-        intermediate_dir = _get_path(
-            section,
+    Returns
+    -------
+    PodcastConfig
+        Validated settings with every path made absolute.
+
+    Raises
+    ------
+    ConfigError
+        On invalid TOML, an unknown key, a value of the wrong type, or a value
+        outside its range. The message names the setting.
+    """
+    settings = read_settings(config_path)
+
+    # Cookies are optional. An explicit cookies_file is kept even before the
+    # file exists, so the web UI can create that exact file and later runs use
+    # it; without the key, a cookies.txt beside the data is picked up if present.
+    cookies_file: Path | None = None
+    if "cookies_file" in settings:
+        cookies_file = _get_path(settings, "cookies_file", "cookies.txt", project_root)
+    elif (project_root / "cookies.txt").is_file():
+        cookies_file = project_root / "cookies.txt"
+
+    return PodcastConfig(
+        urls_file=_get_path(settings, "urls_file", "urls.txt", project_root),
+        output_dir=_env_or_setting_path(
+            "PODCAST_DOWNLOAD_DIR", settings, "output_dir", "downloads", project_root
+        ),
+        intermediate_dir=_env_or_setting_path(
+            "PODCAST_INTERMEDIATE_DIR",
+            settings,
             "intermediate_dir",
             "download_work",
             project_root,
-        )
-
-    channel_count = _require_minimum_int(
-        _get_int(section, "channel_count", DEFAULT_CHANNEL_VIDEO_COUNT),
-        "channel_count",
-        1,
-    )
-
-    log_file = _get_path(section, "log_file", "download.log", project_root)
-    downloaded_urls_file = _get_path(
-        section,
-        "downloaded_urls_file",
-        "downloaded_urls.txt",
-        project_root,
-    )
-
-    min_channel_video_age_hours = _require_minimum_int(
-        _get_int(
-            section,
+        ),
+        channel_count=_require_minimum_int(
+            _get_int(settings, "channel_count", DEFAULT_CHANNEL_VIDEO_COUNT),
+            "channel_count",
+            1,
+        ),
+        log_file=_get_path(settings, "log_file", "download.log", project_root),
+        downloaded_urls_file=_get_path(
+            settings, "downloaded_urls_file", "downloaded_urls.txt", project_root
+        ),
+        min_channel_video_age_hours=_require_minimum_int(
+            _get_int(
+                settings,
+                "min_channel_video_age_hours",
+                DEFAULT_MIN_CHANNEL_VIDEO_AGE_HOURS,
+            ),
             "min_channel_video_age_hours",
-            DEFAULT_MIN_CHANNEL_VIDEO_AGE_HOURS,
+            0,
         ),
-        "min_channel_video_age_hours",
-        0,
-    )
-
-    delay_seconds = _require_minimum_float(
-        _get_float(section, "delay_seconds", DEFAULT_DELAY_SECONDS),
-        "delay_seconds",
-        0.0,
-    )
-    retention_days = _require_minimum_int(
-        _get_int(section, RETENTION_DAYS_KEY, DEFAULT_RETENTION_DAYS),
-        RETENTION_DAYS_KEY,
-        MINIMUM_RETENTION_DAYS,
-    )
-    download_timeout_seconds = _require_minimum_int(
-        _get_int(
-            section,
+        delay_seconds=_require_minimum_float(
+            _get_float(settings, "delay_seconds", DEFAULT_DELAY_SECONDS),
+            "delay_seconds",
+            0.0,
+        ),
+        retention_days=_require_minimum_int(
+            _get_int(settings, RETENTION_DAYS_KEY, DEFAULT_RETENTION_DAYS),
+            RETENTION_DAYS_KEY,
+            MINIMUM_RETENTION_DAYS,
+        ),
+        download_timeout_seconds=_require_minimum_int(
+            _get_int(
+                settings, "download_timeout_seconds", DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
+            ),
             "download_timeout_seconds",
-            DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+            MINIMUM_DOWNLOAD_TIMEOUT_SECONDS,
         ),
-        "download_timeout_seconds",
-        MINIMUM_DOWNLOAD_TIMEOUT_SECONDS,
-    )
-    trust_x_forwarded_for = _get_bool(
-        parser,
-        "podcast",
-        "trust_x_forwarded_for",
-        False,
-    )
-
-    # Cookies are optional. ``always_use_cookies`` chooses which mode comes
-    # first; the other mode is tried once if the first attempt fails.
-    cookies_file: Path | None = None
-    if "cookies_file" in section:
-        explicit_cookies = _require_non_blank(
-            section.get("cookies_file", ""), "cookies_file"
-        )
-        candidate = _resolve_path(explicit_cookies, project_root)
-        # Preserve an explicit path even before the file exists. The web UI can
-        # then create that exact file, and later downloader processes use it.
-        cookies_file = candidate
-    else:
-        auto_candidate = project_root / "cookies.txt"
-        if auto_candidate.is_file():
-            cookies_file = auto_candidate
-
-    always_use_cookies = _get_bool(
-        parser,
-        "podcast",
-        "always_use_cookies",
-        True,
-    )
-
-    bypass_age_check_file = _get_path(
-        section,
-        "bypass_age_check_file",
-        "bypass_age_check_urls.txt",
-        project_root,
-    )
-
-    youtube_player_client = section.get(
-        "youtube_player_client",
-        DEFAULT_YOUTUBE_PLAYER_CLIENT,
-    ).strip()
-
-    ytdlp_verbose = _get_bool(
-        parser,
-        "podcast",
-        "ytdlp_verbose",
-        DEFAULT_YTDLP_VERBOSE,
-    )
-
-    # The schedule is a wall-clock rule, not a countdown: an hour of the day
-    # and how many calendar days apart the run days are.
-    scheduled_run_hour = _require_int_in_range(
-        _get_int(section, "scheduled_run_hour", DEFAULT_SCHEDULED_RUN_HOUR),
-        "scheduled_run_hour",
-        FIRST_HOUR_OF_DAY,
-        LAST_HOUR_OF_DAY,
-    )
-    scheduled_run_interval_days = _require_minimum_int(
-        _get_int(
-            section,
-            "scheduled_run_interval_days",
-            DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS,
-        ),
-        "scheduled_run_interval_days",
-        1,
-    )
-    cookie_expiry_warning_days = _require_minimum_int(
-        _get_int(
-            section,
-            "cookie_expiry_warning_days",
-            DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
-        ),
-        "cookie_expiry_warning_days",
-        0,
-    )
-    max_download_attempts = _require_minimum_int(
-        _get_int(section, "max_download_attempts", DEFAULT_MAX_DOWNLOAD_ATTEMPTS),
-        "max_download_attempts",
-        1,
-    )
-
-    return PodcastConfig(
-        urls_file=urls_file,
-        output_dir=output_dir,
-        intermediate_dir=intermediate_dir,
-        channel_count=channel_count,
-        log_file=log_file,
-        downloaded_urls_file=downloaded_urls_file,
-        min_channel_video_age_hours=min_channel_video_age_hours,
-        delay_seconds=delay_seconds,
-        retention_days=retention_days,
-        download_timeout_seconds=download_timeout_seconds,
-        trust_x_forwarded_for=trust_x_forwarded_for,
+        trust_x_forwarded_for=_get_bool(settings, "trust_x_forwarded_for", False),
         cookies_file=cookies_file,
-        always_use_cookies=always_use_cookies,
-        bypass_age_check_file=bypass_age_check_file,
-        youtube_player_client=youtube_player_client,
-        ytdlp_verbose=ytdlp_verbose,
-        scheduled_run_hour=scheduled_run_hour,
-        scheduled_run_interval_days=scheduled_run_interval_days,
-        cookie_expiry_warning_days=cookie_expiry_warning_days,
-        max_download_attempts=max_download_attempts,
+        always_use_cookies=_get_bool(settings, "always_use_cookies", True),
+        bypass_age_check_file=_get_path(
+            settings, "bypass_age_check_file", "bypass_age_check_urls.txt", project_root
+        ),
+        youtube_player_client=_get_text(
+            settings, "youtube_player_client", DEFAULT_YOUTUBE_PLAYER_CLIENT
+        ),
+        ytdlp_verbose=_get_bool(settings, "ytdlp_verbose", DEFAULT_YTDLP_VERBOSE),
+        # The schedule is a wall-clock rule, not a countdown: an hour of the
+        # day and how many calendar days apart the run days are.
+        scheduled_run_hour=_require_int_in_range(
+            _get_int(settings, "scheduled_run_hour", DEFAULT_SCHEDULED_RUN_HOUR),
+            "scheduled_run_hour",
+            FIRST_HOUR_OF_DAY,
+            LAST_HOUR_OF_DAY,
+        ),
+        scheduled_run_interval_days=_require_minimum_int(
+            _get_int(
+                settings,
+                "scheduled_run_interval_days",
+                DEFAULT_SCHEDULED_RUN_INTERVAL_DAYS,
+            ),
+            "scheduled_run_interval_days",
+            1,
+        ),
+        cookie_expiry_warning_days=_require_minimum_int(
+            _get_int(
+                settings,
+                "cookie_expiry_warning_days",
+                DEFAULT_COOKIE_EXPIRY_WARNING_DAYS,
+            ),
+            "cookie_expiry_warning_days",
+            0,
+        ),
+        max_download_attempts=_require_minimum_int(
+            _get_int(settings, "max_download_attempts", DEFAULT_MAX_DOWNLOAD_ATTEMPTS),
+            "max_download_attempts",
+            1,
+        ),
     )
 
 
 def read_retention_days(config_path: Path) -> int:
-    """Return ``retention_days`` as it is in ``config.ini`` right now.
+    """Return ``retention_days`` as it is in ``config.toml`` right now.
 
     The web server loads its configuration once at startup, but each download
-    run reads ``config.ini`` again, so the settings page reads the file instead
+    run reads ``config.toml`` again, so the settings page reads the file instead
     of the startup copy to show what the next run will use.
 
     Parameters
     ----------
     config_path:
-        Path to ``config.ini``.
+        Path to ``config.toml``.
 
     Returns
     -------
@@ -384,30 +392,24 @@ def read_retention_days(config_path: Path) -> int:
     ConfigError
         When the file cannot be parsed or the value is not a valid count.
     """
-    parser = configparser.ConfigParser(interpolation=None)
-    try:
-        parser.read(config_path)
-    except configparser.Error as exc:
-        raise ConfigError(f"{config_path.name} could not be parsed: {exc}") from exc
-    section = parser[CONFIG_SECTION] if CONFIG_SECTION in parser else {}
     return _require_minimum_int(
-        _get_int(section, RETENTION_DAYS_KEY, DEFAULT_RETENTION_DAYS),
+        _get_int(read_settings(config_path), RETENTION_DAYS_KEY, DEFAULT_RETENTION_DAYS),
         RETENTION_DAYS_KEY,
         MINIMUM_RETENTION_DAYS,
     )
 
 
 def write_retention_days(config_path: Path, days: int) -> None:
-    """Set ``retention_days`` in ``config.ini``, keeping every other line.
+    """Set ``retention_days`` in ``config.toml``, keeping every other line.
 
-    The file is the operator's, full of explanatory comments, so it is edited
-    as text rather than rewritten by ``configparser``, which would drop them.
-    The next download run picks the value up; no restart is needed.
+    The file is the operator's, full of explanatory comments, and Python's
+    ``tomllib`` can read TOML but not write it, so the one line is edited as
+    text. The next download run picks the value up; no restart is needed.
 
     Parameters
     ----------
     config_path:
-        Path to ``config.ini``. Created with a ``[podcast]`` section if absent.
+        Path to ``config.toml``. Created if absent.
     days:
         Days to keep channel episodes, from :data:`MINIMUM_RETENTION_DAYS` to
         :data:`MAXIMUM_RETENTION_DAYS`.
@@ -423,18 +425,15 @@ def write_retention_days(config_path: Path, days: int) -> None:
     text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     setting_line = f"{RETENTION_DAYS_KEY} = {days}"
 
-    # Before: "retention_days = 30" somewhere under [podcast].
-    # After:  the same line with the new number; comments mentioning the key
-    # start with "#" and are not matched.
-    key_line = re.compile(rf"^[ \t]*{RETENTION_DAYS_KEY}[ \t]*[=:].*$", re.MULTILINE)
-    section_header = re.compile(rf"^\[{CONFIG_SECTION}\][ \t]*$", re.MULTILINE)
+    # Before: "retention_days = 30" on its own line.
+    # After:  the same line with the new number. Comments that mention the key
+    # start with "#" and are not matched. A file without the key gets it as the
+    # first line, where a top-level TOML key is always valid.
+    key_line = re.compile(rf"^[ \t]*{RETENTION_DAYS_KEY}[ \t]*=.*$", re.MULTILINE)
     if key_line.search(text):
         text = key_line.sub(setting_line, text, count=1)
-    elif header := section_header.search(text):
-        text = f"{text[: header.end()]}\n{setting_line}{text[header.end():]}"
     else:
-        separator = "\n" if text and not text.endswith("\n") else ""
-        text = f"{text}{separator}[{CONFIG_SECTION}]\n{setting_line}\n"
+        text = f"{setting_line}\n{text}"
 
     # Replace in one rename, so a run starting at this moment reads either the
     # old file or the new one, never half of each.

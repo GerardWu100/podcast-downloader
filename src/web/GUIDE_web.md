@@ -20,7 +20,7 @@ After signing in, the interface has two pages:
 
 - `/` is the queue: add a source, see monitored sources, and read activity logs.
 - `/settings` handles retention (`POST /save-retention`, which rewrites the
-  one `retention_days` line in `config.ini`), YouTube cookies, and Apprise
+  one `retention_days` line in `config.toml`), YouTube cookies, and Apprise
   notifications.
 
 Both forms return to `/settings`. The queue is the site root; there is no
@@ -108,4 +108,4 @@ pages stay consistent.
 - 2026-08-26: Added `/api` for the Chrome extension. The form and API now share URL handling in `queue_actions.py` and account checks in `account_auth.py`. The API uses the same username and password in a header because the browser session cookie is `HttpOnly` and `SameSite=lax`.
 - 2026-08-27: Bounded API bodies before JSON parsing, stopped logging submitted
   URLs, and rejected account names containing the HTTP Basic separator.
-- 2026-10-11: Login became optional (no account in `.env` means no login), the activity panel's two dropdowns became tabs plus count buttons that filter, and retention moved onto the settings page. The settings page reads `retention_days` from the file, not the startup config, because each run rereads `config.ini`.
+- 2026-10-11: Login became optional (no account in `.env` means no login), the activity panel's two dropdowns became tabs plus count buttons that filter, and retention moved onto the settings page. The settings page reads `retention_days` from the file, not the startup config, because each run rereads `config.toml`.

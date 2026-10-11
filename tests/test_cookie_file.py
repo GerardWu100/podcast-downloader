@@ -10,7 +10,7 @@ from src.log_timezone import LOG_TIME_ZONE
 from src.web import routes
 
 NOW = datetime.now(LOG_TIME_ZONE)
-# The settings page reads this from config.ini; the tests pin it so the
+# The settings page reads this from config.toml; the tests pin it so the
 # wording under test does not move with the deployment.
 WARNING_DAYS = 14
 

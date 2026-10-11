@@ -23,7 +23,7 @@ python-dotenv`; it is not part of the deployed application.
 ```text
 podcast-downloader/
 ├── README.md
-├── config.ini
+├── config.toml
 ├── main.py
 ├── start.py
 ├── src/
@@ -69,7 +69,7 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
   the queue at a fixed time of day, 06:00 every other day by default. It also
   reports the two failures only it can see: a run that stopped before
   downloading anything, and a scheduled run that never happened.
-- `config.ini`: checked-in runtime defaults, including the run hour
+- `config.toml`: checked-in runtime defaults, including the run hour
   (`scheduled_run_hour`) and how many days apart runs are
   (`scheduled_run_interval_days`).
 - `docker-entrypoint.sh`: prepares mounted state, `.env`, and cookies; updates
@@ -122,3 +122,4 @@ uv run python -m pytest -q
 - 2026-10-11: Added the drop rule: a video is dropped after `max_download_attempts` failures that blame the video. Hang recovery (a watchdog or Docker `HEALTHCHECK`) and a PO-token helper container were considered and declined; Docker's restart policy ignores health status anyway.
 - 2026-10-11: Added a GHCR image (amd64 and arm64) built by GitHub Actions, plus `docker-compose.example.yml`, so a server can deploy without cloning. `docker-compose.yml` still builds from source. Automatic image updates (Watchtower) were declined: updates stay a manual `docker compose pull`.
 - 2026-10-11: Login became optional and is off by default (`.env.example` leaves it blank); an account set wrongly locks the page instead of opening it. The published-image compose no longer needs a `.env` or a pre-made network, so setup is one file. Retention moved onto the settings page, and the activity panel's dropdowns became tabs and count filters.
+- 2026-10-11: Settings moved from `config.ini` to `config.toml`, read with `tomllib`. The INI loader silently fell back to the default on a mistyped `true`/`false`, and ignored misspelled keys; the TOML loader rejects a wrong type or an unknown key at startup. Existing deployments start from the shipped defaults and must copy any changed values across by hand.

@@ -162,9 +162,11 @@ downloaded, and `!` for a problem. See
 
 ## Configuration
 
-Retention is on the settings page. Everything else lives in `config.ini`.
-With Docker, edit `~/.containers/podcast-downloader/config.ini` and restart the
-container (`docker compose restart`). The ones you are most likely to change:
+Retention is on the settings page. Everything else lives in `config.toml`.
+With Docker, edit `~/.containers/podcast-downloader/config.toml` and restart the
+container (`docker compose restart`). Numbers and `true`/`false` are written
+bare and text goes in quotes; a typo stops startup with an error that names the
+setting. The ones you are most likely to change:
 
 | Setting | Default | What it does |
 |---|---|---|
