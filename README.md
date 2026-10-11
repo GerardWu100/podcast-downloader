@@ -93,11 +93,11 @@ updating never loses them. Nothing updates on its own.
 
 ```text
 ~/downloads/podcasts/
-├── lexfridman/                  ← one folder per channel or playlist
-│   ├── Lex Fridman - Episode 480 [a1b2c3d4e5f].mp3
-│   └── Lex Fridman - Episode 481 [l1m2n3o4p5q].mp3
-├── hubermanlab/
-│   └── Huberman Lab - Sleep and Focus [f6g7h8i9j0k].mp3
+├── example-podcast/             ← one folder per channel or playlist
+│   ├── Example Podcast - Episode 41 [EXAMPLE0041].mp3
+│   └── Example Podcast - Episode 42 [EXAMPLE0042].mp3
+├── example-science-show/
+│   └── Example Science Show - Why We Sleep [EXAMPLE0007].mp3
 └── singles/                     ← videos you added one by one
 ```
 
