@@ -68,8 +68,7 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
 - `start.py`: Docker supervisor. It runs Uvicorn in the main process and runs
   the queue at a fixed time of day, 06:00 every other day by default. It also
   reports the two failures only it can see: a run that stopped before
-  downloading anything, and a scheduled run that never happened. A watchdog
-  thread exits the process when the scheduler hangs, so Docker restarts it.
+  downloading anything, and a scheduled run that never happened.
 - `config.ini`: checked-in runtime defaults, including the run hour
   (`scheduled_run_hour`) and how many days apart runs are
   (`scheduled_run_interval_days`).
@@ -118,4 +117,4 @@ uv run python -m pytest -q
   notification keys out of image layers.
 - 2026-10-10: Removed the dated AI review notes (`astra_thoughts_*.md`, `fable_thoughts_*.md`). Their goal statement now lives in `AGENTS.md`, and their findings are fixed or tracked there.
 - 2026-10-10: Removed the generated `CODE_EXPLAINED.html`. It went stale after each code change; `docs/architecture.md` and the folder guides cover the same ground.
-- 2026-10-11: Added the watchdog that exits a hung scheduler so Docker restarts it, and the drop rule: a video is dropped after `max_download_attempts` failures that blame the video. A Docker `HEALTHCHECK` was rejected because Docker's restart policy ignores health status.
+- 2026-10-11: Added the drop rule: a video is dropped after `max_download_attempts` failures that blame the video. Hang recovery (a watchdog or Docker `HEALTHCHECK`) and a PO-token helper container were considered and declined; Docker's restart policy ignores health status anyway.

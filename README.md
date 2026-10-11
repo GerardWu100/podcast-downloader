@@ -21,8 +21,6 @@ segments when available, and run from the command line or a web browser.
 - Drop a video after two failed attempts (`max_download_attempts`), so a
   deleted or private video stops failing on every run. Failures caused by a
   YouTube block or the network do not count.
-- Restart itself when the scheduler hangs: a watchdog exits the process, and
-  Docker's restart policy starts it again and catches up on the missed run.
 - Report the failures that would otherwise be silent: a run where no channel
   would list, a run that could not start, expiring cookies, and a scheduled run
   that never happened. `GET /api/health` lets an uptime monitor catch a

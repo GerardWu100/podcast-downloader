@@ -18,13 +18,11 @@ errors still receives all of them. A run that worked sends nothing at all.
 - One alert when the downloader process stops before downloading anything, such
   as a missing `yt-dlp`.
 - One alert when the container comes back and finds it missed a scheduled run.
-- One alert when the watchdog finds the scheduler hung and restarts the
-  container.
 
 A failed download's alert also says what happens next: the attempt number, or
 that the video was dropped after `max_download_attempts` failures.
 
-A machine that is off, or a container that cannot start, cannot report itself. Poll
+A container that hangs and never comes back cannot report itself. Poll
 `GET /api/health` from a monitor for that; see
 [operations.md](operations.md).
 

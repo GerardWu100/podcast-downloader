@@ -190,7 +190,6 @@ so a setup that only forwards errors still receives them:
 | The sign-in cookies expired, or expire within `cookie_expiry_warning_days` | The expiry date and what to do | The download run |
 | The downloader process stopped before downloading anything | The exit status, plus where to look | The scheduler |
 | A scheduled run did not happen while the container was down | The run time that was missed and the last run that finished | The scheduler, on the next start |
-| The scheduler hung, so the watchdog is restarting the container | What the watchdog saw | The watchdog, just before it exits |
 
 A run that worked sends nothing. That is deliberate: a message that always
 arrives cannot prove anything by arriving, and it trains you to ignore the
@@ -211,24 +210,6 @@ every video alike while they last, so they never count. Otherwise one blocked
 week would empty the queue. Timeouts and local tagging or publishing errors do
 not count either.
 
-## Self-restart when the scheduler hangs
-
-Docker's `restart: unless-stopped` restarts a container whose process exits. It
-does nothing for a process that hangs, and it ignores healthcheck status too.
-A watchdog thread in `start.py` therefore checks every five minutes and exits
-the process when either of these is true:
-
-- A downloader subprocess has been running longer than one schedule interval
-  (two days by default), so the next run is already due.
-- The scheduler is idle, but a scheduled run that fell while the process was up
-  is more than three hours late. This covers, for example, a `yt-dlp` update
-  that never returns.
-
-Docker then starts the container again, and the startup catch-up makes up the
-missed run. A run missed while the machine was off is left to that catch-up and
-its own alert. A request from the browser, such as a long full-playlist run,
-does not trip the watchdog unless it lasts longer than a whole interval.
-
 Two things are deliberately not alerted. A single channel returning no videos
 is ordinary, so it is written to the activity log as `No videos listed` and
 shown with an `Empty` badge instead. Individual failed downloads already send
@@ -236,9 +217,9 @@ their own message.
 
 ## Watching from outside
 
-Nothing inside a dead container can report that it is dead. A hang now restarts
-the container, but a machine that is off, or a container that cannot start,
-stays silent until it comes back. `GET /api/health` exists to be polled from outside
+Nothing inside a dead container can report that it is dead. The last case above
+is covered only after the machine comes back, so a container that hangs or
+never restarts stays silent. `GET /api/health` exists to be polled from outside
 for exactly that:
 
 ```bash

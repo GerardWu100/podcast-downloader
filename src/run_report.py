@@ -25,7 +25,6 @@ from .human_time import format_clock_time, format_time_ago, format_time_until
 RUN_ALERT_TITLE = "Podcast downloader needs attention"
 MISSED_RUN_TITLE = "Podcast downloader missed a run"
 FAILED_RUN_TITLE = "Podcast downloader could not finish a run"
-STUCK_SCHEDULER_TITLE = "Podcast downloader was stuck and restarted"
 # Written into the alert so the reader knows where to look next. The 403 and
 # the cookie file are the two things that break a working deployment.
 BLOCKED_LISTING_ADVICE = (
@@ -295,26 +294,4 @@ def build_failed_run_alert(exit_code: int, now: datetime) -> RunAlert:
         "because nothing was attempted. Check download.log and the container "
         "output: a missing yt-dlp or a rejected config.ini both end this way.",
         f"the run stopped with exit status {exit_code}",
-    )
-
-
-def build_stuck_scheduler_alert(problem: str) -> RunAlert:
-    """Return the alert sent just before the watchdog restarts the container.
-
-    The restart itself is the fix. This message says why it happened, because
-    the missed-run alert that follows on startup cannot tell a hang from a
-    machine that was switched off.
-
-    Parameters
-    ----------
-    problem:
-        What the watchdog saw, as a sentence fragment such as "a download run
-        started Mon 06:00 is still going".
-    """
-    return RunAlert(
-        STUCK_SCHEDULER_TITLE,
-        f"The scheduler stopped keeping its schedule: {problem}. The container "
-        "is restarting itself and will catch up on the missed run. If this "
-        "message repeats, check download.log and the container logs.",
-        f"scheduler stuck ({problem}); restarting",
     )
