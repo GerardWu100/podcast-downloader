@@ -23,7 +23,7 @@ toolbar click / Alt+Shift+D / context menu
 The web form uses the same queue actions, so both entry points share URL
 validation, normalization, duplicate handling, and immediate-download rules.
 
-## Files
+## Files in `src/`
 
 - `manifest.json`: Manifest V3 declaration and limited permissions. `activeTab`
   reveals a tab URL only when the user invokes the extension. The options page
@@ -62,11 +62,12 @@ signed file instead. Credentials come from the environment or a `chmod 600`
 `.amo-credentials` file. The script passes them through the subprocess
 environment because other processes can read command arguments from `/proc`.
 
-`scripts/build_extensions.py` assembles both builds into
-`build/chrome-extension/` and `build/firefox-extension/`. With `--zip`, it also
-creates the Chrome archive attached to a release. Chrome loads `extension/`
-directly and needs no build step. Firefox installs the signed `.xpi`; an
-unsigned Firefox archive is rejected.
+`src/` is the only place to edit. `scripts/build_extensions.py` copies it into
+`chrome/` and `firefox/`, the ready-to-load folders, which are committed so a
+checkout loads them without building (`tests/test_build_extensions.py` fails
+when they fall behind `src/`). With `--zip` and `--sign` it also writes the
+release archives into the ignored `dist/` folder. Firefox installs the signed
+`.xpi`; an unsigned Firefox archive is rejected.
 
 `tests/test_build_extensions.py` checks manifest versions and permissions,
 shared files, stale files, and archive behavior. A build without `--zip` must
@@ -133,3 +134,4 @@ confirm that the entry appears in `urls.txt`.
 - 2026-08-27: Replaced broad release-file discovery with an allowlist and made
   server changes remove the extension's old origin permission.
 - 2026-10-11 (2.0.0): Review fixes. Login fields are optional for servers with login off. Embedded players send the frame's URL. Requests time out after 15 seconds. 422 lists, HTML pages, and redirects give readable errors. A success notification and per-tab tooltip say what happened. Badge timers are per tab. Firefox for Android APIs (menus, commands, notifications) are guarded.
+- 2026-10-11: Source moved to `src/`; `chrome/` and `firefox/` hold committed ready-to-load builds, the layout the minimum-views-filter project uses, so neither browser needs an unzip or a build step from a checkout.

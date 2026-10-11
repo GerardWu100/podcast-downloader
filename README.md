@@ -148,7 +148,7 @@ Add the video you are watching with one click, without copying the URL.
 | Browser | Install |
 |---|---|
 | Firefox 140+ | Download `podcast-downloader-firefox-<version>.xpi` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest), drag it onto Firefox, and select **Add** |
-| Chrome, Edge, Brave | Unzip `podcast-downloader-chrome-<version>.zip` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest). Open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked**, and choose the folder. With this repository cloned, choose its `extension/` folder instead: nothing to unzip, and after a `git pull` select **Reload** on the extension's card |
+| Chrome, Edge, Brave | Open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked**, and choose `extension/chrome/` in this repository. After a `git pull`, select **Reload** on the extension's card. Without a clone, unzip `podcast-downloader-chrome-<version>.zip` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest) and choose that folder |
 
 Click the toolbar icon, enter the page address, such as
 `192.168.1.20:6847`, and select **Save and test**. Fill in a username and

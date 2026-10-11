@@ -139,7 +139,7 @@ output from the build context as defense in depth:
 
 | Excluded | Why |
 |---|---|
-| `extension/` and `build/` | Browser code. It runs in your browser, never on the server. `build/` holds the generated Firefox copy |
+| `extension/` and `dist/` | Browser code. It runs in your browser, never on the server. `dist/` holds the release archives |
 | `tests/`, `scripts/`, `docs/`, `blog/` | Developer material. Nothing under `src/`, `start.py`, or `docker-entrypoint.sh` imports them |
 | `.env`, cookies, notification settings, queue files, logs, sessions, credentials, the last-run record | Secrets and runtime state belong in the runtime secret or mounted data directory; image layers are durable and may be pushed to a registry |
 

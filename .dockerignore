@@ -43,7 +43,7 @@ scripts/
 blog/
 docs/
 
-# Generated output. `build/` holds the assembled browser extensions and their
+# Generated output. `dist/` holds the assembled browser extensions and their
 # archives, written by scripts/build_extensions.py. It is browser code and can
 # be several hundred kilobytes, so it does not belong in the build context.
 .amo-credentials

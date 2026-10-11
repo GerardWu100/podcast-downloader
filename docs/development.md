@@ -79,7 +79,7 @@ so it stays outside `tests/`.
 | `src/web/` | Web pages, JSON API, login, and browser security |
 | `src/notifications/` | Apprise alerts |
 | `config.toml` | Shipped settings; the container copies it on first start |
-| `extension/` | Chrome and Firefox extension; not part of the server image |
+| `extension/src/` | Browser extension source; `extension/chrome/` and `extension/firefox/` are the ready-to-load builds made from it. Not part of the server image |
 | `docs/` | This documentation; the source of the GitHub wiki |
 | `tests/`, `scripts/` | Automated tests; manual checks and packaging tools |
 
@@ -117,12 +117,14 @@ extension manifests disagree, and `/api/ping` reports it.
 To cut release `X.Y.Z`:
 
 1. Set `version = "X.Y.Z"` in `pyproject.toml` and `"version"` in both
-   `extension/manifest*.json`, then run the tests.
+   `extension/src/manifest*.json`, then run the tests.
 2. Add a `## X.Y.Z` section at the top of `CHANGELOG.md`.
 3. Commit and push, then tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 4. Build the extension: `uv run python scripts/build_extensions.py --zip --sign`.
+   It refreshes `extension/chrome/` and `extension/firefox/` (commit them) and
+   writes the release files into `dist/`.
 5. Create the release with the notes and both archives:
-   `gh release create vX.Y.Z --title "X.Y.Z" --notes-file <notes> build/*.zip build/*.xpi`.
+   `gh release create vX.Y.Z --title "X.Y.Z" --notes-file <notes> dist/*.zip dist/*.xpi`.
 
 Use a major version for a change that needs the user to act, such as a
 renamed setting; a minor version for new features; a patch for fixes.

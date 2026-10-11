@@ -1,15 +1,17 @@
 """Package the browser extension for Chrome and for Firefox.
 
-``extension/`` is the single source. Chrome can load that folder directly, so
-this script is not needed for day-to-day Chrome work; it exists to produce the
-two archives attached to a release, and the Firefox folder, which Chrome's
-manifest cannot serve.
+``extension/src/`` is the single source. This script copies it into the two
+ready-to-load folders, ``extension/chrome/`` and ``extension/firefox/``, which
+are committed so a checkout can load them without building, and with ``--zip``
+and ``--sign`` writes the release files into ``dist/``. A test fails when the
+committed folders no longer match a fresh build, so run this after any change
+to ``extension/src/`` and commit the result.
 
 The browsers need different manifests. Firefox has no extension service
 workers, so ``background.js`` runs as an event page; it wants a stable add-on
 id before it will install anything permanently; and it reads ``options_ui``
 where Chrome reads ``options_page``. Every other file is identical, which is
-why the difference lives in ``extension/manifest.firefox.json`` rather than in
+why the difference lives in ``extension/src/manifest.firefox.json`` rather than in
 a second copy of the JavaScript.
 
 Usage
@@ -26,7 +28,7 @@ Only Chrome gets a ``.zip``. Chrome installs one through Load unpacked, so the
 archive is what a Chrome user downloads. Firefox has no equivalent: it installs
 the signed ``.xpi`` that ``--sign`` produces, and an unsigned Firefox archive
 would only be a file people download by mistake and cannot install. Developers
-who want the unsigned Firefox build load ``build/firefox-extension`` directly
+who want the unsigned Firefox build load ``extension/firefox`` directly
 through ``about:debugging``, no archive involved.
 
 ``--sign`` exists because Firefox will not permanently install an add-on that
@@ -51,8 +53,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SOURCE_DIR = PROJECT_ROOT / "extension"
-BUILD_ROOT = PROJECT_ROOT / "build"
+EXTENSION_ROOT = PROJECT_ROOT / "extension"
+# The one source both browsers are built from.
+SOURCE_DIR = EXTENSION_ROOT / "src"
+# Release archives and signed files. Local only (ignored by git); the release
+# upload takes them from here.
+BUILD_ROOT = PROJECT_ROOT / "dist"
 
 CHROME_MANIFEST = "manifest.json"
 FIREFOX_MANIFEST = "manifest.firefox.json"
@@ -92,7 +98,7 @@ class BrowserTarget(NamedTuple):
     name:
         Lower-case browser name, used on the command line and in file names.
     manifest_source:
-        File in ``extension/`` that becomes the build's ``manifest.json``.
+        File in ``extension/src/`` that becomes the build's ``manifest.json``.
     output_dir:
         Folder the build is written to.
     ships_zip:
@@ -107,8 +113,8 @@ class BrowserTarget(NamedTuple):
 
 
 TARGETS = (
-    BrowserTarget("chrome", CHROME_MANIFEST, BUILD_ROOT / "chrome-extension", True),
-    BrowserTarget("firefox", FIREFOX_MANIFEST, BUILD_ROOT / "firefox-extension", False),
+    BrowserTarget("chrome", CHROME_MANIFEST, EXTENSION_ROOT / "chrome", True),
+    BrowserTarget("firefox", FIREFOX_MANIFEST, EXTENSION_ROOT / "firefox", False),
 )
 
 
@@ -118,7 +124,7 @@ def collect_shared_files() -> list[Path]:
     Returns
     -------
     list[Path]
-        Allowlisted paths relative to ``extension/``.
+        Allowlisted paths relative to ``extension/src/``.
 
     Raises
     ------
@@ -173,7 +179,7 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
     target:
         Which browser to package.
     make_zip:
-        True to also write ``build/podcast-downloader-<browser>-<version>.zip``,
+        True to also write ``dist/podcast-downloader-<browser>-<version>.zip``,
         for the browsers that ship one. Firefox does not, so this is ignored
         there and any stale Firefox archive is deleted instead.
 
@@ -193,7 +199,7 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
 
     version = manifest_version()
 
-    # Start clean so a file deleted from extension/ cannot linger in a build.
+    # Start clean so a file deleted from extension/src/ cannot linger in a build.
     if target.output_dir.exists():
         shutil.rmtree(target.output_dir)
     target.output_dir.mkdir(parents=True)
@@ -216,7 +222,7 @@ def build_target(target: BrowserTarget, *, make_zip: bool) -> Path:
             old_archive.unlink()
     elif make_zip:
         archive_file = BUILD_ROOT / f"podcast-downloader-{target.name}-{version}.zip"
-        # A release upload often selects build/*.zip. Remove this browser's
+        # A release upload often selects dist/*.zip. Remove this browser's
         # older archives so that glob cannot publish a stale version.
         for old_archive in stale_archives:
             old_archive.unlink()
@@ -377,7 +383,7 @@ def rename_signed_addon() -> Path | None:
         intended_file.unlink(missing_ok=True)
         newest_file.rename(intended_file)
 
-    # Leave exactly one .xpi behind. A release upload that globs build/*.xpi
+    # Leave exactly one .xpi behind. A release upload that globs dist/*.xpi
     # would otherwise be free to attach last version's signed add-on.
     for stale_file in BUILD_ROOT.glob("*.xpi"):
         if stale_file != intended_file:

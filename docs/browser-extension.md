@@ -26,8 +26,9 @@ browser manifests differ.
 
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
-3. Select **Load unpacked** and choose the repository's `extension/` folder or
-   the unzipped Chrome release folder.
+3. Select **Load unpacked** and choose the repository's `extension/chrome/`
+   folder, or the unzipped Chrome release folder. With the repository, a
+   `git pull` updates the files; then select **Reload** on the extension's card.
 
 ### Firefox
 
@@ -36,15 +37,12 @@ For normal use, download `podcast-downloader-firefox-<version>.xpi` from the
 and open it with Firefox. It is signed, installs in one click, and stays
 installed. Firefox 140 or newer is required.
 
-For development, use the unsigned build:
-
-```bash
-uv run python scripts/build_extensions.py
-```
+For development, load the unsigned copy in the repository's
+`extension/firefox/` folder:
 
 1. Open `about:debugging#/runtime/this-firefox`.
 2. Select **Load Temporary Add-on**.
-3. Choose `build/firefox-extension/manifest.json`.
+3. Choose `extension/firefox/manifest.json`.
 
 Firefox reports an unsigned add-on as *"This add-on could not be installed
 because it appears to be corrupt"*. The file is not damaged; Firefox uses
@@ -80,11 +78,11 @@ Whenever you want a signed build, run:
 uv run python scripts/build_extensions.py --sign
 ```
 
-It writes `build/podcast-downloader-firefox-<version>.xpi`. Signing needs Node
+It writes `dist/podcast-downloader-firefox-<version>.xpi`. Signing needs Node
 for `npx` and takes about a minute.
 
 You can also sign the add-on manually: zip the contents of
-`build/firefox-extension/` with `manifest.json` at the archive root, upload the
+`extension/firefox/` with `manifest.json` at the archive root, upload the
 archive to [addons.mozilla.org](https://addons.mozilla.org/developers/) as an
 **unlisted** add-on, and install the `.xpi` Mozilla returns. The build script
 does not create a Firefox archive because Firefox's normal install path rejects
@@ -149,7 +147,7 @@ supported media URL, the extension reports `Not a supported media URL` and
 leaves the queue unchanged.
 
 To show the menu on another site, add its match pattern to
-`MENU_SITE_PATTERNS` at the top of `extension/background.js`, then reload the
+`MENU_SITE_PATTERNS` at the top of `extension/src/background.js`, then reload the
 extension. Run the build script again before reloading it in Firefox. The
 server accepts any HTTP or HTTPS link that `yt-dlp` supports; this list only
 controls where the menu appears.
@@ -281,7 +279,7 @@ Firefox installation problems:
 | "appears to be corrupt" | The archive is unsigned and you used the normal install path. Load it through `about:debugging` instead, or have Mozilla sign it. |
 | "not verified for use in Firefox" | Same cause, different Firefox version. |
 | The add-on vanished after a restart | Expected for a temporary add-on. Signing is the only way to keep it. |
-| `about:debugging` reports a manifest error | A real problem. `npx web-ext lint --source-dir build/firefox-extension` names it. |
+| `about:debugging` reports a manifest error | A real problem. `npx web-ext lint --source-dir extension/firefox` names it. |
 
 `npx web-ext lint` is Mozilla's validator and a quick way to separate a real
 build fault from a signing problem. A clean run means the build is valid and

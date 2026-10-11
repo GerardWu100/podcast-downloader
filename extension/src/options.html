@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Podcast Downloader settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Podcast Downloader</h1>
+
+      <form id="settings-form">
+        <label for="server-url">Server address</label>
+        <input id="server-url" type="text" placeholder="192.168.1.20:6847 or https://podcast.example.com" spellcheck="false" autocomplete="url" required />
+
+        <fieldset>
+          <legend>Login <span class="optional">only if the server has one</span></legend>
+          <label for="username">Username</label>
+          <input id="username" type="text" autocomplete="username" spellcheck="false" />
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password" />
+        </fieldset>
+
+        <label class="check">
+          <input id="notify-on-success" type="checkbox" />
+          Show a notification when a page is added
+        </label>
+
+        <div class="buttons">
+          <button id="save" type="submit">Save and test</button>
+        </div>
+      </form>
+
+      <p id="status" role="status"></p>
+
+      <section class="shortcut">
+        <h2>Keyboard shortcut</h2>
+        <p id="shortcut-text">Checking…</p>
+        <button id="shortcut-settings" type="button">Change shortcut</button>
+      </section>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

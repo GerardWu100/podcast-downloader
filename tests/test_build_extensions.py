@@ -1,6 +1,6 @@
 """Tests for the extension packaging script.
 
-``extension/`` is the single source for both browsers. These tests guard the
+``extension/src/`` is the single source for both browsers. These tests guard the
 two ways that could quietly go wrong: a file missing from one browser's build,
 and the two manifests drifting apart so the same code ships under different
 versions or different permissions.
@@ -124,7 +124,7 @@ def test_build_removes_files_that_no_longer_exist_in_the_source() -> None:
     target = TARGETS_BY_NAME["firefox"]
     build_target(target, make_zip=False)
     leftover = target.output_dir / "deleted-last-time.js"
-    leftover.write_text("// removed from extension/ since the last build")
+    leftover.write_text("// removed from extension/src/ since the last build")
 
     build_target(target, make_zip=False)
 
@@ -423,3 +423,30 @@ def test_renaming_keeps_the_newest_of_several_signed_files(
 
     assert renamed is not None
     assert renamed.read_bytes() == b"fresh"
+
+
+@pytest.mark.parametrize("browser", sorted(TARGETS_BY_NAME))
+def test_committed_dist_matches_a_fresh_build(
+    browser: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """dist/ is committed so a checkout loads without building; it must not go stale.
+
+    Fix a failure with ``uv run python scripts/build_extensions.py`` and commit
+    the result.
+    """
+    import scripts.build_extensions as build_module
+
+    committed_dir = TARGETS_BY_NAME[browser].output_dir
+    monkeypatch.setattr(build_module, "BUILD_ROOT", tmp_path)
+    fresh_dir = build_target(
+        TARGETS_BY_NAME[browser]._replace(output_dir=tmp_path / browser), make_zip=False
+    )
+
+    def file_contents(root: Path) -> dict[str, bytes]:
+        return {
+            str(path.relative_to(root)): path.read_bytes()
+            for path in sorted(root.rglob("*"))
+            if path.is_file()
+        }
+
+    assert file_contents(committed_dir) == file_contents(fresh_dir)

@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "Podcast Downloader",
+  "version": "2.0.0",
+  "description": "Send the page you are on, or a link on it, to your Podcast Downloader queue.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "podcast-downloader@localhost",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": [
+          "authenticationInfo",
+          "browsingActivity",
+          "websiteContent"
+        ]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "142.0"
+    }
+  },
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "notifications",
+    "activeTab"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Add this page to the podcast queue",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "commands": {
+    "add-current-tab": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Add the current tab to the podcast queue"
+    }
+  }
+}

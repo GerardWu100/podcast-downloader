@@ -21,6 +21,6 @@ def test_extension_manifests_match_the_app_version() -> None:
     """A release must not ship an extension numbered differently from its server."""
     for manifest_name in ("manifest.json", "manifest.firefox.json"):
         manifest = json.loads(
-            (PROJECT_ROOT / "extension" / manifest_name).read_text(encoding="utf-8")
+            (PROJECT_ROOT / "extension" / "src" / manifest_name).read_text(encoding="utf-8")
         )
         assert manifest["version"] == APP_VERSION, manifest_name
