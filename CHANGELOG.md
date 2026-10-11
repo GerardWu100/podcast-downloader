@@ -12,6 +12,16 @@ One version covers the server, the Docker image, and the browser extension.
   instead of a plain URL list.
 - `update.sh` is gone; update with `docker compose pull && docker compose up -d`.
 - The list's heading is now just **Sources**.
+- **Security:** behind a reverse proxy, the login ban now uses the last
+  `X-Forwarded-For` entry, the one the proxy added, instead of the first entry
+  or `CF-Connecting-IP`. A visitor could previously send a fake address with
+  every wrong password and never be banned.
+- Tests run on every push and pull request, and an image is published only
+  after they pass.
+- The README lists the features, compares similar tools, and has new
+  screenshots of the queue, the Settings page, and the phone layout.
+- The docs explain why `trust_x_forwarded_for` must stay `true` behind
+  Cloudflare Tunnel.
 
 ## 2.0.0 — 2026-10-11
 

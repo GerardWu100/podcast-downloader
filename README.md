@@ -16,6 +16,59 @@ flowchart LR
 
 ![The web page: add a source, see the queue, and read what each run did](docs/images/web-ui.png)
 
+## Features
+
+- **Sponsor-free audio.** New videos wait a day so SponsorBlock users can mark
+  the sponsor reads, then the audio is cut without them. No yt-dlp flags to
+  learn.
+- **Made for Audiobookshelf.** One MP3 folder per channel or playlist, with
+  title, date, and chapter tags, written atomically so Audiobookshelf never
+  sees a half-finished file.
+- **Set and forget.** Add a channel or playlist once; it checks every two days
+  at a fixed time. Old channel episodes are deleted after 30 days; videos you
+  add one by one are kept.
+- **Tells you when it breaks.** Failed downloads, a run that never happened,
+  and YouTube cookies about to expire go to Telegram, email, Discord, or
+  anything else [Apprise](https://github.com/caronc/apprise) reaches.
+- **Survives YouTube blocks.** Upload browser cookies on the Settings page; it
+  warns you before they expire. `yt-dlp` updates itself on every start.
+- **Add from anywhere.** Web page (installable as a phone app), a Firefox and
+  Chrome extension with a right-click menu, a small JSON API, and a skill for
+  AI agents.
+- **Small and private.** One container for amd64 and arm64, plain files instead
+  of a database, optional login with a ban on repeated wrong passwords.
+
+<p align="center">
+  <img src="docs/images/mobile.png" alt="The queue page on a phone" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/images/settings.png" alt="Settings: episode retention, YouTube cookies, and failure alerts" width="420">
+</p>
+
+## How it compares
+
+Every tool below is good at what it was built for. Podcast Downloader is
+narrower: YouTube to sponsor-free MP3 files for Audiobookshelf, with alerts
+when it stops working.
+
+| | Podcast Downloader | [Pinchflat](https://github.com/kieraneglin/pinchflat) | [PigeonPod](https://github.com/aizhimou/pigeon-pod) | [ytdl-sub](https://github.com/jmbannon/ytdl-sub) | [Podsync](https://github.com/mxpv/podsync) | [TubeArchivist](https://github.com/tubearchivist/tubearchivist) | [MeTube](https://github.com/alexta69/metube) |
+|---|---|---|---|---|---|---|---|
+| Built for | Podcast library | Video library | Podcast feed | Media server library | Podcast feed | Video archive | One-off downloads |
+| Web UI | ✅ | ✅ | ✅ | YAML editor | ❌ config file | ✅ | ✅ |
+| Removes sponsors | ✅ built in | ✅ built in | yt-dlp flags | ✅ built in | ❌ | Skips in its player | yt-dlp flags |
+| Waits for sponsor marks | ✅ | Re-downloads later | ✅ | Manual date filter | ❌ | ❌ | ❌ |
+| MP3 files | ✅ | ✅ | AAC | ✅ | ✅ | ❌ video only | ✅ |
+| Output | MP3 folders | Folders + RSS | RSS | Folders | RSS | Own library | Folders |
+| Deletes old episodes | ✅ | ✅ | ✅ | ✅ | ✅ | Watched videos | ❌ |
+| Failure alerts | ✅ Apprise | New media only | ✅ | ❌ | Error hook | Task summaries | ❌ |
+| Cookie expiry warning | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Browser extension | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | Third-party |
+
+Pick **Pinchflat** or **ytdl-sub** for a video library in Plex or Jellyfin,
+**PigeonPod** or **Podsync** for an RSS feed any podcast app can subscribe to,
+**TubeArchivist** to archive and watch whole channels, and **MeTube** to grab
+one video now. Pick this one if you listen in Audiobookshelf and want it to
+run without you. Checked October 2026; corrections welcome.
+
 ## Install
 
 You need a computer that stays on, with [Docker](https://docs.docker.com/engine/install/).
