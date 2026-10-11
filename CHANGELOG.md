@@ -18,8 +18,8 @@ One version covers the server, the Docker image, and the browser extension.
   every wrong password and never be banned.
 - Tests run on every push and pull request, and an image is published only
   after they pass.
-- The README lists the features, compares similar tools, and has new
-  screenshots of the queue, the Settings page, and the phone layout.
+- The README lists the features and has a new, larger screenshot of the web
+  page.
 - The docs explain why `trust_x_forwarded_for` must stay `true` behind
   Cloudflare Tunnel.
 

@@ -80,9 +80,9 @@ uv run python scripts/seed_demo_data.py /tmp/podcast-demo
 PODCAST_DATA_DIR=/tmp/podcast-demo uv run uvicorn src.api:app --port 8765
 ```
 
-Then capture `http://127.0.0.1:8765/` and `/settings` in dark mode at twice
-the pixel density (1100 px wide for the desktop shots, 390 px for the phone
-shot) and save them over `docs/images/`.
+Then capture `http://127.0.0.1:8765/` in dark mode, 860 px wide at twice the
+pixel density, and save it over `docs/images/web-ui.png`. The narrow width
+makes the text large where GitHub shrinks the image to the README's width.
 
 ## Project layout
 

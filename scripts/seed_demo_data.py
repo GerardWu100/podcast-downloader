@@ -59,22 +59,11 @@ EARLIER_RUN_EVENTS = [
     ),
     (8, "Skipped Short: youtube.com/shorts/Z09J2biOYX8"),
     (
-        11,
-        "Downloaded: Chat With Traders - How Top Prop Traders Find and Scale Their Edge · Jeff Holden [UWDFkMaJXNw].mp3",
-    ),
-    (
-        15,
-        "Downloaded: Flirting with Models - Ben Wellington – Complex Feature Engineering at Two Sigma (S7E32) [GiP_kNOJeXU].mp3",
-    ),
-    (
-        16,
+        9,
         "Deleted expired MP3: The Compound - Will Higher Rates Kill the Stock Market? | Animal Spirits 484 [cgQFyAYuWeA].mp3",
     ),
-    (
-        16,
-        "Deleted expired MP3: Chat With Traders - How a 50-Year Veteran Thinks About Risk Management · Peter Brandt [bIi6YzPt9bE].mp3",
-    ),
-    (16, "Run finished: 4 successful, 0 failed"),
+    (9, "Retention cleanup deleted 1 MP3(s)"),
+    (9, "Run finished: 2 successful, 0 failed"),
 ]
 
 # (minutes after the run hour, activity message) for this morning's run.
