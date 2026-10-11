@@ -7,13 +7,29 @@ sidebar_position: 4
 
 The short `/help` page is public. It contains usage guidance and a link to the
 official `yt-dlp` cookie instructions. The queue, logs, cookie uploads, and
-every control that changes data require a signed-in session.
+every control that changes data require a session, which the login creates.
+
+## Login is optional
+
+Login is off by default: `.env.example` leaves `UI_USERNAME` and `UI_PASSWORD`
+blank. The `.env` in the data directory decides the mode at each startup:
+
+| `.env` account keys | Mode | What a visitor sees |
+|---|---|---|
+| All blank, or no `.env` | Login off | The queue, straight away. The API accepts any request. The settings page warns that anyone who can reach it can use it. |
+| At least one valid account | Login on | The login form. The API needs an account in an `Authorization: Basic` header. |
+| Set, but none valid (for example a name without a password) | Locked | The login form, which accepts nobody until `.env` is fixed. A typo never opens the page. |
+
+With login off, opening `/login` creates a session and goes to the queue. The
+session still exists because the forms' CSRF tokens live in it. Turn login off
+only on a network you trust: the page can change the queue, cookies, and
+notification settings.
 
 ## Login model
 
-The web UI uses a simple login model:
+When login is on:
 
-- The operator sets `UI_USERNAME` and `UI_PASSWORD` in `.env` in the data directory (copy `.env.example` to start).
+- The operator sets `UI_USERNAME` and `UI_PASSWORD` in `.env` in the data directory.
 - Up to three accounts are allowed. The second and third use `UI_USERNAME_2` with `UI_PASSWORD_2` and `UI_USERNAME_3` with `UI_PASSWORD_3`. Every account reaches the same pages, so the accounts separate people, not permissions.
 - On startup, the app hashes each `UI_PASSWORD` with PBKDF2-HMAC-SHA256 and stores the account names and hashes in `.ui_credentials.json`. Login reads only that hash file.
 - The login form asks for both the username and the password.
@@ -24,14 +40,14 @@ The web UI uses a simple login model:
 
 ## Credential setup
 
-1. Copy `.env.example` to `.env`.
+1. Open `.env` in the data directory. Docker creates it on first start; for a local run, copy `.env.example`.
 2. Set `UI_USERNAME` and `UI_PASSWORD`, and optionally the numbered slots for a second and third account.
 3. Start the app, or restart the container. Startup hashes each password, checks the hashes, and logs the result.
 
 At startup, the app applies these rules to the account slots:
 
 - A slot with both values set becomes an account; a blank slot is skipped, and slots need not be filled in order.
-- A slot with only one of the two values set is ignored and logged as a warning, because half an account cannot log in.
+- A slot with only one of the two values set is ignored and logged as a warning, because half an account cannot log in. If no slot is left, login is locked, not off.
 - Two slots may not share an account name; the later one is ignored and logged, because it could never be reached.
 - Account names may not contain a colon (`:`). HTTP Basic authentication uses
   the first colon to separate the name and password, so such an account could
@@ -40,9 +56,9 @@ At startup, the app applies these rules to the account slots:
 
 To change a password, edit `.env` and restart. The app regenerates and checks
 the hash automatically; no manual hashing command is needed. Changing, adding,
-or removing an account revokes remembered sessions. If `.env` is missing or
-invalid, startup removes stale credentials and sessions so the old password
-cannot remain active.
+or removing an account revokes remembered sessions, and so does switching
+between modes, so an old password or an open-mode session cannot remain
+active.
 
 If `.env` already exists in the repository when you build the Docker image, the
 first boot copies it into the mounted data directory. The server-side flow is:

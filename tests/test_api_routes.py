@@ -252,9 +252,19 @@ def test_a_successful_sign_in_clears_earlier_failures(tmp_path: Path) -> None:
     assert login_state["127.0.0.1"]["failed"] == 0
 
 
-def test_routes_report_when_no_accounts_are_configured(tmp_path: Path) -> None:
-    """A server with no accounts says so instead of accepting any caller."""
+def test_routes_accept_any_caller_when_login_is_off(tmp_path: Path) -> None:
+    """With no accounts in .env the API is as open as the web page."""
+    request = _build_request(tmp_path, authorization="", with_accounts=False)
+
+    response = api_routes.ping(request)
+
+    assert response.status_code == 200
+
+
+def test_routes_report_a_locked_login(tmp_path: Path) -> None:
+    """Accounts set but all invalid lock the API rather than opening it."""
     request = _build_request(tmp_path, with_accounts=False)
+    request.app.state.credentials_file.write_text('{"accounts": []}', encoding="utf-8")
 
     with pytest.raises(HTTPException) as raised:
         api_routes.ping(request)

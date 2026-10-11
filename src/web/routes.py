@@ -20,7 +20,15 @@ from fastapi.responses import (
     Response,
 )
 
-from ..config import ConfigError, PodcastConfig, load_config
+from ..config import (
+    MAXIMUM_RETENTION_DAYS,
+    MINIMUM_RETENTION_DAYS,
+    ConfigError,
+    PodcastConfig,
+    load_config,
+    read_retention_days,
+    write_retention_days,
+)
 from ..cookie_file import (
     MAX_COOKIE_FILE_BYTES,
     CookieFileStatus,
@@ -28,7 +36,7 @@ from ..cookie_file import (
     cookie_health,
     describe_cookie_file,
 )
-from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts
+from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts, login_is_required
 from ..human_time import format_clock_time, format_time_ago, format_time_until
 from ..log_timezone import local_now
 from ..media.urls import is_supported_media_url
@@ -237,6 +245,15 @@ def _write_cookie_file(cookie_file: Path, normalized_cookie_text: str) -> None:
 
 def _credentials_file() -> Path:
     return DATA_DIR / CREDENTIALS_FILENAME
+
+
+def _config_file() -> Path:
+    return DATA_DIR / "config.ini"
+
+
+def _login_is_required() -> bool:
+    """Return whether ``.env`` defines accounts, so the pages need a sign-in."""
+    return login_is_required(_credentials_file())
 
 
 def _auth_store(request: Request | None = None) -> AuthStore:
@@ -609,11 +626,33 @@ def service_worker() -> Response:
     )
 
 
+def _start_session(request: Request) -> RedirectResponse:
+    """Create a remembered session and redirect to the queue with its cookie."""
+    session_id = secrets.token_urlsafe(32)
+    with _SESSION_STATE_LOCK:
+        sessions = _sessions(request)
+        sessions[session_id] = {
+            "created_at": time.time(),
+            SESSION_CSRF_TOKEN_KEY: secrets.token_urlsafe(32),
+        }
+        _save_session_state(sessions, request)
+    response = RedirectResponse(url="/", status_code=302)
+    _set_session_cookie(response, request, session_id)
+    return response
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request) -> Response:
-    """Render the login form and show any login error state."""
+    """Render the login form and show any login error state.
+
+    With login off, there is nothing to ask for: the browser gets a session
+    straight away and goes to the queue. The session still exists because the
+    forms' CSRF tokens live in it.
+    """
     if _has_valid_session(request):
         return RedirectResponse(url="/", status_code=302)
+    if not _login_is_required():
+        return _start_session(request)
 
     raw_message = request.query_params.get("msg", "")
     message_map = {
@@ -622,8 +661,8 @@ def login_form(request: Request) -> Response:
         "bad_credentials": ("msg-err", "Invalid username or password."),
         "unconfigured": (
             "msg-err",
-            "Login not configured. Set UI_USERNAME and UI_PASSWORD in .env "
-            "and restart.",
+            "No valid account. Fix UI_USERNAME and UI_PASSWORD in .env and "
+            "restart.",
         ),
         "request": ("msg-err", "Invalid request."),
     }
@@ -716,17 +755,7 @@ def login_action(
     if outcome is not CredentialCheck.ACCEPTED:
         return RedirectResponse(url=f"/login?msg={outcome}", status_code=303)
 
-    session_id = secrets.token_urlsafe(32)
-    with _SESSION_STATE_LOCK:
-        sessions = _sessions(request)
-        sessions[session_id] = {
-            "created_at": time.time(),
-            SESSION_CSRF_TOKEN_KEY: secrets.token_urlsafe(32),
-        }
-        _save_session_state(sessions, request)
-    response = RedirectResponse(url="/", status_code=302)
-    _set_session_cookie(response, request, session_id)
-    return response
+    return _start_session(request)
 
 
 @router.post("/logout")
@@ -769,6 +798,13 @@ _MSG_DISPLAY: dict[str, tuple[str, str]] = {
         "Source run requested. Watch the activity log below.",
     ),
     "run_already_running": ("msg-warn", "A queue run is already in progress."),
+    "retention_saved": ("msg-ok", "Retention saved. The next run uses it."),
+    "retention_invalid": (
+        "msg-err",
+        f"Enter a whole number of days from {MINIMUM_RETENTION_DAYS} to "
+        f"{MAXIMUM_RETENTION_DAYS}.",
+    ),
+    "retention_error": ("msg-err", "Could not save the retention setting."),
 }
 
 
@@ -862,6 +898,7 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
         msg_html=msg_html,
         queue_html=queue_html,
         safe_token=safe_token,
+        show_logout=_login_is_required(),
         script_nonce=script_nonce,
         headers=_security_headers(script_nonce),
     )
@@ -987,9 +1024,18 @@ def settings(request: Request, msg: str = "") -> HTMLResponse:
         cookie_status, config.cookie_expiry_warning_days
     )
 
+    # Read the file, not the startup copy: a value saved here applies to the
+    # next run without a restart, so the page must show it straight away.
+    try:
+        retention_days = read_retention_days(_config_file())
+    except ConfigError:
+        retention_days = config.retention_days
+
     notification_settings = _notification_store(request).load()
     return render_settings_page(
         safe_token=safe_token,
+        show_logout=_login_is_required(),
+        retention_days=retention_days,
         safe_cookie_summary=html.escape(
             _cookie_summary_line(cookie_status, cookie_file)
         ),
@@ -1103,6 +1149,47 @@ def save_notifications_form(
         )
 
     return RedirectResponse(url="/settings?msg=notifications_saved", status_code=303)
+
+
+@router.post("/save-retention")
+def save_retention_form(
+    request: Request,
+    csrf_token: str = Form(...),
+    retention_days: str = Form(""),
+) -> RedirectResponse:
+    """Save how many days channel episodes are kept, from the settings page.
+
+    Parameters
+    ----------
+    request:
+        Current request carrying the session.
+    csrf_token:
+        Token issued with the page that submitted this form.
+    retention_days:
+        Whole number of days as typed, from ``MINIMUM_RETENTION_DAYS`` to
+        ``MAXIMUM_RETENTION_DAYS``.
+
+    Returns
+    -------
+    RedirectResponse
+        Back to the settings page with a status message.
+    """
+    redirect = _require_login(request)
+    if redirect:
+        return redirect
+
+    if not _verify_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+    try:
+        write_retention_days(_config_file(), int(retention_days.strip()))
+    except (ValueError, ConfigError):
+        return RedirectResponse(url="/settings?msg=retention_invalid", status_code=303)
+    except OSError:
+        _logger.exception("Could not save retention_days")
+        return RedirectResponse(url="/settings?msg=retention_error", status_code=303)
+
+    return RedirectResponse(url="/settings?msg=retention_saved", status_code=303)
 
 
 @router.post("/test-notification")

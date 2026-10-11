@@ -258,10 +258,11 @@ def test_secure_cookie_respects_cf_visitor(monkeypatch) -> None:
     assert "Secure" in response.headers.get("set-cookie", "")
 
 
-def test_login_redirects_to_unconfigured_when_credentials_missing(
+def test_login_redirects_to_unconfigured_when_login_is_locked(
     monkeypatch, tmp_path
 ) -> None:
-    """A missing credentials file should send the browser to the unconfigured message."""
+    """An empty account list (every .env account invalid) refuses every sign-in."""
+    (tmp_path / CREDENTIALS_FILENAME).write_text('{"accounts": []}', encoding="utf-8")
     monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
     api_module.CSRF_TOKENS.clear()
     api_module.CSRF_TOKENS["csrf-session"] = {
@@ -1354,8 +1355,9 @@ def test_logout_rejects_invalid_csrf_token() -> None:
     api_module.CSRF_TOKENS.pop(session_id, None)
 
 
-def test_ui_logout_is_a_post_form_not_a_link() -> None:
+def test_ui_logout_is_a_post_form_not_a_link(monkeypatch) -> None:
     """Logout must be a POST form to prevent CSRF logout via GET link."""
+    monkeypatch.setattr(api_module, "_login_is_required", lambda: True)
     session_id = "test-ui-logout-form"
     api_module.SESSIONS[session_id] = {"ip": "127.0.0.1", "created_at": time.time()}
 
@@ -1543,9 +1545,10 @@ def test_queue_page_offers_the_activity_log_controls(monkeypatch, tmp_path) -> N
 
     body = api_module.queue_page(request).body.decode("utf-8")
 
-    assert 'id="log-filter"' in body
-    assert "Problems only" in body
+    assert 'data-log-source="activity"' in body
+    assert 'data-log-source="download"' in body
     assert 'id="log-summary"' in body
+    assert "<select" not in body
     # Day headings and run brackets are what make a long feed readable.
     assert "log-day" in body
     assert "log-line--run" in body
@@ -1601,3 +1604,45 @@ def test_last_download_label_without_any_download(tmp_path) -> None:
         encoding="utf-8",
     )
     assert api_module._last_download_label(ActivityLogStore(missing_log)) == "None yet"
+
+
+def test_login_page_signs_in_straight_away_when_login_is_off(
+    monkeypatch, tmp_path
+) -> None:
+    """No accounts in .env means no password prompt, but still a CSRF session."""
+    monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
+
+    class _PlainHttpUrl:
+        scheme = "http"
+
+    request = _FakeRequest()
+    request.url = _PlainHttpUrl()
+    response = api_module.login_form(request)
+
+    assert response.headers["location"] == "/"
+    session_id = response.headers["set-cookie"].split(";")[0].split("=", 1)[1]
+    assert session_id in api_module.SESSIONS
+    assert api_module.SESSIONS[session_id][api_module.SESSION_CSRF_TOKEN_KEY]
+    api_module.SESSIONS.pop(session_id, None)
+
+
+def test_queue_page_hides_logout_when_login_is_off(monkeypatch, tmp_path) -> None:
+    """There is nothing to log out of without accounts."""
+    monkeypatch.setattr(api_module, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(
+        api_module,
+        "CONFIG",
+        replace(
+            api_module.CONFIG,
+            urls_file=tmp_path / "urls.txt",
+            log_file=tmp_path / "download.log",
+        ),
+    )
+    session_id = "test-queue-login-off"
+    api_module.SESSIONS[session_id] = {"created_at": time.time()}
+    request = _FakeRequest(cookies={api_module.SESSION_COOKIE: session_id})
+
+    body = api_module.queue_page(request).body.decode("utf-8")
+
+    assert 'action="/logout"' not in body
+    api_module.SESSIONS.pop(session_id, None)

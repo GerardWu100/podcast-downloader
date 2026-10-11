@@ -58,7 +58,8 @@ def build_request(
     Returns
     -------
     Request
-        HTTPS request (HTTP only for loopback), with Basic authentication.
+        HTTPS request (HTTP only for loopback), with Basic authentication
+        unless both account values are blank.
         Values are read only from the selected file, without interpolation.
     """
     if not env_file.is_file():
@@ -84,11 +85,14 @@ def build_request(
     suffix = "" if account == 1 else f"_{account}"
     username = values.get(f"UI_USERNAME{suffix}") or ""
     password = values.get(f"UI_PASSWORD{suffix}") or ""
-    if not username or not password or password == "changeme" or ":" in username:
+    # Both blank means the server has login off and wants no header.
+    if bool(username) != bool(password) or ":" in username:
         raise ValueError("Set a valid UI_USERNAME/UI_PASSWORD account pair in .env.")
-    token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
     body = None
-    headers = {"Authorization": f"Basic {token}", "Accept": "application/json"}
+    headers = {"Accept": "application/json"}
+    if username:
+        token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+        headers["Authorization"] = f"Basic {token}"
     if command == "add-url":
         body = json.dumps({"url": media_url, "skip_age_check": skip_age_check}).encode()
         headers["Content-Type"] = "application/json"

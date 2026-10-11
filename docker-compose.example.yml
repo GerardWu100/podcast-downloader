@@ -1,13 +1,12 @@
-# Run the published image without cloning the repository.
-#
-# On the server, put this file and a `.env` in one folder:
-#
-#   docker-compose.example.yml  saved as docker-compose.yml
-#   .env                        copied from .env.example, with UI_USERNAME
-#                               and UI_PASSWORD changed
+# Run the published image without cloning the repository. This file is all
+# the server needs; save it as docker-compose.yml in an empty folder.
 #
 # Start:   docker compose up -d
 # Update:  docker compose pull && docker compose up -d
+#
+# There is no login by default. To require one, set UI_USERNAME and
+# UI_PASSWORD in ~/.containers/podcast-downloader/.env (created on first
+# start), then run `docker compose restart`.
 #
 # `docker-compose.yml` in the repository is the same service built from a
 # local checkout instead of pulled.
@@ -18,9 +17,10 @@ services:
     image: ghcr.io/gerardwu100/podcast-downloader:latest
     container_name: podcast-downloader
     ports:
-      # Open on every network interface of the server. The login travels
-      # in plain HTTP here, so put HTTPS in front before exposing it beyond
-      # your home network, or use "127.0.0.1:6847:8000" to keep it local.
+      # Open to every device that can reach the server, over plain HTTP.
+      # Fine on a home network; put HTTPS and a login in front before
+      # exposing it to the internet, or use "127.0.0.1:6847:8000" to keep it
+      # to the server itself.
       - "6847:8000"
     restart: unless-stopped
     environment:
@@ -32,9 +32,10 @@ services:
       - PODCAST_INTERMEDIATE_DIR=/temporary
       - YT_DLP_AUTO_UPDATE=true
       # The entrypoint repairs mounted-file ownership, then runs the app with
-      # this host user and group. `id -u` and `id -g` show the right values.
-      - HOST_UID=${HOST_UID:-1000}
-      - HOST_GID=${HOST_GID:-1000}
+      # this host user and group. Change both if `id -u` and `id -g` on the
+      # server do not print 1000.
+      - HOST_UID=1000
+      - HOST_GID=1000
     volumes:
       # Folder on your machine, then the path inside the container. Edit the
       # left side to keep files somewhere else; the right sides pair with the
@@ -42,20 +43,11 @@ services:
       - $HOME/.containers/podcast-downloader:/data
       - $HOME/downloads/podcasts/:/downloads
       - $HOME/downloads/temporary:/temporary
-    secrets:
-      # Compose mounts the `.env` next to this file at runtime. The entrypoint
-      # seeds /data/.env from it only on first boot.
-      - source: podcast_downloader_env
-        target: podcast_downloader_env
     networks:
       - single
 
 networks:
-  # Shared network for a reverse proxy and Apprise. Create it once:
-  #   docker network create single
+  # Shared network where a reverse proxy and Apprise can reach this container.
+  # Compose joins it if it exists and creates it if it does not.
   single:
-    external: true
-
-secrets:
-  podcast_downloader_env:
-    file: ./.env
+    name: single

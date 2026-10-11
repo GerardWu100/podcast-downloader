@@ -28,42 +28,37 @@ YouTube channel ──► wait for SponsorBlock ──► MP3, sponsors cut ─�
 ## Quick start with Docker
 
 You need Docker with Compose on the server. You do **not** need to clone this
-repository: the image is published for both common server types (amd64 and
-arm64), and Docker picks the right one.
+repository or write any config: the image is published for both common server
+types (amd64 and arm64), and Docker picks the right one.
 
-**1. Make a folder and download two files into it.**
+**1. Download one file into an empty folder.**
 
 ```bash
 mkdir podcast-downloader && cd podcast-downloader
 curl -o docker-compose.yml https://raw.githubusercontent.com/GerardWu100/podcast-downloader/master/docker-compose.example.yml
-curl -o .env https://raw.githubusercontent.com/GerardWu100/podcast-downloader/master/.env.example
 ```
 
-**2. Edit `.env`.** Set `UI_USERNAME` and `UI_PASSWORD`; that is the web page
-login. If `id -u` and `id -g` on the server do not both print `1000`, also set
-`HOST_UID` and `HOST_GID` to those numbers, so you own the downloaded files.
+**2. Check two things in `docker-compose.yml`.**
 
-**3. Check the folders in `docker-compose.yml`.** By default:
+- **Folders.** Change the left side of a `volumes:` line to keep files
+  somewhere else. By default:
 
-| On the server | Holds |
-|---|---|
-| `~/downloads/podcasts` | The MP3 library. Point Audiobookshelf here. |
-| `~/.containers/podcast-downloader` | Settings, queue, cookies, and logs |
-| `~/downloads/temporary` | Files still being processed |
+  | On the server | Holds |
+  |---|---|
+  | `~/downloads/podcasts` | The MP3 library. Point Audiobookshelf here. |
+  | `~/.containers/podcast-downloader` | Settings, queue, cookies, and logs |
+  | `~/downloads/temporary` | Files still being processed |
 
-Change the left side of a `volumes:` line to use another folder.
+- **File owner.** Run `id -u` and `id -g`. If either does not print `1000`,
+  put those numbers in `HOST_UID` and `HOST_GID`, so you own the MP3 files.
 
-**4. Start it.**
+**3. Start it.**
 
 ```bash
-docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up -d
 ```
 
-The web page is at `http://<server address>:6847`. It is plain HTTP, so
-keep it inside your home network or put a reverse proxy with HTTPS in front.
-The `single` network is where that proxy and Apprise (for alerts) can reach
-it.
+Open `http://<server address>:6847`. There is no login by default.
 
 **Update** to the newest version:
 
@@ -75,27 +70,42 @@ To go back to an older version, replace `latest` in `docker-compose.yml` with a
 `sha-<commit>` tag from the
 [package page](https://github.com/GerardWu100/podcast-downloader/pkgs/container/podcast-downloader).
 
-Your password and cookies never go into the image. Compose hands `.env` to the
-container at start, and the first start copies it to
-`~/.containers/podcast-downloader/.env`. After that, edit that copy to change
-the login. See [docs/operations.md](docs/operations.md) for everything the
-container does at start.
+### Add a password (optional)
+
+Without a login, anyone who can reach the page can use it. That is fine on a
+home network. Before you expose it to the internet, put a reverse proxy with
+HTTPS in front and turn the login on:
+
+1. Edit `~/.containers/podcast-downloader/.env` (the first start created it).
+2. Set `UI_USERNAME` and `UI_PASSWORD`. Up to three accounts are allowed; see
+   the comments in the file.
+3. Run `docker compose restart`.
+
+The container joins a Docker network named `single`, creating it if needed,
+where a reverse proxy and Apprise (for alerts) can reach it. Your password and
+cookies stay in the data folder and never go into the image. See
+[docs/operations.md](docs/operations.md) for everything the container does at
+start.
 
 ## First steps in the web page
 
-1. Sign in with the login from `.env`.
-2. Paste a channel, playlist, or video URL into the add-source box.
-3. Select **Run queue now** to start a run, or wait for the schedule. The line
+1. Paste a channel, playlist, or video URL into the add-source box.
+2. Select **Run queue now** to start a run, or wait for the schedule. The line
    under the box shows the last download, the last run, and the next one.
-4. In Audiobookshelf, add a podcast library that points at the MP3 folder.
+3. In Audiobookshelf, add a podcast library that points at the MP3 folder.
+4. On the **Settings** page, choose how many days to keep channel episodes
+   (30 by default). Videos added one by one are kept.
 
 Each saved source has **Run now** and **Delete**. **Run now** on a single video
 skips the wait for SponsorBlock. On a channel or playlist, it checks the recent
 videos now but still waits for videos that are too new.
 
+The activity panel has two tabs: **Activity** is the short story of each run,
+**Detailed log** is the full `yt-dlp` output. The count buttons beside them,
+such as **4 failed**, show only those lines.
+
 To use it as a phone app, open the site over HTTPS in Chrome or Safari and
-choose **Install app** or **Add to Home Screen**. It keeps you signed in for 30
-days.
+choose **Install app** or **Add to Home Screen**.
 
 ## Keep it working
 
@@ -121,7 +131,8 @@ container itself has stopped.
 ## Browser extension
 
 The extension adds the page you are watching, or a link on it, to the queue
-without copying a URL. It uses your web page login.
+without copying a URL. It uses your web page login; with login off, type any
+name and password.
 
 | Browser | Install |
 |---|---|
@@ -134,7 +145,7 @@ Then click the toolbar icon to open its settings and enter:
 | Field | Value |
 |---|---|
 | Server address | Where you open the web page, such as `https://podcast.example.com` |
-| Username and password | Your web page login |
+| Username and password | Your web page login, or anything when login is off |
 
 Select **Save**, allow the permission, then **Test connection**. **Connected**
 means it works.
@@ -151,15 +162,15 @@ downloaded, and `!` for a problem. See
 
 ## Configuration
 
-Settings live in `config.ini`. With Docker, edit
-`~/.containers/podcast-downloader/config.ini` and restart the container
-(`docker compose restart`). The ones you are most likely to change:
+Retention is on the settings page. Everything else lives in `config.ini`.
+With Docker, edit `~/.containers/podcast-downloader/config.ini` and restart the
+container (`docker compose restart`). The ones you are most likely to change:
 
 | Setting | Default | What it does |
 |---|---|---|
 | `scheduled_run_hour` | `6` | Hour of the automatic run, on the server's `TZ` clock |
 | `scheduled_run_interval_days` | `2` | Days between automatic runs |
-| `retention_days` | `30` | Days to keep channel episodes before deleting them |
+| `retention_days` | `30` | Days to keep channel episodes; also on the settings page |
 | `channel_count` | `2` | Recent videos to check per channel or playlist |
 | `min_channel_video_age_hours` | `24` | How old a video must be, so SponsorBlock has time to mark it |
 | `max_download_attempts` | `2` | Failed attempts before a video is dropped |
@@ -177,7 +188,7 @@ git clone https://github.com/GerardWu100/podcast-downloader.git
 cd podcast-downloader
 uv sync --dev
 uv pip install --prerelease allow "yt-dlp[default,curl-cffi]"
-cp .env.example .env    # then set UI_USERNAME and UI_PASSWORD
+cp .env.example .env    # optional: set UI_USERNAME and UI_PASSWORD for a login
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
@@ -198,9 +209,12 @@ The command line works without the web page:
 
 ### Docker from a clone
 
-`docker-compose.yml` builds the image from your checkout instead of pulling it:
+`docker-compose.yml` builds the image from your checkout instead of pulling it.
+It needs a `.env` in the repository and the `single` network to exist:
 
 ```bash
+cp .env.example .env
+docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
 

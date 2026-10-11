@@ -76,7 +76,7 @@ section.
 | `channel_count` | Recent channel or playlist entries to check; at least `1` | `2` |
 | `min_channel_video_age_hours` | Minimum YouTube video age when known; at least `0` | `24` |
 | `delay_seconds` | Pause between downloads; at least `0` | `60` |
-| `retention_days` | Days to keep YouTube channel MP3s; at least `1` | `30` |
+| `retention_days` | Days to keep YouTube channel MP3s; at least `1`. The settings page edits it | `30` |
 | `download_timeout_seconds` | Time limit for one attempt; at least `60` | `3600` |
 | `max_download_attempts` | Failed attempts that blame the video before it is dropped; at least `1`. Block and network failures do not count | `2` |
 | `scheduled_run_hour` | Local hour an automatic run starts, `0` to `23` | `6` |
@@ -104,7 +104,8 @@ section.
 | `HOST_GID` | Host group for mounted Docker files; default `1000` |
 
 The `/api` routes need no setting of their own. They accept the same
-`UI_USERNAME` and `UI_PASSWORD` accounts as the web page. `yt-dlp` is not in
+`UI_USERNAME` and `UI_PASSWORD` accounts as the web page, and need none when
+login is off. `yt-dlp` is not in
 `uv.lock`; install its current nightly release, the default YouTube
 dependencies, and `curl-cffi` with:
 

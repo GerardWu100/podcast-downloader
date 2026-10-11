@@ -237,7 +237,7 @@ to one URL. Submitting both returns `duplicate`, not a second queue entry.
 |---|---|
 | `Sign-in rejected` | The username or password does not match an account in `.env`. |
 | `Too many failed attempts` | Five failures occurred within ten minutes. Wait fifteen minutes, then fix the password in Options. |
-| `Server has no accounts` | `UI_USERNAME` and `UI_PASSWORD` are unset on the server. |
+| `Server has no accounts` | The server's `.env` sets an account, but none is valid, so login is locked. Fix `UI_USERNAME` and `UI_PASSWORD` and restart. |
 | `Could not reach the server` | Check the address and server status, then select **Save** again in Options to grant permission. |
 | `Not a supported media URL` | The page is not a media URL, such as a settings or `chrome://` page. |
 

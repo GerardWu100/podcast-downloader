@@ -20,27 +20,31 @@ Start the API locally:
 uv run uvicorn src.api:app --host 127.0.0.1 --port 8000
 ```
 
-Set the web UI login by copying `.env.example` to `.env`, then changing the username and password:
+Login is off until you set an account. To require one, copy `.env.example`
+to `.env` and set a username and password:
 
 ```bash
 cp .env.example .env
 # edit .env: set UI_USERNAME and UI_PASSWORD
 ```
 
-At startup, the app reads `.env`, hashes each `UI_PASSWORD` with PBKDF2, and stores only the hashes in `.ui_credentials.json`. You do not need to hash passwords yourself. To change a password, edit `.env` and restart. Optional second and third accounts use `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`.
+At startup, the app reads `.env`, hashes each `UI_PASSWORD` with PBKDF2, and stores only the hashes in `.ui_credentials.json`. You do not need to hash passwords yourself. To change a password, edit `.env` and restart. Optional second and third accounts use `UI_USERNAME_2`/`UI_PASSWORD_2` and `UI_USERNAME_3`/`UI_PASSWORD_3`. See [web-ui-security.md](web-ui-security.md) for the three login modes.
 
-For Docker, create `.env` in the repository before running
-`docker compose up -d`. Compose mounts it as a read-only runtime secret; it
-never enters an image layer. The first start copies it to the mounted
-`/data/.env`. After that, edit
-`$HOME/.containers/podcast-downloader/.env` on the host. The repository file is
-still required because Compose resolves the secret before the container starts.
+With Docker, the live file is `$HOME/.containers/podcast-downloader/.env` on
+the host (`/data/.env` in the container). The first start creates it. The
+published-image setup seeds it from `.env.example`, so login starts off. The
+clone setup (`docker-compose.yml`) requires a repository `.env`, mounts it as a
+read-only runtime secret, and copies it on first start; it never enters an
+image layer. Either way, edit the live file afterwards and restart.
 
-Compose expects a shared proxy network named `single`. Create it once if needed:
+The clone setup expects a shared proxy network named `single`. Create it once
+if needed:
 
 ```bash
 docker network inspect single >/dev/null 2>&1 || docker network create single
 ```
+
+The published-image setup creates that network itself when it is missing.
 
 ## Published image
 
@@ -86,7 +90,7 @@ The next `docker compose up --build -d` repairs existing podcast ownership.
 The entrypoint needs root only during setup; the web server and downloader run
 as the configured host identity.
 
-`start.py` checks the `.env` password before starting the web server. If it is still the example password `changeme`, startup logs a warning.
+`start.py` syncs the `.env` accounts before starting the web server and logs the login mode. With login off, the log line says so.
 
 ## Error notifications
 
@@ -269,11 +273,12 @@ answers, which it does while the scheduler behind it is dead.
   video still inside `min_channel_video_age_hours`), `Skip` (a YouTube Short),
   `Delete` (a source removed from the queue), and `Keep` (retention deleting a
   file).
-- The counts beside the picker total the lines currently loaded, and
-  **Problems only** hides everything that worked.
+- The count buttons beside the tabs total the lines currently loaded. Select
+  one, such as **1 failed**, to see only those lines; select it again or
+  **All** to see everything.
 - URLs in the feed are links, so a failed line leads straight to the video.
 - Both logs read the same way. `activity.log` is the summary; `download.log`
-  keeps the full `yt-dlp` command and output and is chosen from the same picker.
+  keeps the full `yt-dlp` command and output and has its own tab.
 
 ## Cookie expiry
 
@@ -331,7 +336,7 @@ Channel folder names come from the source URL after filesystem-safe cleanup. Pla
 
 At the start of each run, the downloader scans the MP3 files directly inside current YouTube channel folders. Only files in current YouTube channel folders are eligible. This rule never deletes playlist or single-video files.
 
-Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files older than `retention_days` (30 days by default). It ignores the YouTube release date and filesystem modification time.
+Cleanup reads the embedded MP3 `date` tag and deletes eligible channel files older than `retention_days` (30 days by default). Change it on the settings page under **Keep episodes**; that rewrites the one line in `config.ini`, and the next run uses it without a restart. It ignores the YouTube release date and filesystem modification time.
 
 If the date metadata is missing or unreadable, or the file has no source URL in its comment tag, the downloader logs the problem and leaves the file alone. When it deletes a channel MP3, the video URL stays in `downloaded_urls.txt`, so the same episode is not downloaded again.
 

@@ -587,3 +587,40 @@ def test_undeclared_oversized_body_is_refused_while_streaming(tmp_path: Path) ->
     assert upload_status == 413
     assert upload_pulled < oversized
     assert small_status != 413
+
+
+def test_saving_retention_rewrites_only_that_line(tmp_path: Path, monkeypatch) -> None:
+    """The settings form changes retention_days and leaves the comments alone."""
+    config_file = tmp_path / "config.ini"
+    config_file.write_text(
+        "[podcast]\n# Keep this comment.\nretention_days = 30\nchannel_count = 2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(routes, "DATA_DIR", tmp_path)
+    app = create_app()
+    request, csrf_token = _logged_in_request(app)
+
+    response = routes.save_retention_form(
+        request, csrf_token=csrf_token, retention_days="45"
+    )
+
+    assert response.headers["location"] == "/settings?msg=retention_saved"
+    assert config_file.read_text(encoding="utf-8") == (
+        "[podcast]\n# Keep this comment.\nretention_days = 45\nchannel_count = 2\n"
+    )
+
+
+def test_saving_retention_refuses_a_bad_number(tmp_path: Path, monkeypatch) -> None:
+    """Zero, negative, and non-numeric values never reach config.ini."""
+    config_file = tmp_path / "config.ini"
+    config_file.write_text("[podcast]\nretention_days = 30\n", encoding="utf-8")
+    monkeypatch.setattr(routes, "DATA_DIR", tmp_path)
+    app = create_app()
+    request, csrf_token = _logged_in_request(app)
+
+    for bad_value in ("0", "-3", "abc", ""):
+        response = routes.save_retention_form(
+            request, csrf_token=csrf_token, retention_days=bad_value
+        )
+        assert response.headers["location"] == "/settings?msg=retention_invalid"
+    assert "retention_days = 30" in config_file.read_text(encoding="utf-8")

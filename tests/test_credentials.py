@@ -8,6 +8,7 @@ from pathlib import Path
 from src.credentials import (
     CREDENTIALS_FILENAME,
     load_ui_accounts,
+    login_is_required,
     parse_env_file,
     sync_ui_credentials,
 )
@@ -121,7 +122,9 @@ def test_sync_rejects_a_username_with_basic_auth_separator(tmp_path: Path) -> No
     message = sync_ui_credentials(tmp_path)
 
     assert "must not contain ':'" in message
-    assert not (tmp_path / CREDENTIALS_FILENAME).exists()
+    # Locked, not open: someone tried to set an account.
+    assert login_is_required(tmp_path / CREDENTIALS_FILENAME)
+    assert load_ui_accounts(tmp_path / CREDENTIALS_FILENAME) == []
 
 
 def test_sync_leaves_matching_credentials_untouched(tmp_path: Path) -> None:
@@ -168,31 +171,33 @@ def test_sync_drops_a_removed_account_and_its_sessions(tmp_path: Path) -> None:
     assert not session_file.exists()
 
 
-def test_sync_without_env_file_reports_unconfigured(tmp_path: Path) -> None:
-    """A missing .env should warn instead of raising or writing credentials."""
+def test_sync_without_env_file_turns_login_off(tmp_path: Path) -> None:
+    """A missing .env opens the page and says so in the startup log."""
     message = sync_ui_credentials(tmp_path)
 
-    assert "unconfigured" in message
-    assert not (tmp_path / CREDENTIALS_FILENAME).exists()
+    assert "login is off" in message
+    assert not login_is_required(tmp_path / CREDENTIALS_FILENAME)
 
 
-def test_sync_with_blank_values_reports_unconfigured(tmp_path: Path) -> None:
-    """Blank username or password values should not produce a credentials file."""
+def test_sync_with_every_account_blank_turns_login_off(tmp_path: Path) -> None:
+    """The shipped .env.example leaves both values blank, which means no login."""
+    _write_env(tmp_path, ("", ""))
+
+    message = sync_ui_credentials(tmp_path)
+
+    assert "login is off" in message
+    assert not login_is_required(tmp_path / CREDENTIALS_FILENAME)
+
+
+def test_sync_with_half_an_account_locks_login(tmp_path: Path) -> None:
+    """A password without a name is a mistake, so the page locks instead of opening."""
     _write_env(tmp_path, ("", "correct-password"))
 
     message = sync_ui_credentials(tmp_path)
 
-    assert "unconfigured" in message
-    assert not (tmp_path / CREDENTIALS_FILENAME).exists()
-
-
-def test_sync_warns_when_example_password_still_in_use(tmp_path: Path) -> None:
-    """Keeping the .env.example password should produce a startup warning."""
-    _write_env(tmp_path, ("admin", "changeme"))
-
-    message = sync_ui_credentials(tmp_path)
-
-    assert "WARNING" in message
+    assert "locked" in message
+    assert login_is_required(tmp_path / CREDENTIALS_FILENAME)
+    assert load_ui_accounts(tmp_path / CREDENTIALS_FILENAME) == []
 
 
 def test_load_ui_accounts_rejects_malformed_files(tmp_path: Path) -> None:
@@ -221,7 +226,7 @@ def test_missing_env_disables_previously_valid_credentials(tmp_path: Path) -> No
 
     message = sync_ui_credentials(tmp_path)
 
-    assert "unconfigured" in message
+    assert "login is off" in message
     assert not (tmp_path / CREDENTIALS_FILENAME).exists()
 
 
@@ -233,4 +238,5 @@ def test_blank_env_disables_previously_valid_credentials(tmp_path: Path) -> None
 
     sync_ui_credentials(tmp_path)
 
-    assert not (tmp_path / CREDENTIALS_FILENAME).exists()
+    assert load_ui_accounts(tmp_path / CREDENTIALS_FILENAME) == []
+    assert login_is_required(tmp_path / CREDENTIALS_FILENAME)

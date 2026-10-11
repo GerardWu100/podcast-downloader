@@ -16,8 +16,19 @@ File formats
 ------------
 ``.env``
     Plain ``KEY=VALUE`` lines. Blank lines and ``#`` comments are ignored.
-    ``UI_USERNAME`` and ``UI_PASSWORD`` are required; the numbered pairs are
-    optional.
+    Every account key is optional. With none set, login is off.
+
+Login modes
+-----------
+The presence of ``.ui_credentials.json`` is the switch, so a request needs one
+file check to know which mode applies:
+
+- No account keys set in ``.env`` (or no ``.env``): the file is removed and
+  login is off. Anyone who can reach the web page or the API can use it.
+- At least one valid account: the file holds the hashes and login is on.
+- Account keys set but none valid, such as a name without a password: the file
+  holds an empty list, so login is on and nobody can sign in until ``.env`` is
+  fixed. A typo must never open the page to everyone.
 ``.ui_credentials.json``
     ``{"accounts": [{"username": "<plain account name>", "password_hash":
     "pbkdf2_sha256$..."}, ...]}`` written with owner-only (600) permissions.
@@ -39,8 +50,6 @@ ENV_PASSWORD_KEY = "UI_PASSWORD"
 # How many login accounts ``.env`` may define. Slot 1 uses the plain keys;
 # later slots append their number to both key names.
 MAX_ACCOUNTS = 3
-# The password shipped in .env.example; startup warns when it is still in use.
-EXAMPLE_PASSWORD = "changeme"
 CREDENTIALS_FILE_PERMISSION_MODE = 0o600
 SESSION_STATE_FILENAME = ".ui_sessions.json"
 
@@ -157,6 +166,24 @@ def read_configured_accounts(
             continue
         accounts.append((username, password))
     return accounts, complaints
+
+
+def login_is_required(credentials_file: Path) -> bool:
+    """Return whether the web page and the API ask for an account.
+
+    Parameters
+    ----------
+    credentials_file:
+        Path to ``.ui_credentials.json``.
+
+    Returns
+    -------
+    bool
+        ``False`` only when the file is absent, which :func:`sync_ui_credentials`
+        arranges when ``.env`` sets no account at all. A damaged or empty file
+        still means ``True``, so a broken file fails closed.
+    """
+    return credentials_file.exists()
 
 
 def load_ui_accounts(credentials_file: Path) -> list[StoredAccount]:
@@ -285,9 +312,10 @@ def sync_ui_credentials(data_dir: Path) -> str:
     Returns
     -------
     str
-        Human-readable status line for the startup log. Missing or invalid
-        ``.env`` files produce a warning message instead of an exception so
-        the downloader can keep running with the web UI login disabled.
+        Human-readable status line for the startup log. A missing ``.env`` or
+        one with no account turns login off; one whose accounts are all invalid
+        locks login until it is fixed. Neither raises, so the downloader keeps
+        running either way.
 
     Raises
     ------
@@ -298,29 +326,32 @@ def sync_ui_credentials(data_dir: Path) -> str:
     env_file = data_dir / ENV_FILENAME
     credentials_file = data_dir / CREDENTIALS_FILENAME
 
+    login_off_message = (
+        f"Web UI login is off: anyone who can reach the page can use it. Set "
+        f"{ENV_USERNAME_KEY} and {ENV_PASSWORD_KEY} in {env_file} and restart "
+        f"to require a password."
+    )
     if not env_file.exists():
         _disable_stale_credentials(credentials_file)
         _revoke_existing_sessions(data_dir)
-        return (
-            f"No {ENV_FILENAME} found in {data_dir}; web UI login stays "
-            f"unconfigured until {ENV_USERNAME_KEY} and {ENV_PASSWORD_KEY} are set."
-        )
+        return login_off_message
 
     configured_accounts, complaints = read_configured_accounts(parse_env_file(env_file))
     complaint_text = "".join(f" WARNING: {complaint}" for complaint in complaints)
 
-    if not configured_accounts:
+    if not configured_accounts and not complaints:
         _disable_stale_credentials(credentials_file)
         _revoke_existing_sessions(data_dir)
-        return (
-            f"{env_file} is missing {ENV_USERNAME_KEY} or {ENV_PASSWORD_KEY}; "
-            f"web UI login stays unconfigured.{complaint_text}"
-        )
+        return login_off_message
 
-    if any(password == EXAMPLE_PASSWORD for _, password in configured_accounts):
-        complaint_text += (
-            f" WARNING: a password is still the example value "
-            f"'{EXAMPLE_PASSWORD}'; change it in {env_file}."
+    if not configured_accounts:
+        # Someone tried to set an account and got it wrong. Lock the page
+        # rather than open it, and say why on every startup.
+        _write_credentials(credentials_file, [])
+        _revoke_existing_sessions(data_dir)
+        return (
+            f"Web UI login is locked: no valid account in {env_file}."
+            f"{complaint_text}"
         )
 
     accounts, unchanged = _reuse_or_hash(

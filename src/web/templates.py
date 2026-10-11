@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from fastapi.responses import HTMLResponse
 
+from ..config import MAXIMUM_RETENTION_DAYS, MINIMUM_RETENTION_DAYS
 from ..state.activity_store import NO_ACTIVITY_MESSAGE, NO_DOWNLOAD_LOG_MESSAGE
 
 # Passed to the page as a JSON array so the browser recognises an empty log by
@@ -278,6 +279,13 @@ header {
 # Styles for the settings page forms: the cookie upload and the Apprise card.
 SETTINGS_FORM_STYLES = """
 .file-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; }
+.retention-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:8px; font-size:.85rem; }
+.retention-row label { margin:0; font-weight:normal; }
+.retention-row input[type=number] {
+  width:6em; padding:7px 9px; border:1px solid var(--border);
+  border-radius:6px; background:var(--bg); color:var(--text); font-size:.88rem;
+}
+.retention-row .btn { margin-top:0; width:auto; }
 .field { display:flex; flex-direction:column; gap:5px; margin-bottom:14px; }
 .field > label { font-size:.78rem; font-weight:600; color:var(--text); }
 .field input[type=text],.field input[type=url] {
@@ -378,26 +386,36 @@ LOG_PANEL_STYLES = r"""
 .log-msg a { color:var(--log-link); text-decoration:none; border-bottom:1px dotted currentColor; }
 .log-msg a:hover { color:var(--log-link-hover); }
 /* Counts for the lines currently loaded, so "did anything fail?" is answered
-   without reading the log itself. */
-#log-summary { font-size:.72rem; color:var(--muted); font-variant-numeric:tabular-nums; }
-#log-summary .count-ok { color:var(--log-ok); font-weight:650; }
-#log-summary .count-err { color:var(--log-err); font-weight:650; }
-#log-summary .count-warn { color:var(--log-warn); font-weight:650; }
+   without reading the log itself. Each count is also the filter for its kind:
+   select "4 failed" to see only those four lines, "All" to see everything. */
+.log-filters { display:flex; flex-wrap:wrap; gap:6px; }
+.log-filter {
+  font-size:.72rem; font-weight:600; font-variant-numeric:tabular-nums;
+  color:var(--muted); background:transparent; border:1px solid var(--border);
+  border-radius:999px; padding:3px 10px; cursor:pointer; transition:all .15s;
+}
+.log-filter:hover { border-color:var(--accent-border); }
+.log-filter[aria-pressed="true"] { color:var(--text); background:var(--input-bg); border-color:var(--accent); }
+.log-filter .count-ok { color:var(--log-ok); }
+.log-filter .count-err { color:var(--log-err); }
+.log-filter .count-warn { color:var(--log-warn); }
+/* Which log is shown: two side-by-side tabs instead of a dropdown, so both
+   choices are visible without opening anything. */
+.log-tabs { display:inline-flex; border:1px solid var(--border); border-radius:999px; padding:2px; background:var(--input-bg); }
+.log-tab {
+  font-size:.75rem; font-weight:600; color:var(--muted); background:transparent;
+  border:0; border-radius:999px; padding:4px 12px; cursor:pointer; transition:all .15s;
+}
+.log-tab[aria-pressed="true"] { color:#fff; background:var(--accent); }
 .log-empty-filtered { display:flex; align-items:center; justify-content:center; min-height:120px; padding:24px; color:var(--log-dim); font-style:italic; }
 .log-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:12px; flex-wrap:wrap; }
-.log-controls { display:flex; align-items:center; gap:10px; font-size:.78rem; color:var(--muted); }
+.log-controls { display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:.78rem; color:var(--muted); }
 .log-controls label { display:flex; align-items:center; gap:4px; cursor:pointer; font-weight:normal; }
 #log-ts {
   font-variant-numeric:tabular-nums; font-size:.72rem; color:var(--muted);
   background:var(--input-bg); border:1px solid var(--border); border-radius:999px;
   padding:2px 10px;
 }
-.log-source {
-  font-size:.75rem; font-weight:600; color:var(--text); background:var(--input-bg);
-  border:1px solid var(--border); border-radius:999px; padding:5px 12px; cursor:pointer;
-  transition:border-color .15s,box-shadow .15s;
-}
-.log-source:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
 .btn-ghost {
   padding:5px 12px; font-size:.75rem; font-weight:600; background:transparent;
   color:var(--accent); border:1px solid var(--accent-border); border-radius:999px;
@@ -462,8 +480,10 @@ let logTimer = null;
 let shownText = null;
 let shownSource = null;
 let shownFilter = null;
-const logSourceSelect = document.getElementById('log-source');
-const logFilterSelect = document.getElementById('log-filter');
+// 'activity' or 'download'; which file /logs returns.
+let logSource = 'activity';
+// 'all', or one entry kind: 'ok' (done), 'err' (failed), 'warn' (waiting or skipped).
+let logFilter = 'all';
 const logSummary = document.getElementById('log-summary');
 const logBox = document.getElementById('log-box');
 
@@ -627,19 +647,32 @@ function renderEntry(entry) {
   );
 }
 
+// Kinds that get a count button, in display order, with their label.
+const FILTER_KINDS = [
+  ['ok', 'done'],
+  ['err', 'failed'],
+  ['warn', 'waiting or skipped'],
+];
+
+function filterButton(filter, innerHtml) {
+  const pressed = filter === logFilter ? 'true' : 'false';
+  return '<button type="button" class="log-filter" data-log-filter="' + filter +
+    '" aria-pressed="' + pressed + '">' + innerHtml + '</button>';
+}
+
 function summarize(entries) {
-  let done = 0, failed = 0, waiting = 0;
+  const counts = { ok: 0, err: 0, warn: 0 };
   for (const entry of entries) {
-    if (entry.kind === 'ok') done++;
-    else if (entry.kind === 'err') failed++;
-    else if (entry.kind === 'warn') waiting++;
+    if (entry.kind in counts) counts[entry.kind]++;
   }
-  const counts = [];
-  if (done) counts.push('<span class="count-ok">' + done + '</span> done');
-  if (failed) counts.push('<span class="count-err">' + failed + '</span> failed');
-  if (waiting) counts.push('<span class="count-warn">' + waiting + '</span> waiting or skipped');
-  if (!counts.length) return entries.length ? entries.length + ' entries' : '';
-  return counts.join(' \u00b7 ');
+  // A kind with nothing in it gets no button, unless it is the active filter:
+  // the reader needs a way back from an empty view.
+  let html = filterButton('all', 'All ' + entries.length);
+  for (const [kind, label] of FILTER_KINDS) {
+    if (!counts[kind] && logFilter !== kind) continue;
+    html += filterButton(kind, '<span class="count-' + kind + '">' + counts[kind] + '</span> ' + label);
+  }
+  return html;
 }
 
 function renderLogPanel(raw, source, filter) {
@@ -652,11 +685,9 @@ function renderLogPanel(raw, source, filter) {
   const entries = parseLogLines(raw, source);
   logSummary.innerHTML = summarize(entries);
 
-  const shown = filter === 'problems'
-    ? entries.filter(e => e.kind === 'err' || e.kind === 'warn')
-    : entries;
+  const shown = filter === 'all' ? entries : entries.filter(e => e.kind === filter);
   if (!shown.length) {
-    return '<div class="log-empty-filtered">Nothing failed or waited in this window.</div>';
+    return '<div class="log-empty-filtered">No lines of this kind in this window.</div>';
   }
 
   let html = '';
@@ -673,7 +704,7 @@ function renderLogPanel(raw, source, filter) {
 
 async function loadLogs() {
   try {
-    const source = logSourceSelect.value;
+    const source = logSource;
     const response = await fetch('/logs?source=' + encodeURIComponent(source));
     // An expired session answers 401. Reload so the server can send the
     // login page instead of leaving a stale queue on screen.
@@ -684,7 +715,7 @@ async function loadLogs() {
     }
     if (!response.ok) return;
     const text = await response.text();
-    const filter = logFilterSelect.value;
+    const filter = logFilter;
     document.getElementById('log-ts').textContent = new Date().toLocaleTimeString();
     if (text === shownText && source === shownSource && filter === shownFilter) return;
 
@@ -704,8 +735,24 @@ function setAuto(on) {
 
 document.getElementById('auto-cb').addEventListener('change', e => setAuto(e.target.checked));
 document.getElementById('refresh-logs').addEventListener('click', loadLogs);
-logSourceSelect.addEventListener('change', loadLogs);
-logFilterSelect.addEventListener('change', loadLogs);
+document.querySelectorAll('.log-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    logSource = tab.dataset.logSource;
+    document.querySelectorAll('.log-tab').forEach(other => {
+      other.setAttribute('aria-pressed', other === tab ? 'true' : 'false');
+    });
+    loadLogs();
+  });
+});
+// The count buttons are rebuilt on every render, so listen on their container.
+logSummary.addEventListener('click', event => {
+  const button = event.target.closest('[data-log-filter]');
+  if (!button) return;
+  // Selecting the active count again goes back to everything.
+  const chosen = button.dataset.logFilter;
+  logFilter = chosen === logFilter ? 'all' : chosen;
+  loadLogs();
+});
 loadLogs();
 setAuto(true);
 """
@@ -827,7 +874,7 @@ def render_help_page(
       <ul>
         <li>Entries are grouped by day, newest at the bottom. The badge on the left says what happened: <strong>Run</strong> for the first and last line of a run, <strong>Done</strong> for a finished download, <strong>Fail</strong> for one that did not, <strong>Wait</strong> for a video still inside its waiting period, <strong>Skip</strong> for a YouTube Short, and <strong>Keep</strong> for retention deleting an old file.</li>
         <li>Every run is bracketed by a <strong>Run started</strong> and a <strong>Run finished</strong> line, so one run's work is everything between them.</li>
-        <li>The counts beside the log add up the lines currently loaded. <strong>Problems only</strong> hides everything that worked.</li>
+        <li>The counts beside the log add up the lines currently loaded. Select a count, such as <strong>4 failed</strong>, to see only those lines; select <strong>All</strong> to see everything again.</li>
         <li>Links open the video an entry is about. Drag the bottom edge of the box to make it taller.</li>
       </ul>
 
@@ -1013,9 +1060,23 @@ def render_login_page(
     )
 
 
+def _logout_form(safe_token: str, show_logout: bool) -> str:
+    """Return the header's logout button, or nothing when login is off."""
+    if not show_logout:
+        return ""
+    return (
+        '<form method="post" action="/logout" style="margin:0">'
+        f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
+        '<button type="submit" class="logout-btn">Logout</button>'
+        "</form>"
+    )
+
+
 def render_settings_page(
     *,
     safe_token: str,
+    show_logout: bool,
+    retention_days: int,
     safe_cookie_summary: str,
     safe_cookie_expiry: str,
     cookie_expiry_tone: str,
@@ -1039,6 +1100,11 @@ def render_settings_page(
     ----------
     safe_token:
         Escaped CSRF token shared by every form on the page.
+    show_logout:
+        Whether accounts exist. Without them there is no Logout button, and a
+        note says that anyone who can reach the page can use it.
+    retention_days:
+        Current ``retention_days`` from ``config.ini``.
     safe_cookie_summary:
         Escaped one-line description of the cookie file in use.
     safe_cookie_expiry:
@@ -1068,6 +1134,15 @@ def render_settings_page(
         The complete settings page.
     """
     checked_attribute = " checked" if notifications_enabled else ""
+    logout_html = _logout_form(safe_token, show_logout)
+    login_off_html = (
+        ""
+        if show_logout
+        else '<div class="msg-warn">Login is off: anyone who can open this page '
+        "can use it. To require a password, set <code>UI_USERNAME</code> and "
+        "<code>UI_PASSWORD</code> in <code>.env</code> in the data folder, then "
+        "restart.</div>"
+    )
     expiry_html = (
         f'<p class="cookie-expiry cookie-expiry--{cookie_expiry_tone or "plain"}">'
         f"{safe_cookie_expiry}</p>"
@@ -1093,20 +1168,34 @@ def render_settings_page(
     <header>
       <div class="brand">
         <h1><a href="/">Podcast Downloader</a></h1>
-        <p>Settings: YouTube sign-in cookies and error notifications.</p>
+        <p>Settings: episode retention, YouTube cookies, and error notifications.</p>
       </div>
       <div class="header-actions">
         <a class="nav-link" href="/">Queue</a>
         <a class="nav-link" href="/help">Doc</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
-        <form method="post" action="/logout" style="margin:0">
-          <input type="hidden" name="csrf_token" value="{safe_token}" />
-          <button type="submit" class="logout-btn">Logout</button>
-        </form>
+        {logout_html}
       </div>
     </header>
 
     {msg_html}
+    {login_off_html}
+
+    <div class="card">
+      <span class="card-label">Keep episodes</span>
+      <form method="post" action="/save-retention" class="retention-row">
+        <input type="hidden" name="csrf_token" value="{safe_token}" />
+        <label for="retention-days">Delete channel episodes after</label>
+        <input id="retention-days" name="retention_days" type="number"
+          min="{MINIMUM_RETENTION_DAYS}" max="{MAXIMUM_RETENTION_DAYS}" step="1"
+          value="{retention_days}" required />
+        <span>days</span>
+        <button type="submit" class="btn">Save</button>
+      </form>
+      <span class="field-hint">
+        Counted from the download date. Videos added one by one are kept.
+      </span>
+    </div>
 
     <div class="card">
       <span class="card-label">YouTube access cookies</span>
@@ -1264,10 +1353,12 @@ def render_queue_page(
     msg_html: str,
     queue_html: str,
     safe_token: str,
+    show_logout: bool,
     script_nonce: str,
     headers: dict[str, str],
 ) -> HTMLResponse:
     """Render the authenticated queue page from prepared values."""
+    logout_html = _logout_form(safe_token, show_logout)
     return HTMLResponse(
         content=f"""<!doctype html>
     <html lang="en">
@@ -1352,10 +1443,7 @@ def render_queue_page(
         <a class="nav-link" href="/settings">Settings</a>
         <a class="nav-link" href="/help">Doc</a>
         <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
-        <form method="post" action="/logout" style="margin:0">
-          <input type="hidden" name="csrf_token" value="{safe_token}" />
-          <button type="submit" class="logout-btn">Logout</button>
-        </form>
+        {logout_html}
       </div>
     </header>
 
@@ -1395,15 +1483,11 @@ def render_queue_page(
       <div class="log-bar">
         <div class="log-controls">
           <span class="card-label" style="margin:0">Activity and logs</span>
-          <select id="log-source" class="log-source" aria-label="Choose a log">
-            <option value="activity" selected>Activity</option>
-            <option value="download">Detailed log</option>
-          </select>
-          <select id="log-filter" class="log-source" aria-label="Choose what to show">
-            <option value="all" selected>Everything</option>
-            <option value="problems">Problems only</option>
-          </select>
-          <span id="log-summary" aria-live="polite"></span>
+          <div class="log-tabs" role="group" aria-label="Which log">
+            <button type="button" class="log-tab" data-log-source="activity" aria-pressed="true">Activity</button>
+            <button type="button" class="log-tab" data-log-source="download" aria-pressed="false">Detailed log</button>
+          </div>
+          <div id="log-summary" class="log-filters" role="group" aria-label="Show only" aria-live="polite"></div>
         </div>
         <div class="log-controls">
           <span id="log-ts"></span>

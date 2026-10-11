@@ -5,6 +5,7 @@ from __future__ import annotations
 import configparser
 import math
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,11 @@ DEFAULT_CHANNEL_VIDEO_COUNT = 2
 DEFAULT_MIN_CHANNEL_VIDEO_AGE_HOURS = 24
 DEFAULT_DELAY_SECONDS = 2.0
 DEFAULT_RETENTION_DAYS = 30
+MINIMUM_RETENTION_DAYS = 1
+# Ceiling for the settings page only; ten years is "keep everything".
+MAXIMUM_RETENTION_DAYS = 3650
+RETENTION_DAYS_KEY = "retention_days"
+CONFIG_SECTION = "podcast"
 # Time limit for one yt-dlp attempt, including download, conversion, SponsorBlock,
 # and thumbnail work. Long episodes on a slow connection need a generous limit.
 DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 3600
@@ -237,9 +243,9 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         0.0,
     )
     retention_days = _require_minimum_int(
-        _get_int(section, "retention_days", DEFAULT_RETENTION_DAYS),
-        "retention_days",
-        1,
+        _get_int(section, RETENTION_DAYS_KEY, DEFAULT_RETENTION_DAYS),
+        RETENTION_DAYS_KEY,
+        MINIMUM_RETENTION_DAYS,
     )
     download_timeout_seconds = _require_minimum_int(
         _get_int(
@@ -353,3 +359,85 @@ def load_config(config_path: Path, project_root: Path) -> PodcastConfig:
         cookie_expiry_warning_days=cookie_expiry_warning_days,
         max_download_attempts=max_download_attempts,
     )
+
+
+def read_retention_days(config_path: Path) -> int:
+    """Return ``retention_days`` as it is in ``config.ini`` right now.
+
+    The web server loads its configuration once at startup, but each download
+    run reads ``config.ini`` again, so the settings page reads the file instead
+    of the startup copy to show what the next run will use.
+
+    Parameters
+    ----------
+    config_path:
+        Path to ``config.ini``.
+
+    Returns
+    -------
+    int
+        The configured number of days, or :data:`DEFAULT_RETENTION_DAYS` when
+        the file or the key is missing.
+
+    Raises
+    ------
+    ConfigError
+        When the file cannot be parsed or the value is not a valid count.
+    """
+    parser = configparser.ConfigParser(interpolation=None)
+    try:
+        parser.read(config_path)
+    except configparser.Error as exc:
+        raise ConfigError(f"{config_path.name} could not be parsed: {exc}") from exc
+    section = parser[CONFIG_SECTION] if CONFIG_SECTION in parser else {}
+    return _require_minimum_int(
+        _get_int(section, RETENTION_DAYS_KEY, DEFAULT_RETENTION_DAYS),
+        RETENTION_DAYS_KEY,
+        MINIMUM_RETENTION_DAYS,
+    )
+
+
+def write_retention_days(config_path: Path, days: int) -> None:
+    """Set ``retention_days`` in ``config.ini``, keeping every other line.
+
+    The file is the operator's, full of explanatory comments, so it is edited
+    as text rather than rewritten by ``configparser``, which would drop them.
+    The next download run picks the value up; no restart is needed.
+
+    Parameters
+    ----------
+    config_path:
+        Path to ``config.ini``. Created with a ``[podcast]`` section if absent.
+    days:
+        Days to keep channel episodes, from :data:`MINIMUM_RETENTION_DAYS` to
+        :data:`MAXIMUM_RETENTION_DAYS`.
+
+    Raises
+    ------
+    ConfigError
+        When ``days`` is outside that range.
+    """
+    _require_int_in_range(
+        days, RETENTION_DAYS_KEY, MINIMUM_RETENTION_DAYS, MAXIMUM_RETENTION_DAYS
+    )
+    text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    setting_line = f"{RETENTION_DAYS_KEY} = {days}"
+
+    # Before: "retention_days = 30" somewhere under [podcast].
+    # After:  the same line with the new number; comments mentioning the key
+    # start with "#" and are not matched.
+    key_line = re.compile(rf"^[ \t]*{RETENTION_DAYS_KEY}[ \t]*[=:].*$", re.MULTILINE)
+    section_header = re.compile(rf"^\[{CONFIG_SECTION}\][ \t]*$", re.MULTILINE)
+    if key_line.search(text):
+        text = key_line.sub(setting_line, text, count=1)
+    elif header := section_header.search(text):
+        text = f"{text[: header.end()]}\n{setting_line}{text[header.end():]}"
+    else:
+        separator = "\n" if text and not text.endswith("\n") else ""
+        text = f"{text}{separator}[{CONFIG_SECTION}]\n{setting_line}\n"
+
+    # Replace in one rename, so a run starting at this moment reads either the
+    # old file or the new one, never half of each.
+    temporary_file = config_path.with_name(f".{config_path.name}.tmp")
+    temporary_file.write_text(text, encoding="utf-8")
+    temporary_file.replace(config_path)

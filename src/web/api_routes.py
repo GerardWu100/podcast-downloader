@@ -43,7 +43,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..config import PodcastConfig
-from ..credentials import load_ui_accounts
+from ..credentials import load_ui_accounts, login_is_required
 from ..log_timezone import local_now
 from ..schedule import next_scheduled_run, scheduled_run_is_overdue
 from ..state.archive_store import ArchiveStore
@@ -172,9 +172,13 @@ def _require_account(request: Request) -> None:
         With the status and message from :data:`REFUSAL_STATUS` for whatever
         went wrong.
     """
-    username, password = _read_basic_auth_header(request)
-
     state = request.app.state
+    # With login off, the API is as open as the web page; any header, or none,
+    # is accepted.
+    if not login_is_required(_dependency(state, "credentials_file", Path)):
+        return
+
+    username, password = _read_basic_auth_header(request)
     outcome = check_credentials(
         username,
         password,
