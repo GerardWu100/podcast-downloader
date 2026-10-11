@@ -115,3 +115,4 @@ uv run python -m pytest -q
   and explicit runtime copies plus ignore rules keep credentials, cookies, and
   notification keys out of image layers.
 - 2026-10-10: Removed the dated AI review notes (`astra_thoughts_*.md`, `fable_thoughts_*.md`). Their goal statement now lives in `AGENTS.md`, and their findings are fixed or tracked there.
+- 2026-10-10: Removed the generated `CODE_EXPLAINED.html`. It went stale after each code change; `docs/architecture.md` and the folder guides cover the same ground.
