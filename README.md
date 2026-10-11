@@ -60,8 +60,9 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up -d
 ```
 
-The web page is at `http://127.0.0.1:50022` on the server. The `single`
-network is where a reverse proxy (for HTTPS) and Apprise (for alerts) can reach
+The web page is at `http://<server address>:8000`. It is plain HTTP, so
+keep it inside your home network or put a reverse proxy with HTTPS in front.
+The `single` network is where that proxy and Apprise (for alerts) can reach
 it.
 
 **Update** to the newest version:

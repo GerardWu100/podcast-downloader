@@ -18,7 +18,10 @@ services:
     image: ghcr.io/gerardwu100/podcast-downloader:latest
     container_name: podcast-downloader
     ports:
-      - "127.0.0.1:50022:8000"
+      # Open on every network interface of the server. The login travels
+      # in plain HTTP here, so put HTTPS in front before exposing it beyond
+      # your home network, or use "127.0.0.1:8000:8000" to keep it local.
+      - "8000:8000"
     restart: unless-stopped
     environment:
       # The run schedule uses this clock: config.ini sets the hour and the
