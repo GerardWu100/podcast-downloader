@@ -97,8 +97,8 @@ docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d
 ```
 
-`./update.sh` pulls new commits and rebuilds only when something changed.
-`./update.sh --force` rebuilds anyway, for example after editing `.env`.
+To update it, pull and rebuild:
+`git pull && docker compose up --build -d`.
 
 ## Releases
 
