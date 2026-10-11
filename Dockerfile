@@ -23,6 +23,12 @@ RUN uv sync --frozen --no-dev \
 # Unbuffered output so all logs appear immediately in docker logs
 ENV PYTHONUNBUFFERED=1
 
+# Where the container keeps settings and state, finished MP3s, and files still
+# being processed. Mount host folders at these three paths.
+ENV PODCAST_DATA_DIR=/data \
+    PODCAST_DOWNLOAD_DIR=/downloads \
+    PODCAST_INTERMEDIATE_DIR=/temporary
+
 # Copy only the runtime application. Explicit sources keep ignored files and
 # local secrets out even if `.dockerignore` is changed incorrectly later.
 COPY main.py start.py config.toml .env.example ./

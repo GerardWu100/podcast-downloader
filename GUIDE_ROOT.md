@@ -78,6 +78,7 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
 - `docker-compose.example.yml` and `.github/workflows/publish-image.yml`: the
   published GHCR image and the clone-free deployment that pulls it.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
+- `scripts/publish_wiki.py`: copies `docs/` to the GitHub wiki. Run it by hand after changing `docs/`.
 - `scripts/sponsorblock_smoke_check.py`: optional live check. It stays outside
   `tests/` so the offline suite does not collect it.
 
@@ -123,3 +124,4 @@ uv run python -m pytest -q
 - 2026-10-11: Added a GHCR image (amd64 and arm64) built by GitHub Actions, plus `docker-compose.example.yml`, so a server can deploy without cloning. `docker-compose.yml` still builds from source. Automatic image updates (Watchtower) were declined: updates stay a manual `docker compose pull`.
 - 2026-10-11: Login became optional and is off by default (`.env.example` leaves it blank); an account set wrongly locks the page instead of opening it. The published-image compose no longer needs a `.env` or a pre-made network, so setup is one file. Retention moved onto the settings page, and the activity panel's dropdowns became tabs and count filters.
 - 2026-10-11: Settings moved from `config.ini` to `config.toml`, read with `tomllib`. The INI loader silently fell back to the default on a mistyped `true`/`false`, and ignored misspelled keys; the TOML loader rejects a wrong type or an unknown key at startup. Existing deployments start from the shipped defaults and must copy any changed values across by hand.
+- 2026-10-11: The README became the user guide (install with Compose or `docker run`, use, settings, troubleshooting) and the developer material moved to `docs/`, published as the GitHub wiki. The image now sets `PODCAST_DATA_DIR`, `PODCAST_DOWNLOAD_DIR`, and `PODCAST_INTERMEDIATE_DIR` itself, so a `docker run` needs only the three mounts.

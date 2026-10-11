@@ -1,11 +1,13 @@
 ---
-title: Introduction
+title: Home
 sidebar_position: 1
 ---
 
 # Podcast Downloader
 
-Podcast Downloader is a small personal tool for turning online videos into MP3 files, removing SponsorBlock segments from YouTube downloads, and managing a queue from the command line or a browser UI.
+Podcast Downloader is a small self-hosted tool that turns online videos into MP3 files, removes SponsorBlock segments from YouTube downloads, and manages a queue from a web page or the command line.
+
+This wiki is for people who want to know how it works, change it, or run it in an unusual way. To install and use it, the [README](https://github.com/GerardWu100/podcast-downloader#readme) is enough.
 
 ## What it does
 
@@ -19,7 +21,7 @@ Podcast Downloader is a small personal tool for turning online videos into MP3 f
   small descriptive tags such as the source URL and download date.
 - Groups MP3 files by source under `downloads/`; direct videos go in `singles/`.
 - Deletes old channel MP3 files according to the embedded download date, while leaving playlist and one-off files alone.
-- Lets you add new URLs through a password-protected web form, and shows when the queue last ran and when it runs next.
+- Lets you add new URLs through a web page, with an optional login, and shows when the queue last ran and when it runs next.
 
 ## Main parts
 
@@ -51,9 +53,14 @@ flowchart TD
     F --> K["downloaded_urls.txt for expanded items"]
 ```
 
-## Recommended reading order
+## Pages
 
-1. [Architecture](./architecture.md)
-2. [CLI and Config](./cli-and-config.md)
-3. [Web UI and Security](./web-ui-security.md)
-4. [Operations](./operations.md)
+| Page | Read it to |
+|---|---|
+| [Architecture](./architecture.md) | Follow a URL from the queue to an MP3, and see which module owns each step |
+| [CLI and Config](./cli-and-config.md) | Look up a command-line flag or a `config.toml` setting |
+| [Web UI and Security](./web-ui-security.md) | Understand the optional login, sessions, and browser protections |
+| [Operations](./operations.md) | Run, update, and troubleshoot a deployment; cookies; the schedule |
+| [Notifications](./notifications.md) | Set up Apprise alerts and read what each one means |
+| [Browser Extension](./browser-extension.md) | Install, build, or sign the extension, and use the JSON API |
+| [Development](./development.md) | Run from a checkout, test, and release |

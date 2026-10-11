@@ -1,3 +1,8 @@
+---
+title: Notifications
+sidebar_position: 6
+---
+
 # Error notifications
 
 The downloader can send its problems to Apprise. Apprise then forwards the

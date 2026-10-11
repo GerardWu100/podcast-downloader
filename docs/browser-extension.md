@@ -1,3 +1,8 @@
+---
+title: Browser Extension
+sidebar_position: 7
+---
+
 # Browser extension
 
 The extension adds the current page or a link on it to the download queue.
