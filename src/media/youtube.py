@@ -7,6 +7,7 @@ import re
 import subprocess
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
+from typing import NamedTuple
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
 
@@ -349,50 +350,75 @@ def source_kind(url: str) -> SourceKind:
     return SourceKind.VIDEO
 
 
+class SourceName(NamedTuple):
+    """How a queue source is shown: its name, and who made it.
+
+    Attributes
+    ----------
+    name:
+        Channel name, playlist title, or video title.
+    author:
+        The channel behind a playlist or video, or ``None`` for a channel,
+        which is its own author.
+    """
+
+    name: str
+    author: str | None
+
+
 def get_source_display_name(
     url: str,
     logger: logging.Logger,
     cookies_file: Path | None = None,
     always_use_cookies: bool = False,
-) -> str | None:
-    """Return the name a person knows a queue source by.
+) -> SourceName | None:
+    """Return the name a person knows a queue source by, and its author.
 
     One flat ``yt-dlp`` call reads the playlist-level fields, which are the
     channel's name for a channel URL (even on its ``/videos`` tab) and the
-    playlist's title for a playlist; for a single video the item's own title
-    is used. Example results: ``"YouTube"``, ``"Deep clean dreams"``,
-    ``"20 years of esports history explained"``.
+    playlist's title and owner for a playlist; for a single video the item's
+    own title and channel are used. Examples: ``SourceName("YouTube", None)``,
+    ``SourceName("Deep clean dreams", "YouTube")``.
 
     Returns
     -------
-    str | None
-        The name, or ``None`` when ``yt-dlp`` could not tell, such as while
-        YouTube is blocking requests. The caller keeps showing the URL then.
+    SourceName | None
+        ``None`` when ``yt-dlp`` could not tell, such as while YouTube is
+        blocking requests. The caller keeps showing the URL then.
     """
     metadata_line = _fetch_ytdlp_print_line(
         url,
-        "%(playlist_channel)s\t%(playlist_title)s\t%(title)s\t%(channel)s",
+        "%(playlist_channel)s\t%(playlist_uploader)s\t%(playlist_title)s"
+        "\t%(title)s\t%(channel)s",
         logger,
         cookies_file,
         always_use_cookies,
     )
     if metadata_line is None:
         return None
-    # Before: "YouTube\tYouTube - Videos\tNA\tNA" (channel URL).
-    # After:  the fields worth trying for this kind of source, best first.
-    playlist_channel, playlist_title, item_title, item_channel = (
-        metadata_line.split("\t") + ["", "", "", ""]
-    )[:4]
-    candidates = {
-        SourceKind.CHANNEL: (playlist_channel, item_channel),
-        SourceKind.PLAYLIST: (playlist_title,),
-        SourceKind.VIDEO: (item_title,),
+    # Before: "YouTube\tYouTube\tYouTube - Videos\tNA\tNA" (channel URL).
+    # After:  for each part, the fields worth trying, best first.
+    playlist_channel, playlist_uploader, playlist_title, item_title, item_channel = (
+        metadata_line.split("\t") + [""] * 5
+    )[:5]
+    name_fields, author_fields = {
+        SourceKind.CHANNEL: ((playlist_channel, playlist_uploader, item_channel), ()),
+        SourceKind.PLAYLIST: ((playlist_title,), (playlist_channel, playlist_uploader)),
+        SourceKind.VIDEO: ((item_title,), (item_channel,)),
     }[source_kind(url)]
-    for candidate in candidates:
-        if _metadata_value_is_present(candidate) and not looks_like_youtube_channel_id(
-            candidate.strip()
+    name = _first_readable_value(name_fields)
+    if name is None:
+        return None
+    return SourceName(name, _first_readable_value(author_fields))
+
+
+def _first_readable_value(values: tuple[str, ...]) -> str | None:
+    """Return the first value yt-dlp actually filled in, skipping raw channel IDs."""
+    for value in values:
+        if _metadata_value_is_present(value) and not looks_like_youtube_channel_id(
+            value.strip()
         ):
-            return candidate.strip()
+            return value.strip()
     return None
 
 

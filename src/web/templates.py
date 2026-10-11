@@ -1371,6 +1371,7 @@ def render_queue_page(
     .q-main {{ flex:1; min-width:0; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }}
     .q-name {{ font-size:.9rem; font-weight:600; color:var(--text); text-decoration:none; overflow-wrap:anywhere; }}
     .q-name:hover {{ color:var(--accent); text-decoration:underline; }}
+    .q-author {{ font-size:.8rem; color:var(--muted); }}
     .q-kind {{ font-size:.66rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:1px 7px; }}
     .q-actions {{ display:flex; gap:6px; flex-shrink:0; }}
     .q-actions form {{ margin:0; }}

@@ -10,12 +10,13 @@ Two maps use this store:
   Audiobookshelf folders. A renamed playlist would do the same. Saving the
   first name that resolved keeps every later run on the same folder.
 - ``source_names.json``: the channel, playlist, or video name the queue page
-  shows instead of the URL. Looking it up costs a ``yt-dlp`` call, so it is
-  done once per source and kept.
+  shows instead of the URL, and its author. Looking it up costs a ``yt-dlp``
+  call, so it is done once per source and kept.
 
 File format: one JSON object mapping the source URL exactly as it appears in
-the queue to its text, for example
-``{"https://www.youtube.com/playlist?list=PL123": "My-Playlist"}``.
+the queue to its value. Folders map to text,
+``{"https://www.youtube.com/playlist?list=PL123": "My-Playlist"}``; names map
+to an object, ``{"...": {"name": "My Playlist", "author": "Some Channel"}}``.
 """
 
 from __future__ import annotations
@@ -27,12 +28,16 @@ from pathlib import Path
 
 from .file_locks import locked_text_file
 
+# A stored value: folder text, or a name object such as
+# {"name": "My Playlist", "author": "Some Channel"}.
+SourceValue = str | dict[str, str | None]
+
 SOURCE_FOLDERS_FILE_NAME = "source_folders.json"
 SOURCE_NAMES_FILE_NAME = "source_names.json"
 
 
 class SourceMapStore:
-    """Read and change a source-URL-to-text map under a cross-process lock.
+    """Read and change a source-URL-to-value map under a cross-process lock.
 
     Parameters
     ----------
@@ -48,7 +53,7 @@ class SourceMapStore:
         """Return the stable sibling lock path for the replaceable map file."""
         return self.map_file.with_name(f"{self.map_file.name}.lock")
 
-    def _read_unlocked(self) -> dict[str, str]:
+    def _read_unlocked(self) -> dict[str, SourceValue]:
         """Read the map, treating an absent or damaged file as empty."""
         if not self.map_file.exists():
             return {}
@@ -61,10 +66,10 @@ class SourceMapStore:
         return {
             str(source_url): value
             for source_url, value in raw_map.items()
-            if isinstance(value, str) and value
+            if isinstance(value, (str, dict)) and value
         }
 
-    def _write_unlocked(self, source_map: dict[str, str]) -> None:
+    def _write_unlocked(self, source_map: dict[str, SourceValue]) -> None:
         """Replace the map file atomically; the caller holds the lock."""
         self.map_file.parent.mkdir(parents=True, exist_ok=True)
         temporary_file = self.map_file.with_name(f".{self.map_file.name}.tmp")
@@ -74,18 +79,18 @@ class SourceMapStore:
         )
         temporary_file.replace(self.map_file)
 
-    def value_for(self, source_url: str) -> str | None:
-        """Return the saved text for one source, or ``None``."""
+    def value_for(self, source_url: str) -> SourceValue | None:
+        """Return the saved value for one source, or ``None``."""
         with locked_text_file(self._lock_file, "a+", fcntl.LOCK_SH):
             return self._read_unlocked().get(source_url)
 
-    def read_all(self) -> dict[str, str]:
+    def read_all(self) -> dict[str, SourceValue]:
         """Return the whole map, for a page that shows every source at once."""
         with locked_text_file(self._lock_file, "a+", fcntl.LOCK_SH):
             return self._read_unlocked()
 
-    def remember(self, source_url: str, value: str) -> None:
-        """Save one source's text."""
+    def remember(self, source_url: str, value: SourceValue) -> None:
+        """Save one source's value."""
         with locked_text_file(self._lock_file, "a+", fcntl.LOCK_EX):
             source_map = self._read_unlocked()
             if source_map.get(source_url) == value:

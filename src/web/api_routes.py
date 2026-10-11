@@ -341,23 +341,29 @@ def list_queue(request: Request) -> JSONResponse:
     Returns
     -------
     JSONResponse
-        ``{"sources": [{"url", "name", "kind"}, ...]}`` in queue order.
-        ``kind`` is ``channel``, ``playlist``, or ``video``. ``name`` is the
-        channel, playlist, or video name, or ``null`` until its background
-        lookup has finished; asking starts that lookup.
+        ``{"sources": [{"url", "name", "author", "kind"}, ...]}`` in queue
+        order. ``kind`` is ``channel``, ``playlist``, or ``video``. ``name`` is
+        the channel, playlist, or video name and ``author`` the channel behind
+        a playlist or video; both are ``null`` until the background lookup has
+        finished, and asking starts that lookup.
     """
     _require_account(request)
     state = request.app.state
     source_urls = _dependency(state, "queue_store", QueueStore).load_normalized_urls()
     resolver = getattr(state, "source_name_resolver", None)
-    names: dict[str, str] = {}
+    names = {}
     if resolver is not None:
         resolver.request(source_urls)
-        names = resolver.name_store.read_all()
+        names = resolver.read_names()
     return JSONResponse(
         {
             "sources": [
-                {"url": url, "name": names.get(url), "kind": str(source_kind(url))}
+                {
+                    "url": url,
+                    "name": names[url].name if url in names else None,
+                    "author": names[url].author if url in names else None,
+                    "kind": str(source_kind(url)),
+                }
                 for url in source_urls
             ]
         }

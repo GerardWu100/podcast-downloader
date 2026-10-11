@@ -1,7 +1,8 @@
 """Names for queue sources, looked up in the background and kept.
 
 The queue page shows "Example Podcast" instead of
-``https://www.youtube.com/@example-podcast/videos``. Finding that name takes a
+``https://www.youtube.com/@example-podcast/videos``, and "by Some Channel"
+after a playlist or video. Finding that name takes a
 ``yt-dlp`` call of a few seconds, too slow to make inside a page request. So
 the page shows what it already has, and asks this resolver to look up the
 rest; the next page load shows the names.
@@ -9,8 +10,9 @@ rest; the next page load shows the names.
 Flow::
 
     queue page / add / API  --request(urls)-->  pending set + work queue
-    one worker thread       --lookup(url)--->   name or None
-    name                    --remember------>   source_names.json (SourceMapStore)
+    one worker thread       --lookup(url)--->   SourceName or None
+    SourceName              --remember------>   source_names.json (SourceMapStore),
+                                                {"name": ..., "author": ...}
 
 One thread means one ``yt-dlp`` call at a time, so a page with many unnamed
 sources cannot fire a burst of requests at YouTube. A failed lookup is not
@@ -27,10 +29,10 @@ import time
 from collections.abc import Callable, Iterable
 from urllib.parse import urlparse
 
-from ..media.youtube import SourceKind, source_kind
+from ..media.youtube import SourceKind, SourceName, source_kind
 from ..state.source_map_store import SourceMapStore
 
-RETRY_AFTER_FAILURE_SECONDS = 60 * 60
+RETRY_AFTER_FAILURE_SECONDS = 15 * 60
 # The small tag shown beside each source's name on the queue page.
 SOURCE_KIND_LABELS = {
     SourceKind.CHANNEL: "Channel",
@@ -51,13 +53,13 @@ class SourceNameResolver:
     name_store:
         Where found names are kept, keyed by the queue URL.
     lookup:
-        Function from a source URL to its name, or ``None`` when it could not
-        be found. Production passes ``get_source_display_name``; tests pass a
+        Function from a source URL to its ``SourceName``, or ``None`` when it
+        could not be found. Production passes ``get_source_display_name``; tests pass a
         fake so no network is used.
     """
 
     def __init__(
-        self, name_store: SourceMapStore, lookup: Callable[[str], str | None]
+        self, name_store: SourceMapStore, lookup: Callable[[str], SourceName | None]
     ) -> None:
         self.name_store = name_store
         self._lookup = lookup
@@ -71,7 +73,7 @@ class SourceNameResolver:
 
     def request(self, source_urls: Iterable[str]) -> None:
         """Queue a lookup for each URL that has no name, unless one is due later."""
-        known_names = self.name_store.read_all()
+        known_names = self.read_names()
         now = time.monotonic()
         with self._state_lock:
             for url in source_urls:
@@ -98,9 +100,9 @@ class SourceNameResolver:
                 self._work.task_done()
                 return
             try:
-                name = self._lookup(url)
-                if name:
-                    self.name_store.remember(url, name)
+                source_name = self._lookup(url)
+                if source_name:
+                    self.name_store.remember(url, source_name._asdict())
                     with self._state_lock:
                         self._failed_at.pop(url, None)
                 else:
@@ -116,6 +118,18 @@ class SourceNameResolver:
                 with self._state_lock:
                     self._pending.discard(url)
                 self._work.task_done()
+
+    def read_names(self) -> dict[str, SourceName]:
+        """Return every stored name, keyed by source URL.
+
+        An entry that is not a ``{"name", "author"}`` object counts as
+        missing, so it is looked up again.
+        """
+        return {
+            url: SourceName(str(value["name"]), value.get("author") or None)
+            for url, value in self.name_store.read_all().items()
+            if isinstance(value, dict) and value.get("name")
+        }
 
     def wait_until_idle(self) -> None:
         """Block until every queued lookup has finished. For tests."""

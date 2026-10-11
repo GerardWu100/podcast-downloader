@@ -41,7 +41,7 @@ from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts, login_is_requi
 from ..human_time import format_clock_time, format_time_ago, format_time_until
 from ..log_timezone import local_now
 from ..media.urls import is_supported_media_url
-from ..media.youtube import normalize_youtube_url, source_kind
+from ..media.youtube import SourceName, normalize_youtube_url, source_kind
 from ..notifications.apprise_client import (
     APPRISE_INFO_TYPE,
     AppriseNotifier,
@@ -178,7 +178,7 @@ def _run_state_store(request: Request) -> RunStateStore:
     )
 
 
-def _source_names(request: Request, source_urls: list[str]) -> dict[str, str]:
+def _source_names(request: Request, source_urls: list[str]) -> dict[str, SourceName]:
     """Return the known names for these sources and look up the missing ones.
 
     The lookups run in the background (see ``source_names.py``), so this
@@ -189,7 +189,14 @@ def _source_names(request: Request, source_urls: list[str]) -> dict[str, str]:
     if resolver is None:
         return {}
     resolver.request(source_urls)
-    return resolver.name_store.read_all()
+    return resolver.read_names()
+
+
+def _author_html(source_name: SourceName | None) -> str:
+    """Return "by <channel>" for a playlist or video, or nothing."""
+    if source_name is None or not source_name.author:
+        return ""
+    return f'<span class="q-author">by {html.escape(source_name.author)}</span>'
 
 
 def _download_trigger(request: Request) -> DownloadTrigger:
@@ -886,7 +893,8 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
             f'<div class="q-main">'
             f'<a class="q-name" href="{html.escape(url)}" title="{html.escape(url)}"'
             f' target="_blank" rel="noopener noreferrer">'
-            f"{html.escape(source_names.get(url) or fallback_source_label(url))}</a>"
+            f"{html.escape(source_names[url].name if url in source_names else fallback_source_label(url))}</a>"
+            f"{_author_html(source_names.get(url))}"
             f'<span class="q-kind">{SOURCE_KIND_LABELS[source_kind(url)]}</span>'
             f"</div>"
             f'<div class="q-actions">'

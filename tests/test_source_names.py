@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
-from src.media.youtube import SourceKind, source_kind
+from src.media.youtube import SourceKind, SourceName, source_kind
 from src.state.queue_store import QueueStore
 from src.state.source_map_store import SOURCE_NAMES_FILE_NAME, SourceMapStore
 from src.web import routes
@@ -21,11 +21,11 @@ VIDEO_URL = "https://www.youtube.com/watch?v=EXAMPLE0001"
 class _CountingLookup:
     """Fake yt-dlp lookup that records every call."""
 
-    def __init__(self, names: dict[str, str | None]) -> None:
+    def __init__(self, names: dict[str, SourceName | None]) -> None:
         self.names = names
         self.calls: list[str] = []
 
-    def __call__(self, url: str) -> str | None:
+    def __call__(self, url: str) -> SourceName | None:
         self.calls.append(url)
         return self.names.get(url)
 
@@ -44,7 +44,7 @@ def test_fallback_label_is_the_handle_or_a_short_url() -> None:
 
 def test_resolver_looks_each_source_up_once_and_keeps_the_name(tmp_path: Path) -> None:
     store = SourceMapStore(tmp_path / SOURCE_NAMES_FILE_NAME)
-    lookup = _CountingLookup({CHANNEL_URL: "Example Podcast"})
+    lookup = _CountingLookup({CHANNEL_URL: SourceName("Example Podcast", None)})
     resolver = SourceNameResolver(store, lookup)
 
     resolver.request([CHANNEL_URL, CHANNEL_URL])
@@ -55,7 +55,7 @@ def test_resolver_looks_each_source_up_once_and_keeps_the_name(tmp_path: Path) -
     resolver.close()
 
     assert lookup.calls == [CHANNEL_URL]
-    assert store.read_all() == {CHANNEL_URL: "Example Podcast"}
+    assert store.read_all() == {CHANNEL_URL: {"name": "Example Podcast", "author": None}}
 
 
 def test_resolver_waits_before_retrying_a_failed_lookup(tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ def test_queue_page_shows_names_and_kinds(tmp_path: Path, monkeypatch) -> None:
     urls_file.write_text(f"{CHANNEL_URL}\n{PLAYLIST_URL}\n", encoding="utf-8")
     monkeypatch.setattr(routes, "DATA_DIR", tmp_path)
     store = SourceMapStore(tmp_path / SOURCE_NAMES_FILE_NAME)
-    store.remember(PLAYLIST_URL, "Example Playlist")
+    store.remember(PLAYLIST_URL, {"name": "Example Playlist", "author": "Example Channel"})
     lookup = _CountingLookup({})
     app = create_app(
         queue_store=QueueStore(urls_file, routes._logger),
@@ -103,7 +103,23 @@ def test_queue_page_shows_names_and_kinds(tmp_path: Path, monkeypatch) -> None:
     app.state.source_name_resolver.close()
 
     assert ">Example Playlist</a>" in body
+    assert ">by Example Channel</span>" in body
     assert ">@example-podcast</a>" in body
     assert ">Playlist</span>" in body and ">Channel</span>" in body
     # Only the source without a name was looked up.
     assert lookup.calls == [CHANNEL_URL]
+
+
+def test_old_plain_text_names_are_looked_up_again(tmp_path: Path) -> None:
+    """Names saved before authors existed are plain text; refetch them for the author."""
+    store = SourceMapStore(tmp_path / "names.json")
+    store.remember(PLAYLIST_URL, "Example Playlist")
+    lookup = _CountingLookup({PLAYLIST_URL: SourceName("Example Playlist", "Example Channel")})
+    resolver = SourceNameResolver(store, lookup)
+
+    resolver.request([PLAYLIST_URL])
+    resolver.close()
+
+    assert resolver.read_names() == {
+        PLAYLIST_URL: SourceName("Example Playlist", "Example Channel")
+    }

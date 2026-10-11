@@ -5,10 +5,12 @@ One version covers the server, the Docker image, and the browser extension.
 ## Unreleased
 
 - The queue lists sources by channel, playlist, or video name, with a
-  Channel / Playlist / Video tag, instead of raw URLs. Names are looked up once
-  in the background and kept in `source_names.json`.
-- `GET /api/queue` returns `{"url", "name", "kind"}` for each source instead of
-  a plain URL list.
+  Channel / Playlist / Video tag, instead of raw URLs. Playlists and videos
+  also say who made them ("by Some Channel"). Names are looked up once in the
+  background and kept in `source_names.json`.
+- `GET /api/queue` returns `{"url", "name", "author", "kind"}` for each source
+  instead of a plain URL list.
+- `update.sh` is gone; update with `docker compose pull && docker compose up -d`.
 - The list's heading is now just **Sources**.
 
 ## 2.0.0 — 2026-10-11

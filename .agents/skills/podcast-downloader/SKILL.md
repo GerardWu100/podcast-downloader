@@ -105,9 +105,11 @@ A brand-new server also answers 503 until its first run finishes.
 **`/api/run`** answers 202 when a run started, and 409 when one is already
 running.
 
-**`/api/queue`** returns `{"sources": [{"url", "name", "kind"}]}`. `kind` is
-`channel`, `playlist`, or `video`. Refer to sources by `name`; it is `null`
-for a minute or so after a source is added, while the server looks it up.
+**`/api/queue`** returns `{"sources": [{"url", "name", "author", "kind"}]}`.
+`kind` is `channel`, `playlist`, or `video`; `author` is the channel behind a
+playlist or video. Refer to sources by `name` ("Example Playlist by Example
+Channel"). Both are `null` for a few seconds after a source is added, while
+the server looks them up.
 
 ## Rules
 

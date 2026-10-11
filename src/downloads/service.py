@@ -305,7 +305,7 @@ class PodcastDownloadService:
         playlist_id = query_values.get("list", [""])[0]
         if playlist_id:
             saved_folder_name = self.source_folder_store.value_for(source_url)
-            if saved_folder_name:
+            if isinstance(saved_folder_name, str) and saved_folder_name:
                 return saved_folder_name
             playlist_name = get_youtube_playlist_folder_name(
                 source_url,
@@ -334,7 +334,7 @@ class PodcastDownloadService:
 
         if looks_like_youtube_channel_id(folder_name):
             saved_folder_name = self.source_folder_store.value_for(source_url)
-            if saved_folder_name:
+            if isinstance(saved_folder_name, str) and saved_folder_name:
                 return saved_folder_name
             resolved_name = get_youtube_channel_folder_name(
                 source_url,
