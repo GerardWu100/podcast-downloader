@@ -75,6 +75,8 @@ then moved into place, so an interrupted write cannot leave a partial JSON file.
 - `docker-entrypoint.sh`: prepares mounted state, `.env`, and cookies; updates
   `yt-dlp`; repairs ownership; and starts the app as the configured host user.
 - `Dockerfile` and `docker-compose.yml`: container build and default deployment.
+- `docker-compose.example.yml` and `.github/workflows/publish-image.yml`: the
+  published GHCR image and the clone-free deployment that pulls it.
 - `pyproject.toml` and `uv.lock`: runtime and development dependencies.
 - `scripts/sponsorblock_smoke_check.py`: optional live check. It stays outside
   `tests/` so the offline suite does not collect it.
@@ -118,3 +120,4 @@ uv run python -m pytest -q
 - 2026-10-10: Removed the dated AI review notes (`astra_thoughts_*.md`, `fable_thoughts_*.md`). Their goal statement now lives in `AGENTS.md`, and their findings are fixed or tracked there.
 - 2026-10-10: Removed the generated `CODE_EXPLAINED.html`. It went stale after each code change; `docs/architecture.md` and the folder guides cover the same ground.
 - 2026-10-11: Added the drop rule: a video is dropped after `max_download_attempts` failures that blame the video. Hang recovery (a watchdog or Docker `HEALTHCHECK`) and a PO-token helper container were considered and declined; Docker's restart policy ignores health status anyway.
+- 2026-10-11: Added a GHCR image (amd64 and arm64) built by GitHub Actions, plus `docker-compose.example.yml`, so a server can deploy without cloning. `docker-compose.yml` still builds from source. Automatic image updates (Watchtower) were declined: updates stay a manual `docker compose pull`.

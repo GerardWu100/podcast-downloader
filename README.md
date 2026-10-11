@@ -248,6 +248,27 @@ See [docs/notifications.md](docs/notifications.md).
 
 ## Docker
 
+### Without cloning (published image)
+
+Each push to `master` that changes the server publishes an image to
+`ghcr.io/gerardwu100/podcast-downloader` for amd64 and arm64 servers. A server
+needs only two files in one folder:
+
+1. [`docker-compose.example.yml`](docker-compose.example.yml), saved as
+   `docker-compose.yml`.
+2. `.env`, copied from [`.env.example`](.env.example) with `UI_USERNAME` and
+   `UI_PASSWORD` changed.
+
+```bash
+docker network inspect single >/dev/null 2>&1 || docker network create single
+docker compose up -d
+```
+
+Update with `docker compose pull && docker compose up -d`. To roll back,
+replace `latest` in the file with a `sha-<commit>` tag.
+
+### From a clone
+
 ```bash
 docker network inspect single >/dev/null 2>&1 || docker network create single
 docker compose up --build -d

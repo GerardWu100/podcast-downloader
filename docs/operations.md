@@ -42,6 +42,19 @@ Compose expects a shared proxy network named `single`. Create it once if needed:
 docker network inspect single >/dev/null 2>&1 || docker network create single
 ```
 
+## Published image
+
+`.github/workflows/publish-image.yml` builds the image on GitHub and pushes it
+to `ghcr.io/gerardwu100/podcast-downloader`. It runs on pushes to `master` that
+touch the image's inputs (`src/`, the entry points, `config.ini`, the
+Dockerfile, the entrypoint, or the lock file), and from the Actions tab by
+hand. Each run pushes `latest` and a `sha-<commit>` tag for amd64 and arm64.
+
+`docker-compose.example.yml` runs that image. It matches `docker-compose.yml`
+except that it pulls instead of building, so a server needs only that file and
+`.env`. The image has no secrets in it: `.env` and cookies arrive at runtime as
+described below.
+
 ## Docker behavior
 
 When the container starts, it:

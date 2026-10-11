@@ -1,0 +1,71 @@
+# Build the server image and publish it to GitHub Container Registry (GHCR),
+# so a server can run the app from `docker-compose.example.yml` without
+# cloning this repository or building anything.
+#
+# Tags pushed on each run:
+#   latest        the newest build from master
+#   sha-<commit>  one per commit, so a deployment can pin or roll back
+#
+# The image is built for amd64 (most PCs and cloud servers) and arm64
+# (Raspberry Pi, Apple-silicon hosts, ARM cloud servers). Docker on the server
+# pulls the matching one automatically.
+name: Publish Docker image
+
+on:
+  push:
+    branches: [master]
+    # Only files that change the image. Docs, tests, and the browser
+    # extension never enter it, so pushing them should not rebuild.
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - docker-entrypoint.sh
+      - pyproject.toml
+      - uv.lock
+      - main.py
+      - start.py
+      - config.ini
+      - .env.example
+      - src/**
+      - .github/workflows/publish-image.yml
+  # Manual "Run workflow" button, for example to pick up a new base image.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # QEMU emulates arm64 so one amd64 runner can build both platforms.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Image names must be lowercase; the GitHub owner name is not.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

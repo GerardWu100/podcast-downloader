@@ -1,0 +1,58 @@
+# Run the published image without cloning the repository.
+#
+# On the server, put this file and a `.env` in one folder:
+#
+#   docker-compose.example.yml  saved as docker-compose.yml
+#   .env                        copied from .env.example, with UI_USERNAME
+#                               and UI_PASSWORD changed
+#
+# Start:   docker compose up -d
+# Update:  docker compose pull && docker compose up -d
+#
+# `docker-compose.yml` in the repository is the same service built from a
+# local checkout instead of pulled.
+services:
+  podcast-downloader:
+    # `latest` follows master. To pin or roll back, use a `sha-<commit>` tag
+    # from the repository's Packages page.
+    image: ghcr.io/gerardwu100/podcast-downloader:latest
+    container_name: podcast-downloader
+    ports:
+      - "127.0.0.1:50022:8000"
+    restart: unless-stopped
+    environment:
+      # The run schedule uses this clock: config.ini sets the hour and the
+      # number of days between runs.
+      - TZ=America/Toronto
+      - PODCAST_DATA_DIR=/data
+      - PODCAST_DOWNLOAD_DIR=/downloads
+      - PODCAST_INTERMEDIATE_DIR=/temporary
+      - YT_DLP_AUTO_UPDATE=true
+      # The entrypoint repairs mounted-file ownership, then runs the app with
+      # this host user and group. `id -u` and `id -g` show the right values.
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
+    volumes:
+      # Folder on your machine, then the path inside the container. Edit the
+      # left side to keep files somewhere else; the right sides pair with the
+      # three directory settings above and must stay as they are.
+      - $HOME/.containers/podcast-downloader:/data
+      - $HOME/downloads/podcasts/:/downloads
+      - $HOME/downloads/temporary:/temporary
+    secrets:
+      # Compose mounts the `.env` next to this file at runtime. The entrypoint
+      # seeds /data/.env from it only on first boot.
+      - source: podcast_downloader_env
+        target: podcast_downloader_env
+    networks:
+      - single
+
+networks:
+  # Shared network for a reverse proxy and Apprise. Create it once:
+  #   docker network create single
+  single:
+    external: true
+
+secrets:
+  podcast_downloader_env:
+    file: ./.env
