@@ -111,3 +111,4 @@ pages stay consistent.
   URLs, and rejected account names containing the HTTP Basic separator.
 - 2026-10-11: Login became optional (no account in `.env` means no login), the activity panel's two dropdowns became tabs plus count buttons that filter, and retention moved onto the settings page. The settings page reads `retention_days` from the file, not the startup config, because each run rereads `config.toml`.
 - 2026-10-11: The queue shows source names and a Channel/Playlist/Video tag instead of raw URLs; names come from `source_names.py` in the background, because a `yt-dlp` lookup takes seconds and must not block the page.
+- 2026-10-11: `client_ip` takes the last `X-Forwarded-For` entry when proxy headers are trusted. The first entry and `CF-Connecting-IP` can come from the visitor, so a guesser could dodge the ban by sending a new fake address each time.

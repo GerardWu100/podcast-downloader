@@ -83,8 +83,8 @@ def test_client_ip_ignores_forwarded_header_by_default(monkeypatch) -> None:
     assert api_module._client_ip(request) == "203.0.113.7"
 
 
-def test_client_ip_uses_forwarded_header_when_enabled(monkeypatch) -> None:
-    """Proxy deployments can opt in to forwarded-header trust explicitly."""
+def test_client_ip_uses_proxy_added_forwarded_entry_when_enabled(monkeypatch) -> None:
+    """The proxy's own entry is last; client-sent entries before it are ignored."""
     monkeypatch.setattr(
         api_module,
         "CONFIG",
@@ -92,8 +92,11 @@ def test_client_ip_uses_forwarded_header_when_enabled(monkeypatch) -> None:
     )
 
     request = _FakeRequest(
-        headers={"X-Forwarded-For": "198.51.100.10, 203.0.113.7"},
-        client_host="203.0.113.7",
+        headers={
+            "X-Forwarded-For": "10.9.9.9, 198.51.100.10",
+            "CF-Connecting-IP": "10.9.9.9",
+        },
+        client_host="172.18.0.2",
     )
 
     assert api_module._client_ip(request) == "198.51.100.10"
