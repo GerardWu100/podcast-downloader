@@ -23,6 +23,7 @@ from ..state.queue_store import QueueStore
 from ..state.run_state_store import RunStateStore, run_state_file_for
 from ..trigger import DownloadTrigger, in_process_download_trigger
 from . import api_routes, routes
+from .source_names import SourceNameResolver
 
 _logger = logging.getLogger("web.app")
 
@@ -158,6 +159,7 @@ def create_app(
     notification_store: NotificationStore | None = None,
     run_state_store: RunStateStore | None = None,
     trigger: DownloadTrigger | None = None,
+    source_name_resolver: SourceNameResolver | None = None,
 ) -> FastAPI:
     """Return the configured FastAPI application.
 
@@ -181,6 +183,10 @@ def create_app(
         Optional last-run record collaborator.
     trigger:
         Optional in-process scheduler wake-up collaborator.
+    source_name_resolver:
+        Looks up channel and playlist names for the queue page. ``None``, the
+        default, shows URLs only and never calls ``yt-dlp``; ``src/api.py``
+        passes the real one.
 
     Returns
     -------
@@ -243,6 +249,7 @@ def create_app(
     app.state.sessions = auth_store.load_sessions(routes.SESSION_MAX_AGE_SECONDS)
     app.state.csrf_tokens = {}
     app.state.download_trigger = trigger
+    app.state.source_name_resolver = source_name_resolver
     # The /api routes check the same accounts as the login form, so they
     # need the file those accounts are stored in.
     app.state.credentials_file = routes.DATA_DIR / CREDENTIALS_FILENAME

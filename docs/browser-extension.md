@@ -226,7 +226,7 @@ BASE=http://192.168.1.20:6847
 
 curl "$BASE/api/ping"                      # app name, version, login_required
 curl "$BASE/api/health"                    # 200 on schedule, 503 when runs stopped
-curl "$BASE/api/queue"                     # {"sources": [url, ...]}
+curl "$BASE/api/queue"                     # {"sources": [{"url", "name", "kind"}, ...]}
 curl "$BASE/api/activity?lines=50"         # {"lines": [...]}, oldest first, 1-500 lines
 curl -X POST "$BASE/api/run"               # 202 started, 409 already running
 

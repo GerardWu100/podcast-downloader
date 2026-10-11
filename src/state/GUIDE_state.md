@@ -14,7 +14,7 @@
 | `AuthStore` | `.ui_sessions.json`, `.login_state.json` | JSON updates are locked, atomically replaced, and mode `600` |
 | `RunStateStore` | `run_state.json` | Only whole-queue passes are recorded; the scheduler clears a leftover "running" flag when it starts |
 | `FailedDownloadStore` | `failed_downloads.json` | Counts only failures that blame the video; a success or a direct-URL drop removes the entry, a channel-video drop keeps it |
-| `SourceFolderStore` | `source_folders.json` | Saves only names that came from a successful lookup; an ID fallback is never saved, so a later run can still find the readable name |
+| `SourceMapStore` | `source_folders.json`, `source_names.json` | One text per source URL. Folders: saves only names from a successful lookup; an ID fallback is never saved, so a later run can still find the readable name. Names: the channel, playlist, or video name the queue page shows, looked up once by `web/source_names.py`; a deleted source's entry is forgotten |
 
 `locked_text_file()` uses `fcntl`, the Unix file-locking interface. A shared lock lets readers run together; an exclusive lock makes changes one at a time. `AuthStore` locks a stable sibling lock file because the JSON data file itself is replaced atomically.
 
@@ -47,3 +47,4 @@ Every one-entry-per-line store uses `locked_line_file()`, which yields a `Locked
 - 2026-08-10: `read_tail` stopped loading the whole file. It now reads only the final 256 KB through `os.pread` and drops the partial first line. The browser polls `download.log` every 15 seconds, and the file can reach several megabytes between rotations.
 - 2026-08-10: Authentication JSON became owner-only, first-time queue creation
   joined queue locking, and buffered state writes began flushing before unlock.
+- 2026-10-11: `source_folder_store.py` became `source_map_store.py` (`SourceMapStore`), now holding both the folder map and the new `source_names.json`, so the two share one locked, atomic implementation.

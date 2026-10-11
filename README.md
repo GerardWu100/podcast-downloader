@@ -91,6 +91,8 @@ lists what changed.
 ## Use it
 
 1. **Add a source.** Paste a channel, playlist, or video URL and select **Add**.
+   The list shows it by its channel, playlist, or video name a few seconds
+   later.
 2. **Wait, or run now.** Runs start at 06:00 every other day. **Run queue now**
    starts one immediately.
 3. **Listen.** In Audiobookshelf, add a podcast library that points at the MP3
@@ -146,7 +148,7 @@ Add the video you are watching with one click, without copying the URL.
 | Browser | Install |
 |---|---|
 | Firefox 140+ | Download `podcast-downloader-firefox-<version>.xpi` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest), drag it onto Firefox, and select **Add** |
-| Chrome, Edge, Brave | Unzip `podcast-downloader-chrome-<version>.zip` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest). Open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked**, and choose the folder |
+| Chrome, Edge, Brave | Unzip `podcast-downloader-chrome-<version>.zip` from the [latest release](https://github.com/GerardWu100/podcast-downloader/releases/latest). Open `chrome://extensions`, turn on **Developer mode**, select **Load unpacked**, and choose the folder. With this repository cloned, choose its `extension/` folder instead: nothing to unzip, and after a `git pull` select **Reload** on the extension's card |
 
 Click the toolbar icon, enter the page address, such as
 `192.168.1.20:6847`, and select **Save and test**. Fill in a username and

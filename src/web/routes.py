@@ -41,7 +41,7 @@ from ..credentials import CREDENTIALS_FILENAME, load_ui_accounts, login_is_requi
 from ..human_time import format_clock_time, format_time_ago, format_time_until
 from ..log_timezone import local_now
 from ..media.urls import is_supported_media_url
-from ..media.youtube import normalize_youtube_url
+from ..media.youtube import normalize_youtube_url, source_kind
 from ..notifications.apprise_client import (
     APPRISE_INFO_TYPE,
     AppriseNotifier,
@@ -72,6 +72,7 @@ from .account_auth import (
 )
 from .auth import client_ip, request_is_secure, security_headers
 from .queue_actions import add_url_to_queue
+from .source_names import SOURCE_KIND_LABELS, fallback_source_label
 from .templates import (
     render_help_page,
     render_login_page,
@@ -175,6 +176,20 @@ def _run_state_store(request: Request) -> RunStateStore:
         "run_state_store",
         RunStateStore(run_state_file_for(DATA_DIR)),
     )
+
+
+def _source_names(request: Request, source_urls: list[str]) -> dict[str, str]:
+    """Return the known names for these sources and look up the missing ones.
+
+    The lookups run in the background (see ``source_names.py``), so this
+    returns at once; a source looked up now shows its name on the next load.
+    Without a resolver, as in tests, it returns no names.
+    """
+    resolver = _app_state_value(request, "source_name_resolver", None)
+    if resolver is None:
+        return {}
+    resolver.request(source_urls)
+    return resolver.name_store.read_all()
 
 
 def _download_trigger(request: Request) -> DownloadTrigger:
@@ -861,12 +876,19 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
         """
 
     queue_urls = _queue_store(request).load_normalized_urls()
-    safe_queue_urls = [html.escape(url) for url in queue_urls]
+    source_names = _source_names(request, queue_urls)
 
-    if safe_queue_urls:
+    if queue_urls:
+        # Each row: the channel, playlist, or video name (the URL itself until
+        # the name is known) linking to the source, and what kind it is.
         items = "".join(
             f'<li class="q-item"><span class="q-dot"></span>'
-            f'<span class="q-url">{safe_url}</span>'
+            f'<div class="q-main">'
+            f'<a class="q-name" href="{html.escape(url)}" title="{html.escape(url)}"'
+            f' target="_blank" rel="noopener noreferrer">'
+            f"{html.escape(source_names.get(url) or fallback_source_label(url))}</a>"
+            f'<span class="q-kind">{SOURCE_KIND_LABELS[source_kind(url)]}</span>'
+            f"</div>"
             f'<div class="q-actions">'
             f'<form method="post" action="/run-source">'
             f'<input type="hidden" name="csrf_token" value="{safe_token}" />'
@@ -878,13 +900,14 @@ def queue_page(request: Request, msg: str = "") -> HTMLResponse:
             f'<input type="hidden" name="url" value="{safe_url}" />'
             f'<button type="submit" class="btn-remove">Delete</button>'
             f"</form></div></li>"
-            for safe_url in safe_queue_urls
+            for url in queue_urls
+            for safe_url in (html.escape(url),)
         )
         queue_html = f'<ul class="q-list">{items}</ul>'
     else:
         queue_html = '<p class="empty">No sources are being monitored.</p>'
 
-    count = len(safe_queue_urls)
+    count = len(queue_urls)
     activity_store = _activity_store(request)
     last_download = html.escape(_last_download_label(activity_store))
     last_run = html.escape(_last_run_label(_run_state_store(request)))
@@ -1401,6 +1424,9 @@ def remove_url_form(
         return RedirectResponse(url="/?msg=notfound", status_code=303)
 
     normalized_url = normalize_youtube_url(url.strip())
+    resolver = _app_state_value(request, "source_name_resolver", None)
+    if resolver is not None:
+        resolver.name_store.forget([url, normalized_url])
     try:
         _activity_store(request).write_event(f"{normalized_url} URL has been deleted")
     except OSError as exc:

@@ -621,7 +621,9 @@ def test_queue_lists_the_saved_sources(tmp_path: Path) -> None:
 
     body = _body(api_routes.list_queue(request))
 
-    assert body == {"sources": [YOUTUBE_VIDEO_URL]}
+    assert body == {
+        "sources": [{"url": YOUTUBE_VIDEO_URL, "name": None, "kind": "video"}]
+    }
 
 
 def test_activity_returns_the_newest_lines_oldest_first(tmp_path: Path) -> None:

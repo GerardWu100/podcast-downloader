@@ -6,6 +6,7 @@ import logging
 import re
 import subprocess
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
 
@@ -329,6 +330,70 @@ def get_youtube_playlist_folder_name(
 
     playlist_title = metadata_line.strip()
     return playlist_title or None
+
+
+class SourceKind(StrEnum):
+    """What a queue source is, which decides how it is named and handled."""
+
+    CHANNEL = "channel"
+    PLAYLIST = "playlist"
+    VIDEO = "video"
+
+
+def source_kind(url: str) -> SourceKind:
+    """Return whether a queue URL is a YouTube channel, a playlist, or one video."""
+    if is_youtube_playlist(url):
+        return SourceKind.PLAYLIST
+    if is_channel_or_playlist(url):
+        return SourceKind.CHANNEL
+    return SourceKind.VIDEO
+
+
+def get_source_display_name(
+    url: str,
+    logger: logging.Logger,
+    cookies_file: Path | None = None,
+    always_use_cookies: bool = False,
+) -> str | None:
+    """Return the name a person knows a queue source by.
+
+    One flat ``yt-dlp`` call reads the playlist-level fields, which are the
+    channel's name for a channel URL (even on its ``/videos`` tab) and the
+    playlist's title for a playlist; for a single video the item's own title
+    is used. Example results: ``"YouTube"``, ``"Deep clean dreams"``,
+    ``"20 years of esports history explained"``.
+
+    Returns
+    -------
+    str | None
+        The name, or ``None`` when ``yt-dlp`` could not tell, such as while
+        YouTube is blocking requests. The caller keeps showing the URL then.
+    """
+    metadata_line = _fetch_ytdlp_print_line(
+        url,
+        "%(playlist_channel)s\t%(playlist_title)s\t%(title)s\t%(channel)s",
+        logger,
+        cookies_file,
+        always_use_cookies,
+    )
+    if metadata_line is None:
+        return None
+    # Before: "YouTube\tYouTube - Videos\tNA\tNA" (channel URL).
+    # After:  the fields worth trying for this kind of source, best first.
+    playlist_channel, playlist_title, item_title, item_channel = (
+        metadata_line.split("\t") + ["", "", "", ""]
+    )[:4]
+    candidates = {
+        SourceKind.CHANNEL: (playlist_channel, item_channel),
+        SourceKind.PLAYLIST: (playlist_title,),
+        SourceKind.VIDEO: (item_title,),
+    }[source_kind(url)]
+    for candidate in candidates:
+        if _metadata_value_is_present(candidate) and not looks_like_youtube_channel_id(
+            candidate.strip()
+        ):
+            return candidate.strip()
+    return None
 
 
 def _metadata_value_is_present(raw_value: str) -> bool:

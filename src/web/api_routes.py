@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field
 from ..config import PodcastConfig
 from ..credentials import load_ui_accounts, login_is_required
 from ..log_timezone import local_now
+from ..media.youtube import source_kind
 from ..schedule import next_scheduled_run, scheduled_run_is_overdue
 from ..state.activity_store import NO_ACTIVITY_MESSAGE, ActivityLogStore
 from ..state.archive_store import ArchiveStore
@@ -340,11 +341,27 @@ def list_queue(request: Request) -> JSONResponse:
     Returns
     -------
     JSONResponse
-        ``{"sources": [url, ...]}`` in queue order.
+        ``{"sources": [{"url", "name", "kind"}, ...]}`` in queue order.
+        ``kind`` is ``channel``, ``playlist``, or ``video``. ``name`` is the
+        channel, playlist, or video name, or ``null`` until its background
+        lookup has finished; asking starts that lookup.
     """
     _require_account(request)
-    queue_store = _dependency(request.app.state, "queue_store", QueueStore)
-    return JSONResponse({"sources": queue_store.read_urls()})
+    state = request.app.state
+    source_urls = _dependency(state, "queue_store", QueueStore).load_normalized_urls()
+    resolver = getattr(state, "source_name_resolver", None)
+    names: dict[str, str] = {}
+    if resolver is not None:
+        resolver.request(source_urls)
+        names = resolver.name_store.read_all()
+    return JSONResponse(
+        {
+            "sources": [
+                {"url": url, "name": names.get(url), "kind": str(source_kind(url))}
+                for url in source_urls
+            ]
+        }
+    )
 
 
 @router.get("/activity")

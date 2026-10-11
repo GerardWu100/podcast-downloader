@@ -207,7 +207,7 @@ def test_ui_shows_reliable_status_summary(monkeypatch, tmp_path) -> None:
     assert "Monitored sources" not in body
     # The status line sits inside the add-source card, after its form.
     assert body.index('action="/add-url"') < body.index('aria-label="System status"')
-    assert body.index('aria-label="System status"') < body.index("Sources in queue")
+    assert body.index('aria-label="System status"') < body.index(">Sources<")
     assert '<a class="nav-link" href="/help">Doc</a>' in body
 
     api_module.SESSIONS.pop(session_id, None)
@@ -1305,7 +1305,7 @@ def test_ui_shows_monitored_urls_with_remove_controls(tmp_path, monkeypatch) -> 
     body = response.body.decode("utf-8")
 
     # The queue count now lives only on the queue card's badge.
-    assert "Sources in queue" in body
+    assert ">Sources<" in body
     assert "https://www.youtube.com/watch?v=abc123" in body
     assert "https://www.youtube.com/@channelname" in body
     assert 'action="/remove-url"' in body

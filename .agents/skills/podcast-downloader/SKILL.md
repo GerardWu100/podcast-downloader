@@ -61,7 +61,7 @@ PD=(curl -sS --max-time 15); [ -f ~/.config/podcast-downloader/curl.conf ] && PD
 | Add a video, channel, or playlist | `"${PD[@]}" -H 'Content-Type: application/json' -d '{"url": "URL"}' "$PD_SERVER/api/add-url"` |
 | Add and download now (skip the one-day wait, or a whole playlist) | same, with `-d '{"url": "URL", "skip_age_check": true}'` |
 | See what happened recently | `"${PD[@]}" "$PD_SERVER/api/activity?lines=50"` |
-| List the sources | `"${PD[@]}" "$PD_SERVER/api/queue"` |
+| List the sources, with their names | `"${PD[@]}" "$PD_SERVER/api/queue"` |
 | Run every source now | `"${PD[@]}" -X POST "$PD_SERVER/api/run"` |
 | Check that it is working | `"${PD[@]}" -i "$PD_SERVER/api/health"` |
 | Check the connection and version | `"${PD[@]}" "$PD_SERVER/api/ping"` |
@@ -104,6 +104,10 @@ due run is more than a few hours late, which means the downloader has stopped.
 A brand-new server also answers 503 until its first run finishes.
 **`/api/run`** answers 202 when a run started, and 409 when one is already
 running.
+
+**`/api/queue`** returns `{"sources": [{"url", "name", "kind"}]}`. `kind` is
+`channel`, `playlist`, or `video`. Refer to sources by `name`; it is `null`
+for a minute or so after a source is added, while the server looks it up.
 
 ## Rules
 

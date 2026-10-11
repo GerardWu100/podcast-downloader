@@ -34,6 +34,8 @@ run_state.json
 run_state.json.lock
 source_folders.json
 source_folders.json.lock
+source_names.json
+source_names.json.lock
 failed_downloads.json
 failed_downloads.json.lock
 .env

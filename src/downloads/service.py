@@ -50,7 +50,7 @@ from ..state.failed_download_store import (
 )
 from ..state.file_locks import locked_text_file
 from ..state.queue_store import QueueStore
-from ..state.source_folder_store import SOURCE_FOLDERS_FILE_NAME, SourceFolderStore
+from ..state.source_map_store import SOURCE_FOLDERS_FILE_NAME, SourceMapStore
 from .audio_metadata import AudioMetadataWriter
 from .ytdlp_client import (
     AudioSnapshot,
@@ -253,7 +253,7 @@ class PodcastDownloadService:
         self._source_folder_name_by_url: dict[str, str] = {}
         # Names that needed a lookup are also saved to disk, so a lookup that
         # fails on a later run cannot move a podcast to an ID-named folder.
-        self.source_folder_store = SourceFolderStore(
+        self.source_folder_store = SourceMapStore(
             self.downloaded_urls_file.with_name(SOURCE_FOLDERS_FILE_NAME)
         )
 
@@ -304,7 +304,7 @@ class PodcastDownloadService:
         query_values = parse_qs(parsed.query)
         playlist_id = query_values.get("list", [""])[0]
         if playlist_id:
-            saved_folder_name = self.source_folder_store.folder_for(source_url)
+            saved_folder_name = self.source_folder_store.value_for(source_url)
             if saved_folder_name:
                 return saved_folder_name
             playlist_name = get_youtube_playlist_folder_name(
@@ -333,7 +333,7 @@ class PodcastDownloadService:
             folder_name = self._sanitize_download_folder_name(hostname)
 
         if looks_like_youtube_channel_id(folder_name):
-            saved_folder_name = self.source_folder_store.folder_for(source_url)
+            saved_folder_name = self.source_folder_store.value_for(source_url)
             if saved_folder_name:
                 return saved_folder_name
             resolved_name = get_youtube_channel_folder_name(
