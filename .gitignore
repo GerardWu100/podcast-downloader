@@ -118,3 +118,6 @@ Desktop.ini
 *~
 *.swp
 *.swo
+
+# Agent tool state (regenerated per machine and per tool version)
+.serena/
