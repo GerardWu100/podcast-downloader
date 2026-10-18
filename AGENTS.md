@@ -1,6 +1,6 @@
-# Podcast Downloader — Goal and Intent
+# Podcast Downloader: Goal and Intent
 
-This file is the anchor for every AI session in this repository. Judge all
+This file sets the goal for every AI session in this repository. Judge all
 suggestions, features, and refactors against the goal below. If work does not
 serve it, say so instead of recommending it.
 
