@@ -4,6 +4,11 @@ Turn YouTube channels, playlists, and videos into **sponsor-free MP3 podcasts**
 for [Audiobookshelf](https://www.audiobookshelf.org/). Add a channel once; new
 episodes show up in your podcast app on their own.
 
+[![Tests](https://github.com/GerardWu100/podcast-downloader/actions/workflows/tests.yml/badge.svg)](https://github.com/GerardWu100/podcast-downloader/actions/workflows/tests.yml)
+[![Docker image](https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white)](https://github.com/GerardWu100/podcast-downloader/pkgs/container/podcast-downloader)
+![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-555)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 ```mermaid
 flowchart LR
     A["YouTube channel,<br/>playlist, or video"] -->|"paste the URL once"| B["Podcast Downloader<br/>checks every 2 days"]
