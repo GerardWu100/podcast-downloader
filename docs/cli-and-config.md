@@ -87,7 +87,7 @@ one `name = value` line per setting, with no section header. Whole numbers and
 | `log_file` | Detailed log; rotates at 5 MB and keeps three older copies | `download.log` |
 | `downloaded_urls_file` | Successfully expanded URLs; also prevents duplicates | `downloaded_urls.txt` |
 | `bypass_age_check_file` | One-use YouTube waiting-period exceptions | `bypass_age_check_urls.txt` |
-| `cookies_file` | Optional Netscape cookie-jar path | unset |
+| `cookies_file` | Optional Netscape cookie-jar path. Without the key, a `cookies.txt` beside the data is used if it exists | `cookies.txt` |
 | `always_use_cookies` | Try cookies first when `true`, last when `false` | `true` |
 | `youtube_player_client` | YouTube player API passed to `yt-dlp`; `""` lets it choose | `web_embedded` |
 | `ytdlp_verbose` | Add `-v` to every `yt-dlp` attempt | `false` |
