@@ -99,8 +99,8 @@ makes the text large where GitHub shrinks the image to the README's width.
 | `docs/` | This documentation; the source of the GitHub wiki |
 | `tests/`, `scripts/` | Automated tests; manual checks and packaging tools |
 
-Each folder that needs one has a `GUIDE_*.md` with the design reasons and a
-dated journal of changes.
+Settled design choices and known traps are in
+[`TRAIL_NOTES.md`](../TRAIL_NOTES.md).
 
 ## Docker from a checkout
 

@@ -95,7 +95,7 @@ def test_the_two_manifests_request_the_same_permissions() -> None:
     )
 
 
-def test_shared_files_exclude_the_manifests_and_the_guide() -> None:
+def test_shared_files_exclude_the_manifests() -> None:
     """Only the audited runtime allowlist should enter a browser build."""
     shared_files = set(collect_shared_files())
     shared_names = {path.name for path in shared_files}
@@ -103,7 +103,6 @@ def test_shared_files_exclude_the_manifests_and_the_guide() -> None:
     assert shared_files == set(SHARED_FILES)
     assert CHROME_MANIFEST not in shared_names
     assert FIREFOX_MANIFEST not in shared_names
-    assert "GUIDE_extension.md" not in shared_names
     assert {"background.js", "settings.js", "options.html", "options.js"} <= (
         shared_names
     )

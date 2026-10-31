@@ -18,9 +18,6 @@ What changes on the way:
 - ``_Sidebar.md`` lists the pages in ``sidebar_position`` order, and
   ``_Footer.md`` says where to edit.
 
-``GUIDE_*.md`` files are developer notes about the docs folder itself and are
-not published.
-
 Usage
 -----
     uv run python scripts/publish_wiki.py                 # build and push
@@ -45,8 +42,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOCS_DIR = PROJECT_ROOT / "docs"
 DEFAULT_BRANCH = "master"
 HOME_TITLE = "Home"
-# Docs-folder notes for developers, not documentation pages.
-SKIPPED_FILE_PREFIX = "GUIDE_"
 
 FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 FIRST_HEADING = re.compile(r"\A\s*# [^\n]*\n+")
@@ -110,8 +105,6 @@ def read_doc_pages(docs_dir: Path) -> list[DocPage]:
     """
     pages: list[DocPage] = []
     for source_file in sorted(docs_dir.glob("*.md")):
-        if source_file.name.startswith(SKIPPED_FILE_PREFIX):
-            continue
         text = source_file.read_text(encoding="utf-8")
         front_matter = FRONT_MATTER.match(text)
         if not front_matter:
