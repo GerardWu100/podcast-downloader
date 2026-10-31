@@ -30,9 +30,9 @@
 - 2026-08-10: `/logs` must return 401, not redirect, on an expired session, or the log box fills with login-page HTML.
 - 2026-09-01: The style and script constants in `src/web/templates.py` are plain strings, not f-string parts; do not double their braces.
 - 2026-08-08: Hand-edited state files may lack a final newline. Every line-per-entry file must append through the shared locked line file, which repairs it; a per-store fix missed one store.
-- 2026-08-26: Every generated folder (such as `build/`) must also be in `.dockerignore`. A missing entry is invisible on a clean checkout and copies browser code into the image.
+- 2026-08-27: The Dockerfile copies only named runtime files; `.dockerignore` is the second guard that keeps secrets and generated folders (such as `build/`, `dist/`) out of the build context. Add each new one to it and to `tests/test_docker_build_context.py`: a missing entry is invisible on a clean checkout.
 - 2026-10-11: Edit the extension only in `extension/src/`, then run `scripts/build_extensions.py`; `chrome/` and `firefox/` are committed builds.
-- 2026-08-27: Firefox: the host-permission request must be the first thing awaited after the click; `btoa` throws on non-ASCII, so encode credentials as UTF-8 first; a clashing suggested shortcut is dropped silently.
+- 2026-08-27: Extension: in Firefox the host-permission request must be the first thing awaited after the click; `btoa` throws on non-ASCII, so encode credentials as UTF-8 first; a browser silently drops a clashing suggested shortcut.
 
 ## Failed approaches
 

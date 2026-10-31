@@ -1,12 +1,12 @@
-"""Guard what `COPY . .` puts into the container image.
+"""Guard what ``.dockerignore`` keeps out of the Docker build context.
 
-The Dockerfile copies the whole repository in one step, so everything that is
-not excluded by ``.dockerignore`` ships to production. That is convenient and
-easy to get wrong: adding a folder to the repository silently adds it to the
-image unless someone remembers this file.
+The Dockerfile copies only named runtime files, which is the main boundary.
+``.dockerignore`` is the second guard: it keeps secrets, runtime state, and
+developer or generated folders out of the build context, so a future broad
+``COPY`` cannot ship them. A missing entry is invisible on a clean checkout.
 
-These tests name the folders that must never end up in the image and fail when
-one loses its exclusion.
+These tests name the folders that must stay excluded and fail when one loses
+its exclusion.
 """
 
 from __future__ import annotations
