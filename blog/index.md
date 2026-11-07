@@ -1,120 +1,133 @@
 ---
 title: "A Podcast Downloader That Does Not Trust Exit Code 0"
-description: "How a self-hosted yt-dlp pipeline turns web videos into an Audiobookshelf library while keeping files, metadata, queues, and concurrent workers consistent."
+description: "A self-hosted yt-dlp service that turns YouTube channels into sponsor-free Audiobookshelf podcasts, and the checks that keep its files, queue, and archive consistent."
 date: 2026-07-13
 image: images/cover-podcast-pipeline.png
-categories: ["Computer Science", "Data Engineering"]
+categories: ["Computer Science", "Data Science"]
 ---
 
 # A Podcast Downloader That Does Not Trust Exit Code 0
 
-I wanted a small service to watch a YouTube channel, strip sponsor segments, and place finished episodes in Audiobookshelf. That sounds like one command wrapped in a scheduler. Most of the project turned out to be the failure handling around that command.
+I listen to several YouTube channels as podcasts. I wanted new episodes on my phone without sponsor reads and without any effort from me. That sounds like one command on a timer. Most of the work went into the failure handling around that command.
 
-`yt-dlp` handles extraction. SponsorBlock supplies community-maintained time ranges for sponsor and self-promotion segments. `ffmpeg` copies the audio while updating its tags. Those tools handle the media work. The application still has to decide whether an episode really exists, whether it is safe to mark the URL as complete, and what happens when two scheduler processes see the same item.
+The code is at [GerardWu100/podcast-downloader](https://github.com/GerardWu100/podcast-downloader).
 
-A successful command is evidence, not permission to mark the URL complete. That rule became the center of the design.
+## What it does for you
+
+You paste a YouTube channel, playlist, or video URL once. After that, the service:
+
+- checks for new uploads every two days at 06:00 local time;
+- waits 24 hours before it downloads a new video, so [SponsorBlock](https://sponsor.ajay.app/) users can mark the sponsor reads, then cuts them out;
+- saves an MP3 with cover art, chapters, and tags, in one folder per channel or playlist, which [Audiobookshelf](https://www.audiobookshelf.org/) shows as a podcast;
+- deletes channel episodes after 30 days, but keeps videos you added one at a time;
+- alerts you through [Apprise](https://github.com/caronc/apprise) (Telegram, email, Discord, and more) when a download fails, a scheduled run is missed, or the YouTube cookies are about to expire.
+
+URLs can come from a web page that installs as a phone app, a Firefox and Chrome extension with a right-click menu, a small JSON API, or a skill for AI agents. It all runs in one Docker container for amd64 and arm64, and `yt-dlp` updates itself when the container starts.
+
+Most of the code exists to answer one question: when does an episode really exist?
 
 ## From a URL to a library item
 
-The queue accepts three kinds of input: a direct media URL, a YouTube channel, or a YouTube playlist. Channels and playlists are expanded into concrete videos. Direct URLs stay as one-off jobs. The policy then narrows the candidates: channel uploads can be held behind a minimum-age gate, YouTube Shorts are skipped, and playlists are capped at the configured number of recent entries.
+`yt-dlp` does the extraction and removes the SponsorBlock `sponsor` and `selfpromo` segments through its [`--sponsorblock-remove` option](https://github.com/yt-dlp/yt-dlp#sponsorblock-options). `ffmpeg` rewrites the tags. The application decides what to attempt, whether it worked, and when to change saved state.
 
-YouTube downloads add SponsorBlock removal for the `sponsor` and `selfpromo` categories. Those category names follow the [SponsorBlock segment taxonomy](https://wiki.sponsor.ajay.app/w/Segment_Categories), and `yt-dlp` exposes them through its [`--sponsorblock-remove` option](https://github.com/yt-dlp/yt-dlp#sponsorblock-options). Non-YouTube URLs are downloaded as a single item, without SponsorBlock flags and without playlist expansion. Cookies can be tried first or used as a fallback, but only for YouTube.
+Channels and playlists expand into individual videos. A scheduled run looks at the newest two entries of each source, skips YouTube Shorts, and holds new videos until they pass the age gate. Direct URLs are one-off jobs. Non-YouTube URLs, such as Rumble, are downloaded as single items without SponsorBlock.
 
 ![The complete URL-to-library pipeline](images/pipeline-flow.png)
 
-The diagram keeps three decisions apart. Source policy chooses *what* to attempt. Local checks decide whether the attempt produced a usable file. Saved state changes only after verification and publication succeed.
+The diagram separates three decisions. Source policy (coral) chooses *what* to attempt. Local proof (cyan) decides whether the attempt produced a usable, tagged file. Durable state (amber) changes only at the end.
 
-The scratch directory and the finished library are also separate. `yt-dlp` writes partial files, thumbnails, and converted audio into a per-source work folder. Only a stamped MP3 is moved into the Audiobookshelf-facing directory. A failed attempt cleans its scratch files, except for one narrow recovery case where an existing MP3 may be kept for a later metadata retry.
-
-The output template is `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. The first field prefers the channel name and falls back to the uploader; `id` is the extractor's media identifier. Including that identifier is not cosmetic. Two episodes from one channel may share a title, so channel plus title is not a unique key. The identifier keeps those files distinct while leaving the title readable.
+`yt-dlp` works in a scratch folder for each source. Only a tagged MP3 moves into the folder that Audiobookshelf reads. The filename template is `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. The media ID in brackets matters: two episodes from one channel can share a title, so channel plus title is not a unique key.
 
 ## Define success from the filesystem
 
-A return code of zero does not prove that a new MP3 appeared. An extractor can decide that an item is already present, reuse an existing path, or finish without producing the file the application expects. The downloader therefore records every MP3 below the work directory before and after each attempt.
+A return code of zero does not prove that a new MP3 exists. A post-processor can give up after the media transfer, or an extractor can decide the item is already present, and the exit status stays zero in both cases. So the downloader records every MP3 in the source's scratch folder before and after each attempt.
 
-For an MP3 path $p$, let $m(p)$ be its filesystem modification time in nanoseconds and let $z(p)$ be its size in bytes. The recorded state is the ordered pair
+For an MP3 path $p$, let $m(p)$ be its modification time in nanoseconds and $z(p)$ its size in bytes. The recorded state is
 
 $$
 s(p) = \bigl(m(p), z(p)\bigr).
 $$
 
-Let $B$ be the set of MP3 paths in the snapshot taken before the command, and let $A$ be the corresponding set afterward. The changed-file set $C$ is
+Let $B$ be the set of MP3 paths before the first attempt and $A$ the set after the last attempt. Let $s_B(p)$ and $s_A(p)$ be the state of $p$ in each snapshot. The changed-file set is
 
 $$
 C = \left\{p \in A : p \notin B \;\lor\; s_A(p) \ne s_B(p)\right\}.
 $$
 
-Here, $s_A(p)$ is the state of path $p$ after the attempt and $s_B(p)$ is its state before the attempt. Both snapshots are restricted to the active source work folder. That boundary is part of the proof: an MP3 created by another source cannot satisfy the current attempt. Checking modification time and size catches a new file as well as an existing file whose bytes were overwritten.
+Size and modification time together catch a new file and an overwritten one. Both snapshots stay inside the active source folder, so another source's MP3 cannot count as success here.
 
-For a normalized URL $u$, let $r_u$ be the `yt-dlp` return code, let $C_u$ be the changed-file set in that source folder, and let $R_u$ be the conservative recovery set described below. Local artifact verification is
+```python
+@staticmethod
+def changed_audio_files(
+    before_snapshot: AudioSnapshot,
+    after_snapshot: AudioSnapshot,
+) -> list[Path]:
+    """Return MP3 paths created or changed between two snapshots."""
+    return sorted(
+        audio_file
+        for audio_file, after_state in after_snapshot.files.items()
+        if before_snapshot.files.get(audio_file) != after_state
+    )
+```
+
+One recovery case remains: a previous run downloaded the audio, then failed while writing the tags. The next attempt returns zero but changes nothing. For a URL $u$, let $I_u$ be the MP3 paths whose file name contains the YouTube video ID of $u$ (any path, for other sites). The recovery set is
 
 $$
-V(u) = [r_u = 0] \land [|C_u| > 0 \lor |R_u| = 1].
+R_u = \left\{p \in A \cap I_u : s_A = s_B \;\land\; |A| = 1\right\}.
 $$
 
-Let $M(u)$ mean that the metadata pass succeeded and let $P(u)$ mean that the stamped MP3 reached the final library folder. Durable success is
+It stays empty unless nothing changed and exactly one MP3 is present; with several candidates, the service does not guess.
+
+Let $r_u$ be the return code of the final attempt and $C_u$ the changed-file set for $u$. Local verification is
+
+$$
+V(u) = [r_u = 0] \land \bigl[\,|C_u| > 0 \lor |R_u| = 1\,\bigr].
+$$
+
+Let $M(u)$ mean that the tags were written and $P(u)$ mean that the tagged MP3 reached the library folder. Durable success is
 
 $$
 S(u) = V(u) \land M(u) \land P(u).
 $$
 
-The queue or archive changes only when $S(u)$ is true. The order is fixed. Queue the URL, try it, check the file, write the tags, publish it, then record completion.
+The queue and the archive change only when $S(u)$ is true.
 
-The implementation is intentionally plain:
+## Retries, and which failures count
 
-```python
-def _detect_changed_audio_files(
-    self,
-    before_snapshot: AudioSnapshot,
-    after_snapshot: AudioSnapshot,
-) -> list[Path]:
-    """Return MP3 files created or changed during one command."""
-    changed_files: list[Path] = []
-    for file_path, updated_state in after_snapshot.files.items():
-        previous_state = before_snapshot.files.get(file_path)
-        if previous_state is None or updated_state != previous_state:
-            changed_files.append(file_path)
+For a YouTube URL with a cookie file, the service makes at most two attempts. The second attempt uses the other authentication mode: with cookies if the first had none, without them if it had them. A zero exit with no changed MP3 also triggers the retry, which always runs verbosely so the log keeps the full extractor trail. A premiere or livestream that has not started stays queued without a retry and does not count as a failure.
 
-    return sorted(changed_files)
-```
+There is no exponential backoff: downloads are 60 seconds apart by default, and one attempt has a one-hour limit.
 
-There is one narrow recovery rule. If the before and after snapshots are identical, the command returned zero, and exactly one MP3 already exists in the active source work folder, the service may retry the tagging step on that file. This covers a previous run that downloaded the audio but failed while writing tags. With several possible MP3s, it refuses to guess. The search stays in the active folder because searching the whole temporary tree could select another source's MP3.
-
-## Retry with a different authentication mode
-
-The application makes at most two download attempts for a YouTube URL when a cookie file exists. If `always_use_cookies=true`, the first attempt uses cookies and the second is plain. If it is `false`, the order is reversed. The second attempt changes the authentication mode; repeating the identical request would add traffic without testing a different failure cause.
-
-There is no application-level exponential backoff. `delay_seconds` spaces separate queue items, metadata lookups ask `yt-dlp` to sleep between requests, and `yt-dlp` retains its own extractor retry behavior. This distinction keeps the operational claim narrow: the service has a two-mode authentication fallback, not a general retry scheduler.
+A second rule decides which failures count. A deleted or private video fails on every run and, without a limit, would send an alert on every run too. So a failure counts toward dropping a video only when the error blames that video. HTTP 403 or 429, "not a bot" checks, missing proof-of-origin (PO) tokens, and network errors fail every video in the same way, so they do not count. Let $n_u$ be the counted failures for $u$ and $N$ be `max_download_attempts` (default 2). The service drops the video when $n_u \ge N$. A direct URL leaves the queue. A channel video keeps its count, so later runs skip it. Without this split, one week of YouTube blocks would empty the queue.
 
 ## Metadata is part of the transaction
 
-Audiobookshelf needs more than audio bytes. After extraction, the service writes three useful pieces of provenance into the MP3:
+After the download, three tags go into the MP3:
 
-- the local completion timestamp in the `date` tag;
-- the normalized source URL in the `comment` tag;
-- the resolved channel name in the `artist` and `album` tags when one is available.
+- the local completion time in `date`;
+- the normalized source URL in `comment`;
+- the channel name in `artist` and `album`, when the lookup succeeds.
 
-That local completion timestamp is also the retention clock. It avoids confusing the video's publication date with the date the file entered the local library.
+`ffmpeg` cannot edit a file in place. It writes a tagged copy with [`-codec copy`](https://ffmpeg.org/ffmpeg.html#Streamcopy) to a hidden temporary name that does not end in `.mp3`, and `os.replace` then renames that copy over the original in one atomic step. A reader sees either the untagged file or the tagged one, never a partial file. The audio is not re-encoded, and the chapter markers that `yt-dlp` shifted to match the cut audio survive the copy.
 
-The rewrite has a subtle constraint. `ffmpeg` cannot edit a file in place, so it writes a tagged copy. Copying those bytes back over the original would keep the file's inode, the filesystem identity behind a path, but a failure halfway through would leave a truncated MP3. The writer instead uses [FFmpeg streamcopy](https://ffmpeg.org/ffmpeg.html#Streamcopy) with `-codec copy` to write a hidden non-MP3 temporary file, then renames it over the original in one atomic step: anything reading the path sees either the untagged file or the tagged one, never a partial file. The inode changes, and that is harmless here because all of this happens in a scratch folder. Audiobookshelf only sees the finished, tagged file once it moves into the library. The audio stream is not re-encoded during this metadata pass.
-
-Retention is deliberately fail-safe. It applies only to current YouTube channel folders, not playlists or one-off downloads. A file is eligible only when both its embedded completion date and source URL can be read. If either tag is missing or malformed, the service keeps the MP3 because it cannot safely update the archive after deletion.
+The completion time is also the retention clock. Cleanup happens on every run, and only in the folders of YouTube channels that are still in the queue. Playlists and one-off downloads are never deleted. A file is eligible only when both its `date` and `comment` tags can be read; if either is missing, the file stays. After a deletion, the URL stays in `downloaded_urls.txt`. An earlier version removed it, but channel expansion returns a quiet channel's newest videos however old they are, so the same episode downloaded again every 30 days.
 
 ![Reliability gates before state mutation or deletion](images/reliability-gates.png)
 
-The asymmetry matters: download uncertainty leaves work retryable, while deletion uncertainty leaves data intact. Those are different failure modes and deserve different defaults.
+The first four gates guard the way into the library: if one fails, nothing is recorded and the item stays retryable. The fifth guards the way out: an unclear tag keeps the file. Doubt about a download means repeating work later; doubt about a deletion means keeping data.
 
 ## Idempotency needs a lock around the slow part
 
-Expanded channel and playlist videos are recorded in `downloaded_urls.txt`. That history makes repeated polling safe: seeing the same normalized URL again should not trigger another download.
-
-A quick "check the file, then download, then append" sequence is still racy. Two workers can both check before either one appends. The code holds one exclusive file lock across the duplicate check, the slow download attempt, and the success append:
+Channel and playlist videos that succeed go into `downloaded_urls.txt`, so the next poll skips them. "Check the archive, download, append" is still racy: two workers can both check before either one appends. The service holds one exclusive claim lock across the check, the slow download, and the append:
 
 ```python
 if use_archive:
-    with locked_downloaded_url_archive(self.downloaded_urls_file) as archive:
-        if archive.contains(normalized_url):
-            self._downloaded_urls.add(normalized_url)
+    # A separate claim lock serializes expanded downloads without
+    # holding the archive file lock while yt-dlp runs. Archive readers
+    # in the web UI therefore remain responsive.
+    with self.archive_store.locked_download_claim():
+        if normalized_url in self.archive_store.load():
+            self.logger.info("Already downloaded: %s", normalized_url)
             return normalized_url, True
 
         result_url, success = self._download_video_unlocked(
@@ -123,54 +136,47 @@ if use_archive:
             total,
             target_final_output_dir,
             target_work_dir,
+            use_archive=True,
         )
         if success:
-            archive.append_success(normalized_url)
-            self._downloaded_urls.add(normalized_url)
+            self.archive_store.append(normalized_url)
         return result_url, success
 ```
 
-Holding a lock during a network download is normally something I would question. Here it protects a narrow per-archive invariant, and concurrent duplicate work is more costly than waiting. The lock uses Python's [`fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock), so this design assumes a Unix-like local filesystem with compatible advisory locking. The test suite starts two downloader objects against the same expanded URL and verifies that `yt-dlp` is called once.
+The claim lock is a separate file. The archive itself is locked only for short reads and writes, so the web page does not wait behind a download that can take an hour. Direct URLs share the `singles` scratch folder, so they take a second lock of their own. Both locks use [`fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock), which assumes a local Unix-like filesystem.
 
-The cost is that work happens one item at a time. The lock covers the whole archive file, not one URL, so two different expanded videos also wait behind each other. That is acceptable for one personal scheduler; it would waste capacity in a service with many download processes. A database queue with one lease per job would be a better fit at larger scale.
+The cost is that channel and playlist downloads run one at a time. That is fine for one personal scheduler; many workers would need a database queue with a lease per job.
 
-The queue, archive, one-shot age-bypass list, and browser activity feed all remain ordinary UTF-8 text files. Shared locks protect reads; exclusive locks protect read-modify-write operations. This keeps deployment easy to inspect and back up without pretending that uncoordinated text-file writes are safe.
+## A run that does nothing must still say so
 
-## Security and privacy limits
+Per-download alerts miss the worst failure. If YouTube refuses to list a channel, no video is attempted, nothing fails, and the run ends with "0 successful, 0 failed", exactly like a quiet week. So each full run is also checked as a whole. One alert goes out when every channel and playlist listing came back empty, when the sign-in cookies expire within 14 days, when the process stops before it downloads anything, or when the container finds that it missed a scheduled run. An ordinary run sends nothing, so an alert that does arrive means something.
 
-Every user-supplied URL appears after `--` in the subprocess command, which prevents a URL beginning with hyphens from becoming a `yt-dlp` option. Non-YouTube requests never receive the cookie path. Browser uploads accept Netscape-format cookie text, normalize line endings, and write the file with owner-only mode `600` on Unix-like systems.
+## Security limits
 
-That permission bit does not make exported browser cookies harmless. A browser export may contain sessions for sites other than YouTube, so the file belongs in private persistent storage and outside version control. The web interface is an administrative surface for one operator: password hashing, session expiry, Cross-Site Request Forgery protection, and restrictive response headers reduce common browser risks, but the service is not designed for public multi-user hosting.
+Every URL goes after `--` in the `yt-dlp` command, so a URL that starts with hyphens cannot become an option. Only YouTube requests get the cookie file, stored with owner-only mode `600`. Login is off by default. With it on, passwords are hashed with PBKDF2, forms carry Cross-Site Request Forgery (CSRF) tokens, and five wrong passwords ban the address for 15 minutes. That suits one operator, not a multi-user platform.
 
-## What the test suite establishes
+## What the tests establish
 
-The offline regression suite covers 208 tests. They use temporary directories and patched subprocesses, so this is behavioral coverage, not a throughput benchmark.
+The offline suite has 453 tests. They use temporary folders and fake subprocesses, so they check behavior, not throughput.
 
 | Verified boundary | Evidence in the suite |
 |---|---|
-| Artifact detection | New and overwritten MP3 files in the active work folder count; unrelated folders and return code zero without an MP3 do not |
-| Safe publication | Finished MP3 moves from scratch space; temporary artifacts are removed |
-| Metadata | Date and source URL are written before the MP3 reaches the library |
-| Concurrency | Locked archive readers and writers serialize; two workers download one expanded URL once |
-| Retention | Only eligible channel files are removed; missing metadata keeps files in place |
-| Source policy | SponsorBlock is YouTube-only; direct URLs, channels, playlists, Shorts, age gates, cookies, and media-ID filenames follow distinct rules |
-| Web control plane | Passwords, sessions, Cross-Site Request Forgery tokens, proxy trust, cookie upload, and queue mutation have regression coverage |
-
-Cross-Site Request Forgery (CSRF) is an attack in which a browser is tricked into submitting an authenticated action. The web interface uses one-time login tokens and per-session tokens for state-changing forms, alongside a hashed password and restrictive browser headers. That is reasonable protection for a personal admin surface, but it does not turn the service into a general multi-user platform.
-
-The repository also contains a live SponsorBlock check. It imports the separately installed `yt-dlp` package only when run directly and contacts external services then. This keeps the offline suite independent of that optional package. Run the check separately when `yt-dlp`, `ffmpeg`, cookies, and network access are available.
+| Artifact detection | New and overwritten MP3s count; another source's folder and a zero exit without an MP3 do not |
+| Recovery | A leftover MP3 from a different YouTube video is never published as this one |
+| Concurrency | Two workers on one expanded URL call `yt-dlp` once |
+| Failure counting | YouTube blocks never count; a dropped channel video is skipped on later runs |
+| Retention | Missing tags keep the file; a deleted episode is not downloaded again |
+| Alerts | Empty listings, cookie expiry, and missed runs produce one alert; an ordinary run produces none |
 
 ## Where this design stops
 
-This project is built for a personal Audiobookshelf workflow. Its file-based state works well because the scale is small and the files are easy to inspect. It would be the wrong storage model for many download processes, several users, or a remote shared filesystem. At that point, a database-backed job queue with leases and explicit status changes would be easier to reason about.
+Plain files suit this scale because they are easy to read and back up. The larger risk sits outside the code. YouTube changes its rules, cookies expire, SponsorBlock coverage varies by video, and the stream URLs from most YouTube player clients now need a PO token. The service pins the `web_embedded` client, ships Deno for YouTube's JavaScript challenges, and updates `yt-dlp` on every start and before each scheduled run. Those choices reduce breakage; they cannot remove it.
 
-External behavior remains the largest uncontrolled variable. YouTube changes extraction requirements, browser cookies expire, SponsorBlock coverage varies by video, and `yt-dlp` evolves quickly enough that this project installs a current release outside its lockfile. The Docker image includes Deno for current YouTube JavaScript challenges, but no packaging choice can make an external extractor permanently stable.
-
-The local rule is the part I trust. Do not change saved state because a command returned zero. Check the file, record where it came from, publish it, and only then mark the work complete.
+The local rule is the part I trust. A command that returned zero is not proof. Check the file, tag it, publish it, and only then mark the work complete.
 
 ## References
 
-- [`yt-dlp` README: output templates, paths, retries, and SponsorBlock options](https://github.com/yt-dlp/yt-dlp)
+- [`yt-dlp` README: output templates, paths, and SponsorBlock options](https://github.com/yt-dlp/yt-dlp)
 - [SponsorBlock segment categories](https://wiki.sponsor.ajay.app/w/Segment_Categories)
 - [FFmpeg documentation: streamcopy and metadata options](https://ffmpeg.org/ffmpeg.html)
 - [Python documentation: `fcntl.flock`](https://docs.python.org/3/library/fcntl.html#fcntl.flock)

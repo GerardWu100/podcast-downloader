@@ -185,7 +185,7 @@ def generate_pipeline_flow(data: dict[str, list[dict[str, str]]]) -> None:
         fontsize=9,
         fontweight="bold",
     )
-    axis.text(5.1, 0.55, "Local proof", color=CYAN, fontsize=9, fontweight="bold")
+    axis.text(6.9, 0.55, "Local proof", color=CYAN, fontsize=9, fontweight="bold")
     axis.text(13.45, 0.55, "Durable state", color=AMBER, fontsize=9, fontweight="bold")
 
     figure.savefig(IMAGES_DIR / "pipeline-flow.png", dpi=FIGURE_DPI, facecolor=NAVY)

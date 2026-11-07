@@ -1,23 +1,44 @@
 {
   "pipeline": [
-    {"title": "Queue", "detail": "direct URL, channel, or playlist"},
-    {"title": "Expand & filter", "detail": "normalize, age gate, skip Shorts"},
-    {"title": "Extract audio", "detail": "yt-dlp; SponsorBlock; media-ID filename"},
-    {"title": "Verify output", "detail": "new or changed MP3 in active work folder"},
-    {"title": "Stamp metadata", "detail": "date, source URL, channel name"},
-    {"title": "Publish", "detail": "move into Audiobookshelf library"},
-    {"title": "Commit state", "detail": "remove queue item or append archive"}
+    {
+      "title": "Queue",
+      "detail": "direct URL, channel, or playlist"
+    },
+    {
+      "title": "Expand & filter",
+      "detail": "normalize, age gate, skip Shorts"
+    },
+    {
+      "title": "Extract audio",
+      "detail": "yt-dlp; SponsorBlock; media-ID filename"
+    },
+    {
+      "title": "Verify output",
+      "detail": "new or changed MP3 in active work folder"
+    },
+    {
+      "title": "Stamp metadata",
+      "detail": "date, source URL, channel name"
+    },
+    {
+      "title": "Publish",
+      "detail": "move into Audiobookshelf library"
+    },
+    {
+      "title": "Commit state",
+      "detail": "remove queue item or append archive"
+    }
   ],
   "gates": [
     {
       "title": "Subprocess gate",
       "condition": "return code is zero",
-      "on_failure": "retry eligible YouTube requests with alternate cookie mode"
+      "on_failure": "YouTube retries once with the other cookie mode; a video-specific error counts toward dropping it"
     },
     {
       "title": "Artifact gate",
       "condition": "at least one MP3 in the active work folder is new or changed",
-      "on_failure": "leave the item retryable"
+      "on_failure": "YouTube retries once with the other cookie mode; otherwise leave the item retryable"
     },
     {
       "title": "Metadata gate",
