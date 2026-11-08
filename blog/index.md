@@ -1,12 +1,14 @@
 ---
-title: "A Podcast Downloader That Does Not Trust Exit Code 0"
+title: "Podcast Downloader: Turning YouTube Channels into Ad-Free Podcasts"
 description: "A self-hosted yt-dlp service that turns YouTube channels into sponsor-free Audiobookshelf podcasts, and the checks that keep its files, queue, and archive consistent."
 date: 2026-07-13
-image: images/cover-podcast-pipeline.png
+image: images/banner.png
+repo: https://github.com/GerardWu100/podcast-downloader
+aliases: ["/p/a-podcast-downloader-that-does-not-trust-exit-code-0/"]
 categories: ["Computer Science", "Data Science"]
 ---
 
-# A Podcast Downloader That Does Not Trust Exit Code 0
+# Podcast Downloader: turning YouTube channels into ad-free podcasts
 
 I listen to several YouTube channels as podcasts. I wanted new episodes on my phone without sponsor reads and without any effort from me. That sounds like one command on a timer. Most of the work went into the failure handling around that command.
 
@@ -38,9 +40,9 @@ The diagram separates three decisions. Source policy (coral) chooses *what* to a
 
 `yt-dlp` works in a scratch folder for each source. Only a tagged MP3 moves into the folder that Audiobookshelf reads. The filename template is `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. The media ID in brackets matters: two episodes from one channel can share a title, so channel plus title is not a unique key.
 
-## Define success from the filesystem
+## Check the file, not the exit code
 
-A return code of zero does not prove that a new MP3 exists. A post-processor can give up after the media transfer, or an extractor can decide the item is already present, and the exit status stays zero in both cases. So the downloader records every MP3 in the source's scratch folder before and after each attempt.
+When a program finishes, it reports a number called its exit code (or return code); zero means "no error". But a zero exit code from `yt-dlp` does not prove that a new MP3 exists. A post-processor can give up after the media transfer, or an extractor can decide the item is already present, and the exit status stays zero in both cases. So the downloader records every MP3 in the source's scratch folder before and after each attempt.
 
 For an MP3 path $p$, let $m(p)$ be its modification time in nanoseconds and $z(p)$ its size in bytes. The recorded state is
 

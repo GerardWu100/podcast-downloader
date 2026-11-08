@@ -1,12 +1,14 @@
 ---
-title: "Un téléchargeur de podcasts qui ne fait pas confiance au code de sortie 0"
+title: "Podcast Downloader : transformer des chaînes YouTube en podcasts sans publicité"
 description: "Un service yt-dlp auto-hébergé qui transforme des chaînes YouTube en podcasts Audiobookshelf sans sponsors, et les vérifications qui gardent ses fichiers, sa file d'attente et son archive cohérents."
 date: 2026-07-13
-image: images/cover-podcast-pipeline.png
+image: images/banner.png
+repo: https://github.com/GerardWu100/podcast-downloader
+aliases: ["/p/un-téléchargeur-de-podcasts-qui-ne-fait-pas-confiance-au-code-de-sortie-0/"]
 categories: ["Informatique", "Science des données"]
 ---
 
-# Un téléchargeur de podcasts qui ne fait pas confiance au code de sortie 0
+# Podcast Downloader : transformer des chaînes YouTube en podcasts sans publicité
 
 J'écoute plusieurs chaînes YouTube comme des podcasts. Je voulais retrouver les nouveaux épisodes sur mon téléphone, sans les passages sponsorisés et sans rien faire. Cela ressemble à une seule commande lancée par une minuterie. En pratique, l'essentiel du travail a porté sur la gestion des échecs autour de cette commande.
 
@@ -38,9 +40,9 @@ Le schéma sépare trois décisions. La politique de source (corail) choisit *qu
 
 `yt-dlp` travaille dans un dossier temporaire propre à chaque source. Seul un MP3 tagué rejoint le dossier que lit Audiobookshelf. Le modèle de nom de fichier est `%(channel,uploader)s - %(title)s [%(id)s].%(ext)s`. L'identifiant du média entre crochets compte : deux épisodes d'une même chaîne peuvent porter le même titre, donc chaîne plus titre ne forme pas une clé unique.
 
-## Définir la réussite à partir du système de fichiers
+## Vérifier le fichier, pas le code de sortie
 
-Un code de retour nul ne prouve pas qu'un nouveau MP3 existe. Un post-traitement peut abandonner après le transfert du média, ou un extracteur peut juger que l'élément est déjà présent ; dans les deux cas, le code de sortie reste à zéro. Le téléchargeur relève donc tous les MP3 du dossier temporaire de la source avant et après chaque tentative.
+Quand un programme se termine, il renvoie un nombre appelé code de sortie (ou code de retour) ; zéro signifie « aucune erreur ». Mais un code de sortie nul de `yt-dlp` ne prouve pas qu'un nouveau MP3 existe. Un post-traitement peut abandonner après le transfert du média, ou un extracteur peut juger que l'élément est déjà présent ; dans les deux cas, le code de sortie reste à zéro. Le téléchargeur relève donc tous les MP3 du dossier temporaire de la source avant et après chaque tentative.
 
 Pour un chemin MP3 $p$, soit $m(p)$ son heure de modification en nanosecondes et $z(p)$ sa taille en octets. L'état enregistré est
 

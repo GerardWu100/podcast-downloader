@@ -13,6 +13,8 @@ Inputs
 
 Outputs
 -------
+``images/banner.png``
+    Cover image: app icon, project name, and an episode with its ad cut out.
 ``images/pipeline-flow.png``
     Left-to-right view of the URL-to-library pipeline.
 ``images/reliability-gates.png``
@@ -22,9 +24,11 @@ Outputs
 from __future__ import annotations
 
 import json
+import math
 import textwrap
 from pathlib import Path
 
+import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
@@ -39,6 +43,14 @@ CORAL = "#ff6b4a"
 AMBER = "#f4b942"
 WHITE = "#f7fbff"
 MUTED = "#b6c9d8"
+
+# Banner (cover image). The icon copies the web app's own icon in
+# ``src/web/static/icon-192.png``: a blue rounded square with a download arrow.
+BANNER_ICON_BLUE = "#2563eb"
+# Waveform bars: x range in data units, and the stretch cut out as a sponsor read.
+WAVEFORM_LEFT, WAVEFORM_RIGHT = 5.3, 15.1
+AD_LEFT, AD_RIGHT = 8.7, 11.3
+WAVEFORM_BAR_STEP = 0.16
 
 
 def _load_chart_data() -> dict[str, list[dict[str, str]]]:
@@ -293,10 +305,61 @@ def generate_reliability_gates(data: dict[str, list[dict[str, str]]]) -> None:
     plt.close(figure)
 
 
+def generate_banner() -> None:
+    """Cover image: app icon, project name, and an episode with its ad cut out.
+
+    Data units run x 0..16 and y 0..6, matching the 16x6-inch figure saved at
+    100 dpi as a 1600x600 PNG. Bar heights come from a fixed sum of sines, so
+    the output is identical on every run.
+    """
+    figure, axes = plt.subplots(figsize=(16, 6))
+    figure.subplots_adjust(0, 0, 1, 1)
+    figure.patch.set_facecolor(NAVY)
+    axes.set_xlim(0, 16)
+    axes.set_ylim(0, 6)
+    axes.axis("off")
+
+    # App icon: blue rounded square, white download arrow above a baseline.
+    axes.add_patch(FancyBboxPatch((1.0, 1.35), 3.3, 3.3, boxstyle="round,pad=0,rounding_size=0.7",
+                                  facecolor=BANNER_ICON_BLUE, edgecolor="none"))  # fmt: skip
+    stroke = {"color": "white", "linewidth": 16, "solid_capstyle": "round", "solid_joinstyle": "round"}
+    axes.plot([2.65, 2.65], [3.95, 2.55], **stroke)
+    axes.plot([2.0, 2.65, 3.3], [3.2, 2.55, 3.2], **stroke)
+    axes.plot([1.85, 3.45], [2.0, 2.0], **stroke)
+
+    axes.text(5.2, 4.15, "Podcast Downloader", fontsize=44, fontweight="bold",
+              color=WHITE, va="center", family="DejaVu Sans")  # fmt: skip
+
+    # Episode waveform: vertical bars centred on y = 2.1, skipping the ad stretch.
+    centre_y = 2.1
+    bar_x = WAVEFORM_LEFT
+    while bar_x <= WAVEFORM_RIGHT:
+        if not AD_LEFT - 0.15 < bar_x < AD_RIGHT + 0.15:
+            height = 0.25 + 0.55 * abs(math.sin(bar_x * 2.3) * math.cos(bar_x * 0.9) + 0.35 * math.sin(bar_x * 7.1))
+            axes.plot([bar_x, bar_x], [centre_y - height, centre_y + height], color=CYAN,
+                      linewidth=5, solid_capstyle="round")  # fmt: skip
+        bar_x += WAVEFORM_BAR_STEP
+
+    # The sponsor read: a coral "AD" block, struck through to show it is removed.
+    axes.add_patch(FancyBboxPatch((AD_LEFT, centre_y - 0.7), AD_RIGHT - AD_LEFT, 1.4,
+                                  boxstyle="round,pad=0,rounding_size=0.18", facecolor="none",
+                                  edgecolor=CORAL, linewidth=3, linestyle="--"))  # fmt: skip
+    # Slash first, then the letters with a navy outline, so "AD" stays readable on top.
+    axes.plot([AD_LEFT + 0.35, AD_RIGHT - 0.35], [centre_y - 0.5, centre_y + 0.5], color=CORAL,
+              linewidth=6, solid_capstyle="round", zorder=2)  # fmt: skip
+    axes.text((AD_LEFT + AD_RIGHT) / 2, centre_y, "AD", fontsize=34, fontweight="bold",
+              color=CORAL, ha="center", va="center", family="DejaVu Sans", zorder=3,
+              path_effects=[path_effects.withStroke(linewidth=12, foreground=NAVY)])  # fmt: skip
+
+    figure.savefig(IMAGES_DIR / "banner.png", dpi=100, facecolor=figure.get_facecolor())
+    plt.close(figure)
+
+
 def main() -> None:
     """Generate all blog charts from frozen local inputs."""
 
     IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    generate_banner()
     data = _load_chart_data()
     generate_pipeline_flow(data)
     generate_reliability_gates(data)
