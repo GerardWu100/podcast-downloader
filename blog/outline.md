@@ -61,4 +61,4 @@
 - Assumptions: the reader knows what a web video and an MP3 are; `yt-dlp`, SponsorBlock, Cross-Site Request Forgery (CSRF), and inode are defined on first use.
 - Validation checks to run before final draft: run the offline `tests/` suite, run the chart generator, validate both Markdown files, confirm every referenced image exists, and confirm English/French protected code and math blocks remain identical.
 - Audit corrections: keep the optional live `yt-dlp` import out of pytest collection, scope recovery to the active work folder, and include the extractor media ID in output filenames.
-- Deployment note: the canonical workspace is `podcast-downloader/blog/`. At the user’s explicit request, there is no publish bundle and no copy, build, commit, or other access to `~/projects/website` in this task. Only the project-local blog package will be committed and pushed.
+- Deployment note: the canonical workspace is `podcast-downloader/blog/`. At the user’s explicit request, there is no publish bundle and no copy, build, commit, or other access to `~/projects/public/website` in this task. Only the project-local blog package will be committed and pushed.
